@@ -118,15 +118,22 @@ import { supabase } from '../supabaseClient';export default function GastoRetiro
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '2rem',
+              padding: image ? '0' : '2rem',
               border: '2px dashed var(--border)',
               borderRadius: '8px',
               backgroundColor: 'var(--surface)',
               cursor: 'pointer',
-              color: 'var(--text-secondary)'
+              color: 'var(--text-secondary)',
+              overflow: 'hidden'
             }}>
-              <Camera size={32} style={{ marginBottom: '0.5rem' }} />
-              <span>{image ? image.name : "Subir imagen"}</span>
+              {image ? (
+                <img src={URL.createObjectURL(image)} alt="Preview" style={{ width: '100%', height: '150px', objectFit: 'cover', display: 'block' }} />
+              ) : (
+                <>
+                  <Camera size={32} style={{ marginBottom: '0.5rem' }} />
+                  <span>Subir imagen</span>
+                </>
+              )}
               <input 
                 type="file" 
                 accept="image/*" 
