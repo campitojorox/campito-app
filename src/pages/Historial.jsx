@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-export default function Registro() {
+export default function Historial() {
   const [records, setRecords] = useState([]);
   const [calendarEvents, setCalendarEvents] = useState([]);
 
@@ -61,9 +61,9 @@ export default function Registro() {
     const userEvents = calendarEvents.filter(e => e.Responsible === u.name);
     const riego = userEvents.filter(e => e.Category === 'RIEGO').length;
     const mantenimiento = userEvents.filter(e => e.Category === 'MANTENIMIENTO').length;
-    const encuentro = userEvents.filter(e => e.Category === 'ENCUENTRO').length;
+    const evento = userEvents.filter(e => e.Category === 'EVENTO').length;
     const otro = userEvents.filter(e => e.Category === 'OTRO').length;
-    return { user: u.name, riego, mantenimiento, encuentro, otro };
+    return { user: u.name, riego, mantenimiento, evento, otro };
   });
 
   const formatCurrency = (val) => {
@@ -101,14 +101,14 @@ export default function Registro() {
       </table>
 
       <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Estadisticas Calendario</h2>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="data-table" style={{ whiteSpace: 'nowrap' }}>
+      
+        <table className="data-table">
           <thead>
             <tr>
               <th>Usuario</th>
               <th>Riego</th>
               <th>Mantenimiento</th>
-              <th>Encuentro</th>
+              <th>Evento</th>
               <th>Otro</th>
             </tr>
           </thead>
@@ -118,14 +118,12 @@ export default function Registro() {
                 <td style={{ color: 'var(--text-primary)' }}>{s.user}</td>
                 <td>{s.riego}</td>
                 <td>{s.mantenimiento}</td>
-                <td>{s.encuentro}</td>
+                <td>{s.evento}</td>
                 <td>{s.otro}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-    </div>
   );
 }

@@ -193,9 +193,9 @@ export default function Layout({ session }) {
           <Euro size={24} style={{ display: 'block', margin: '0 auto' }} />
           <span>Invertido / Generado</span>
         </NavLink>
-        <NavLink to="/registro" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink to="/historial" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <BarChart2 size={24} style={{ display: 'block', margin: '0 auto' }} />
-          <span>Registro</span>
+          <span>Historial</span>
         </NavLink>
       </nav>
     </div>

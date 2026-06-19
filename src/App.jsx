@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import Layout from './components/Layout';
 import Calendario from './pages/Calendario';
-import Registro from './pages/Registro';
+import Historial from './pages/Historial';
 import InvertidoGenerado from './pages/InvertidoGenerado';
 import Auth from './pages/Auth';
 import './index.css';
@@ -42,7 +42,7 @@ function App() {
           <Route index element={<Navigate to="/calendario" replace />} />
           <Route path="calendario" element={<Calendario />} />
           <Route path="invertido-generado" element={<InvertidoGenerado />} />
-          <Route path="registro" element={<Registro />} />
+          <Route path="historial" element={<Historial />} />
         </Route>
       </Routes>
     </BrowserRouter>

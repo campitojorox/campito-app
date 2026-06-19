@@ -8,7 +8,7 @@ import { Plus } from 'lucide-react';
 const categoryColors = {
   'RIEGO': '#3b82f6', // Blue
   'MANTENIMIENTO': '#f59e0b', // Orange
-  'ENCUENTRO': '#8b5cf6', // Purple
+  'EVENTO': '#8b5cf6', // Purple
   'OTRO': '#6b7280' // Gray
 };
 
@@ -196,7 +196,7 @@ export default function Calendario() {
               <select className="form-input" value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
                 <option value="RIEGO">Riego</option>
                 <option value="MANTENIMIENTO">Mantenimiento</option>
-                <option value="ENCUENTRO">Encuentro</option>
+                <option value="EVENTO">Evento</option>
                 <option value="OTRO">Otro</option>
               </select>
             </div>
