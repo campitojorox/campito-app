@@ -108,7 +108,7 @@ export default function InversionVenta() {
                 cursor: 'pointer'
               }}
             >
-              Inversion (Inversion)
+              Inversion (Gasto)
             </button>
             <button 
               type="button"
@@ -274,7 +274,7 @@ export default function InversionVenta() {
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Inversion'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Inversion' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Inversion' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Inversion (Inversion)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Inversion'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Inversion' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Inversion' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Inversion (Gasto)</button>
                   <button type="button" onClick={() => setEditForm({...editForm, type: 'Venta'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Venta' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Venta' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Venta (Generado)</button>
                 </div>
               </div>
