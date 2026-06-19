@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
