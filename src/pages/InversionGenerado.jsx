@@ -134,17 +134,17 @@ export default function InversionGenerado() {
 
           <div className="form-group" style={{ padding: 0 }}>
             <label>Cantidad / Monto</label>
-            <input type="number" step="0.01" className="form-input" required value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <input type="number" step="0.01" className="form-input" required value={amount} onChange={(e) => { e.target.setCustomValidity(''); setAmount(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una cantidad')} />
           </div>
           
           <div className="form-group" style={{ padding: 0 }}>
             <label>Descripción / Concepto</label>
-            <input type="text" className="form-input" required value={description} onChange={(e) => setDescription(e.target.value)} />
+            <input type="text" className="form-input" required value={description} onChange={(e) => { e.target.setCustomValidity(''); setDescription(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una descripción')} />
           </div>
 
           <div className="form-group" style={{ padding: 0 }}>
             <label>Usuario Responsable</label>
-            <select className="form-input" required value={user} onChange={(e) => setUser(e.target.value)}>
+            <select className="form-input" required value={user} onChange={(e) => { e.target.setCustomValidity(''); setUser(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
               <option value="" disabled>Seleccione un usuario</option>
               {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
             </select>
@@ -303,9 +303,9 @@ export default function InversionGenerado() {
                 {editForm.currentImage || editForm.image ? (
                   <div style={{ position: 'relative', display: 'inline-block', width: '100%', textAlign: 'center' }}>
                     <img 
-                      src={editForm.image ? URL.createObjectURL(editForm.image) : `/${editForm.currentImage}`} 
+                      src={editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage} 
                       alt="Comprobante actual" 
-                      onClick={() => setExpandedImage(editForm.image ? URL.createObjectURL(editForm.image) : `/${editForm.currentImage}`)}
+                      onClick={() => setExpandedImage(editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage)}
                       style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)', cursor: 'pointer' }} 
                     />
                     <button 
