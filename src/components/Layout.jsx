@@ -189,9 +189,9 @@ export default function Layout({ session }) {
           <Calendar size={24} style={{ display: 'block', margin: '0 auto' }} />
           <span>Calendario</span>
         </NavLink>
-        <NavLink to="/invertido-generado" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink to="/gasto-venta" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Euro size={24} style={{ display: 'block', margin: '0 auto' }} />
-          <span>Invertido / Generado</span>
+          <span>Gasto / Venta</span>
         </NavLink>
         <NavLink to="/historial" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <BarChart2 size={24} style={{ display: 'block', margin: '0 auto' }} />

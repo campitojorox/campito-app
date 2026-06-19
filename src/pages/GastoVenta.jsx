@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-export default function InvertidoGenerado() {
+export default function GastoVenta() {
   const { users } = useOutletContext();
   const [type, setType] = useState('Invertido');
   const [amount, setAmount] = useState('');
@@ -93,7 +93,7 @@ export default function InvertidoGenerado() {
 
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
-      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Invertido / Generado</h2>
+      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
       
       <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
@@ -112,7 +112,7 @@ export default function InvertidoGenerado() {
                 cursor: 'pointer'
               }}
             >
-              Invertido (Gasto)
+              Gasto (invertido)
             </button>
             <button 
               type="button"
@@ -128,7 +128,7 @@ export default function InvertidoGenerado() {
                 cursor: 'pointer'
               }}
             >
-              Generado (Venta)
+              Venta (generado)
             </button>
           </div>
 
@@ -278,8 +278,8 @@ export default function InvertidoGenerado() {
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Invertido (Gasto)</button>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Generado (Venta)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Gasto (invertido)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Venta (generado)</button>
                 </div>
               </div>
               <div className="form-group" style={{ padding: 0 }}>
