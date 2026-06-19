@@ -48,8 +48,8 @@ export default function Calendario() {
     if (data) {
       const mapped = data.map(ev => ({
         EventID: ev.id,
-        Date: ev.date.split('T')[0] + " 00:00:00",
-        "End Date": ev.date.split('T')[0] + " 00:00:00",
+        Date: ev.date ? (ev.date.split('T')[0] + " 00:00:00") : null,
+        "End Date": ev.end_date ? (ev.end_date.split('T')[0] + " 00:00:00") : (ev.date ? (ev.date.split('T')[0] + " 00:00:00") : null),
         "Start Time": ev.start_time ? ev.start_time.substring(0,5) + ':00' : null,
         "End Time": ev.end_time ? ev.end_time.substring(0,5) + ':00' : null,
         Category: ev.category,
@@ -70,6 +70,7 @@ export default function Calendario() {
 
     const payload = {
       date: newDate + "T00:00:00Z",
+      end_date: newEndDate + "T00:00:00Z",
       start_time: newStartTime + ":00",
       end_time: newEndTime + ":00",
       category: newCategory,
@@ -118,11 +119,14 @@ export default function Calendario() {
 
   const selectedDayEvents = events.filter(ev => {
     if(!ev.Date) return false;
-    // Basic check: is the selected date the same as the start date
-    // Note: To handle multi-day events fully, you'd check if selectedDate falls between Date and End Date.
-    // For simplicity matching the existing structure, we check if it starts on this day.
-    const evDate = new Date(ev.Date.split(' ')[0]);
-    return isSameDay(evDate, selectedDate);
+    const startDate = new Date(ev.Date.split(' ')[0]);
+    startDate.setHours(0,0,0,0);
+    const endDateStr = ev["End Date"] || ev.Date;
+    const endDate = new Date(endDateStr.split(' ')[0]);
+    endDate.setHours(0,0,0,0);
+    const currentDay = new Date(selectedDate);
+    currentDay.setHours(0,0,0,0);
+    return currentDay >= startDate && currentDay <= endDate;
   });
 
   const searchResults = events.filter(ev => {
@@ -251,7 +255,14 @@ export default function Calendario() {
             // Check if there's an event this day
             const eventsThisDay = events.filter(ev => {
               if(!ev.Date) return false;
-              return isSameDay(new Date(ev.Date.split(' ')[0]), day);
+              const startDate = new Date(ev.Date.split(' ')[0]);
+              startDate.setHours(0,0,0,0);
+              const endDateStr = ev["End Date"] || ev.Date;
+              const endDate = new Date(endDateStr.split(' ')[0]);
+              endDate.setHours(0,0,0,0);
+              const currentDay = new Date(day);
+              currentDay.setHours(0,0,0,0);
+              return currentDay >= startDate && currentDay <= endDate;
             });
             const hasEvent = eventsThisDay.length > 0;
             // Get color of first event for the dot
