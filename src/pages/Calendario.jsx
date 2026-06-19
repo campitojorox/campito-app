@@ -235,11 +235,11 @@ export default function Calendario() {
         <>
           {/* Calendar Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', marginBottom: '1rem' }}>
-            <button onClick={prevMonth} style={{ fontSize: '1.5rem', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&lt;</button>
+            <button onClick={prevMonth} style={{ fontSize: '1.5rem', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e5e7eb', color: 'black', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&lt;</button>
             <h2 style={{ textTransform: 'capitalize', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
               {format(currentMonth, 'MMMM yyyy', { locale: es })}
             </h2>
-            <button onClick={nextMonth} style={{ fontSize: '1.5rem', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&gt;</button>
+            <button onClick={nextMonth} style={{ fontSize: '1.5rem', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#e5e7eb', color: 'black', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&gt;</button>
           </div>
 
           {/* Calendar Grid */}
