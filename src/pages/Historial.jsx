@@ -107,7 +107,7 @@ export default function Historial() {
             <tr>
               <th>Usuario</th>
               <th>Riego</th>
-              <th>Mantenimiento</th>
+              <th>Mante.</th>
               <th>Evento</th>
               <th>Otro</th>
             </tr>
