@@ -100,7 +100,7 @@ export default function Historial() {
         </tbody>
       </table>
 
-      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Estadisticas Calendario</h2>
+      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Calendario</h2>
       
         <table className="data-table">
           <thead>

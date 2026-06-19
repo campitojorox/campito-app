@@ -195,7 +195,7 @@ export default function Layout({ session }) {
         </NavLink>
         <NavLink to="/historial" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <BarChart2 size={24} style={{ display: 'block', margin: '0 auto' }} />
-          <span>Historial</span>
+          <span>Estadísticas</span>
         </NavLink>
       </nav>
     </div>
