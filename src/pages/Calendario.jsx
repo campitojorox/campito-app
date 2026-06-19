@@ -284,7 +284,7 @@ export default function Calendario() {
 
       {/* Event List for Selected Day or Search Results */}
       <div style={{ marginTop: '1.5rem' }}>
-        <h3 style={{ fontSize: '1rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+        <h3 style={{ fontSize: '1rem', color: 'white', marginBottom: '1rem' }}>
           {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayEvents.length})` : `Eventos del ${format(selectedDate, "d 'de' MMMM", { locale: es })}`}
         </h3>
         
