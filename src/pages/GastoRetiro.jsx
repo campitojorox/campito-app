@@ -157,9 +157,25 @@ import { supabase } from '../supabaseClient';export default function GastoRetiro
             </label>
           </div>
 
-          <button type="submit" className="btn" style={{ width: '100%', margin: 0 }} disabled={loading}>
-            {loading ? 'Guardando...' : 'Guardar'}
-          </button>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button 
+              type="button" 
+              className="btn" 
+              style={{ flex: 1, margin: 0, backgroundColor: 'var(--danger)', color: 'white', border: 'none' }}
+              onClick={() => {
+                setAmount('');
+                setDescription('');
+                setUser('');
+                setImage(null);
+              }}
+              disabled={loading}
+            >
+              Cancelar
+            </button>
+            <button type="submit" className="btn" style={{ flex: 1, margin: 0 }} disabled={loading}>
+              {loading ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
