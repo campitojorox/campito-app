@@ -1,0 +1,32 @@
+APP Login: 
+Email: 
+Ariel: arielcruzf@gmail.com
+Jaime: jaimebgallardo@gmail.com
+Chacho: 101teamsrc@gmail.com
+Mauro: marolw@gmail.com
+
+Contraseña: campito2026
+
+Cuenta Gus-Hub:
+User campitojorox@gmail.com
+
+https://supabase.com/
+User campitojorox@gmail.com (git-hub)
+user: campitojorox@gmail.com
+pass:usuario Google Campito Jorox
+DB: Campito App
+ps:,tV!f-R_M6Y9V8K
+
+
+
+project ID: byyqdtcuutfnjdlaewsu
+url: https://byyqdtcuutfnjdlaewsu.supabase.co
+Publishable key: 
+name: default
+key: sb_publishable_8TCvobU1OLQ-ffkb89i5ZQ_FJLfsCc8
+
+Secret keys: 
+name: default
+key: sb_secret_REDACTED
+
+VERCEL: 
