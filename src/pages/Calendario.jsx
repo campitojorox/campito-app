@@ -214,9 +214,9 @@ export default function Calendario() {
               <input type="text" className="form-input" value={newInfo} onChange={(e) => setNewInfo(e.target.value)} />
             </div>
             {!editingEvent ? (
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--border)', color: 'white', width: '50%', margin: 0 }}>Cancelar</button>
-                <button type="submit" className="btn btn-primary" style={{ width: '50%', margin: 0 }}>Guardar</button>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar</button>
+                <button type="button" className="btn" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--danger)', color: 'white', flex: 1, margin: 0, padding: '0.75rem 0' }}>Cancelar</button>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
