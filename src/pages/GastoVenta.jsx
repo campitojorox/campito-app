@@ -365,7 +365,7 @@ export default function GastoVenta() {
 
                   fetchData();
                   setSelectedRecord(null);
-                }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Cerrar / Guardar</button>
+                }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
                 <button onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
               </div>
             </div>
