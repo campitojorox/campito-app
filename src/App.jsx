@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import Layout from './components/Layout';
 import Calendario from './pages/Calendario';
-import Historial from './pages/Historial';
+import Resumen from './pages/Resumen';
 import GastoVenta from './pages/GastoVenta';
 import Auth from './pages/Auth';
 import './index.css';
@@ -42,7 +42,7 @@ function App() {
           <Route index element={<Navigate to="/calendario" replace />} />
           <Route path="calendario" element={<Calendario />} />
           <Route path="gasto-venta" element={<GastoVenta />} />
-          <Route path="historial" element={<Historial />} />
+          <Route path="resumen" element={<Resumen />} />
         </Route>
       </Routes>
     </BrowserRouter>

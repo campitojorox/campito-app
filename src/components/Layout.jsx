@@ -198,7 +198,7 @@ export default function Layout({ session }) {
           <Euro size={24} style={{ display: 'block', margin: '0 auto' }} />
           <span>Gasto / Venta</span>
         </NavLink>
-        <NavLink to="/historial" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink to="/resumen" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <BarChart2 size={24} style={{ display: 'block', margin: '0 auto' }} />
           <span>Resumen</span>
         </NavLink>
