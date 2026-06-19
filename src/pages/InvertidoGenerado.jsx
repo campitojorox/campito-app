@@ -3,9 +3,9 @@ import { useOutletContext } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-export default function InversionGenerado() {
+export default function InvertidoGenerado() {
   const { users } = useOutletContext();
-  const [type, setType] = useState('Inversion');
+  const [type, setType] = useState('Invertido');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [user, setUser] = useState('');
@@ -76,7 +76,7 @@ export default function InversionGenerado() {
     }]);
 
     if (!error) {
-      const msgType = type === 'Gasto' ? 'Inversión' : 'Generado';
+      const msgType = type === 'Gasto' ? 'Invertido' : 'Generado';
       setSuccessMsg(`${msgType} de ${amount}€ generada exitosamente!`);
       setTimeout(() => setSuccessMsg(null), 2000);
 
@@ -93,7 +93,7 @@ export default function InversionGenerado() {
 
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
-      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Inversion / Generado</h2>
+      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Invertido / Generado</h2>
       
       <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
@@ -112,7 +112,7 @@ export default function InversionGenerado() {
                 cursor: 'pointer'
               }}
             >
-              Inversion (Gasto)
+              Invertido (Gasto)
             </button>
             <button 
               type="button"
@@ -222,7 +222,7 @@ export default function InversionGenerado() {
                 style={{ cursor: 'pointer' }}
                 onClick={() => {
                   setSelectedRecord(r);
-                  setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Inversion', image: null, currentImage: r.Imagen || null });
+                  setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Invertido', image: null, currentImage: r.Imagen || null });
                   setIsConfirmingDelete(false);
                 }}
               >
@@ -278,7 +278,7 @@ export default function InversionGenerado() {
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Inversion (Gasto)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Invertido (Gasto)</button>
                   <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Generado (Venta)</button>
                 </div>
               </div>
