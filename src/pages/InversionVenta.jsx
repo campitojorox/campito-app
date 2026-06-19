@@ -63,7 +63,7 @@ export default function InversionVenta() {
       }
     }
 
-    const finalAmount = type === 'Venta' ? -Math.abs(parseFloat(amount)) : Math.abs(parseFloat(amount));
+    const finalAmount = type === 'Retiro' ? -Math.abs(parseFloat(amount)) : Math.abs(parseFloat(amount));
     
     const { error } = await supabase.from('transactions').insert([{
       date: new Date().toISOString(),
@@ -96,14 +96,14 @@ export default function InversionVenta() {
           <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
             <button 
               type="button"
-              onClick={() => setType('Inversion')}
+              onClick={() => setType('Gasto')}
               style={{
                 flex: 1,
                 padding: '0.8rem',
                 borderRadius: '4px',
                 border: 'none',
-                backgroundColor: type === 'Inversion' ? 'var(--primary)' : 'var(--surface)',
-                color: type === 'Inversion' ? 'white' : 'var(--text-primary)',
+                backgroundColor: type === 'Gasto' ? 'var(--primary)' : 'var(--surface)',
+                color: type === 'Gasto' ? 'white' : 'var(--text-primary)',
                 fontWeight: '600',
                 cursor: 'pointer'
               }}
@@ -112,14 +112,14 @@ export default function InversionVenta() {
             </button>
             <button 
               type="button"
-              onClick={() => setType('Venta')}
+              onClick={() => setType('Retiro')}
               style={{
                 flex: 1,
                 padding: '0.8rem',
                 borderRadius: '4px',
                 border: 'none',
-                backgroundColor: type === 'Venta' ? 'var(--primary)' : 'var(--surface)',
-                color: type === 'Venta' ? 'white' : 'var(--text-primary)',
+                backgroundColor: type === 'Retiro' ? 'var(--primary)' : 'var(--surface)',
+                color: type === 'Retiro' ? 'white' : 'var(--text-primary)',
                 fontWeight: '600',
                 cursor: 'pointer'
               }}
@@ -228,8 +228,8 @@ export default function InversionVenta() {
                   {formatCurrency(r.Amount)}
                 </td>
                 <td>
-                  <span className={`category-badge ${r.Category === 'Inversion' ? 'danger' : 'success'}`}>
-                    {r.Category === 'Inversion' ? 'INVERTIDO' : 'GENERADO'}
+                  <span className={`category-badge ${r.Category === 'Gasto' ? 'danger' : 'success'}`}>
+                    {r.Category === 'Gasto' ? 'INVERTIDO' : 'GENERADO'}
                   </span>
                 </td>
               </tr>
@@ -274,8 +274,8 @@ export default function InversionVenta() {
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Inversion'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Inversion' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Inversion' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Inversion (Gasto)</button>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Venta'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Venta' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Venta' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Venta (Generado)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Inversion (Gasto)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Venta (Generado)</button>
                 </div>
               </div>
               <div className="form-group" style={{ padding: 0 }}>
@@ -332,7 +332,7 @@ export default function InversionVenta() {
 
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
                 <button onClick={async () => {
-                  const finalAmount = editForm.type === 'Venta' ? -Math.abs(parseFloat(editForm.amount)) : Math.abs(parseFloat(editForm.amount));
+                  const finalAmount = editForm.type === 'Retiro' ? -Math.abs(parseFloat(editForm.amount)) : Math.abs(parseFloat(editForm.amount));
                   
                   let imageUrl = editForm.currentImage;
                   if (editForm.image) {
