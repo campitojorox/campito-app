@@ -98,7 +98,8 @@ export default function Calendario() {
     setNewResponsible(ev.Responsible || 'Ariel');
     setNewInfo(ev.Info || '');
     setIsFormOpen(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
@@ -321,7 +322,8 @@ export default function Calendario() {
             setNewDate(format(selectedDate, 'yyyy-MM-dd'));
             setEditingEvent(null);
             setIsFormOpen(true);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            const mainContent = document.querySelector('.main-content');
+            if (mainContent) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           className="fab"
         >
