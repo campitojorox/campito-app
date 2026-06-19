@@ -35,10 +35,14 @@ export default function Layout({ session }) {
           <Trees size={32} color="var(--primary)" />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button style={{ color: 'white' }} onClick={() => setIsSearchOpen(!isSearchOpen)}>
+          <button style={{ color: 'white' }} onClick={() => {
+            if (isSearchOpen) {
+              setSearchQuery('');
+            }
+            setIsSearchOpen(!isSearchOpen);
+          }}>
             {isSearchOpen ? <X size={22} /> : <Search size={22} />}
           </button>
-          <button style={{ color: 'white' }}><RefreshCw size={22} /></button>
         </div>
       </header>
 
@@ -167,15 +171,18 @@ export default function Layout({ session }) {
       )}
 
       {isSearchOpen && (
-        <div style={{ padding: '0.5rem 1rem', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '0.5rem 1rem', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <input 
             type="text" 
             placeholder="Buscar eventos, gastos, etc..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             autoFocus
-            style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-primary)' }}
+            style={{ flex: 1, padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border)', backgroundColor: 'var(--bg-color)', color: 'var(--text-primary)' }}
           />
+          <button onClick={() => { setSearchQuery(''); setIsSearchOpen(false); }} style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={24} />
+          </button>
         </div>
       )}
 

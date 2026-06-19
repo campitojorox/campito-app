@@ -5,7 +5,7 @@ import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export default function GastoVenta() {
-  const { users } = useOutletContext();
+  const { users, searchQuery = '', isSearchOpen = false } = useOutletContext();
   const [type, setType] = useState('Invertido');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -45,7 +45,23 @@ export default function GastoVenta() {
     return formatter.format(val);
   };
 
+  const highlightText = (text, highlight) => {
+    if (!highlight || !highlight.trim()) return text;
+    const regex = new RegExp(`(${highlight})`, 'gi');
+    const parts = String(text).split(regex);
+    return parts.map((part, i) => 
+      regex.test(part) ? <span key={i} style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{part}</span> : part
+    );
+  };
+
   const sortedRecords = [...records].sort((a, b) => new Date(b.Date) - new Date(a.Date));
+  const displayRecords = (isSearchOpen && searchQuery.trim() !== '') 
+    ? sortedRecords.filter(r => 
+        (r.User && r.User.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (r.Description && r.Description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (r.Category && r.Category.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : sortedRecords;
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -94,9 +110,11 @@ export default function GastoVenta() {
 
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
-      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
-      
-      <div style={{ marginBottom: '1.5rem' }}>
+      {!(isSearchOpen && searchQuery.trim() !== '') && (
+        <>
+          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
+          
+          <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
           <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', padding: 0 }}>
             <button 
@@ -206,8 +224,12 @@ export default function GastoVenta() {
           </div>
         </form>
       </div>
+        </>
+      )}
 
-      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Transacciones</h2>
+      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>
+        {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
+      </h2>
       <div style={{ overflowX: 'auto' }}>
         <table className="data-table" style={{ whiteSpace: 'nowrap' }}>
           <thead>
@@ -219,7 +241,7 @@ export default function GastoVenta() {
             </tr>
           </thead>
           <tbody>
-            {sortedRecords.map((r, i) => (
+            {displayRecords.map((r, i) => (
               <tr 
                 key={r.TransactionID || i} 
                 style={{ cursor: 'pointer' }}
@@ -230,13 +252,13 @@ export default function GastoVenta() {
                 }}
               >
                 <td>{r.Date ? r.Date.split(' ')[0] : ''}</td>
-                <td>{r.User}</td>
+                <td>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
                 <td style={{ color: r.Amount < 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>
                   {formatCurrency(r.Amount)}
                 </td>
                 <td>
                   <span className={`category-badge ${r.Category === 'Gasto' ? 'danger' : 'success'}`}>
-                    {r.Category === 'Gasto' ? 'GASTO' : 'VENTA'}
+                    {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
                   </span>
                 </td>
               </tr>
