@@ -296,7 +296,7 @@ export default function Calendario() {
           displayEvents.map((ev, i) => {
             const evColor = categoryColors[ev.Category] || 'var(--primary)';
             return (
-              <div key={i} className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', marginBottom: '0.5rem', border: '1px solid var(--border)', borderLeft: `6px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
+              <div key={i} className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', marginBottom: '0.5rem', border: `1px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong style={{ fontSize: '1.1rem', color: evColor }}>{ev.Category}</strong>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
