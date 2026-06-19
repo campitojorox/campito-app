@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, RefreshCw, Trees, X } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export default function Layout({ session }) {
+  const location = useLocation();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -35,14 +36,11 @@ export default function Layout({ session }) {
           <Trees size={32} color="var(--primary)" />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button style={{ color: 'white' }} onClick={() => {
-            if (isSearchOpen) {
-              setSearchQuery('');
-            }
-            setIsSearchOpen(!isSearchOpen);
-          }}>
-            {isSearchOpen ? <X size={22} /> : <Search size={22} />}
-          </button>
+          {location.pathname !== '/historial' && (
+            <button style={{ color: 'var(--primary)' }} onClick={() => setIsSearchOpen(true)}>
+              <Search size={22} />
+            </button>
+          )}
         </div>
       </header>
 
