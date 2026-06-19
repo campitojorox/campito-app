@@ -3,9 +3,9 @@ import { useOutletContext } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-export default function GastoVenta() {
+export default function InversionVenta() {
   const { users } = useOutletContext();
-  const [type, setType] = useState('Gasto');
+  const [type, setType] = useState('Inversion');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [user, setUser] = useState('');
@@ -89,26 +89,26 @@ export default function GastoVenta() {
 
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
-      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
+      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Inversion / Venta</h2>
       
       <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
           <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
             <button 
               type="button"
-              onClick={() => setType('Gasto')}
+              onClick={() => setType('Inversion')}
               style={{
                 flex: 1,
                 padding: '0.8rem',
                 borderRadius: '4px',
                 border: 'none',
-                backgroundColor: type === 'Gasto' ? 'var(--primary)' : 'var(--surface)',
-                color: type === 'Gasto' ? 'white' : 'var(--text-primary)',
+                backgroundColor: type === 'Inversion' ? 'var(--primary)' : 'var(--surface)',
+                color: type === 'Inversion' ? 'white' : 'var(--text-primary)',
                 fontWeight: '600',
                 cursor: 'pointer'
               }}
             >
-              Gasto (invertido)
+              Inversion (Inversion)
             </button>
             <button 
               type="button"
@@ -218,7 +218,7 @@ export default function GastoVenta() {
                 style={{ cursor: 'pointer' }}
                 onClick={() => {
                   setSelectedRecord(r);
-                  setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Gasto', image: null, currentImage: r.Imagen || null });
+                  setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Inversion', image: null, currentImage: r.Imagen || null });
                   setIsConfirmingDelete(false);
                 }}
               >
@@ -228,8 +228,8 @@ export default function GastoVenta() {
                   {formatCurrency(r.Amount)}
                 </td>
                 <td>
-                  <span className={`category-badge ${r.Category === 'Gasto' ? 'danger' : 'success'}`}>
-                    {r.Category === 'Gasto' ? 'INVERTIDO' : 'GENERADO'}
+                  <span className={`category-badge ${r.Category === 'Inversion' ? 'danger' : 'success'}`}>
+                    {r.Category === 'Inversion' ? 'INVERTIDO' : 'GENERADO'}
                   </span>
                 </td>
               </tr>
@@ -274,7 +274,7 @@ export default function GastoVenta() {
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Gasto (invertido)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Inversion'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Inversion' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Inversion' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Inversion (Inversion)</button>
                   <button type="button" onClick={() => setEditForm({...editForm, type: 'Venta'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Venta' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Venta' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Venta (Generado)</button>
                 </div>
               </div>

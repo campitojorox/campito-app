@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import Layout from './components/Layout';
 import Calendario from './pages/Calendario';
 import Registro from './pages/Registro';
-import GastoVenta from './pages/GastoVenta';
+import InversionVenta from './pages/InversionVenta';
 import Auth from './pages/Auth';
 import './index.css';
 
@@ -41,7 +41,7 @@ function App() {
         <Route path="/" element={<Layout session={session} />}>
           <Route index element={<Navigate to="/calendario" replace />} />
           <Route path="calendario" element={<Calendario />} />
-          <Route path="gasto-venta" element={<GastoVenta />} />
+          <Route path="inversion-venta" element={<InversionVenta />} />
           <Route path="registro" element={<Registro />} />
         </Route>
       </Routes>
