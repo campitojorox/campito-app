@@ -235,7 +235,7 @@ export default function GastoVenta() {
                 </td>
                 <td>
                   <span className={`category-badge ${r.Category === 'Gasto' ? 'danger' : 'success'}`}>
-                    {r.Category === 'Gasto' ? 'INVERTIDO' : 'GENERADO'}
+                    {r.Category === 'Gasto' ? 'GASTO' : 'VENTA'}
                   </span>
                 </td>
               </tr>
