@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -140,7 +141,7 @@ export default function Calendario() {
   return (
     <div style={{ position: 'relative', minHeight: '100%', padding: '1rem' }}>
       
-      {isConfirmingDelete && (
+      {isConfirmingDelete && createPortal(
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, padding: '1.5rem'
@@ -159,9 +160,9 @@ export default function Calendario() {
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
 
-      {isFormOpen && (
+      {isFormOpen && createPortal(
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1000, overflowY: 'auto', padding: '1rem'
@@ -201,14 +202,14 @@ export default function Calendario() {
                 <option value="OTRO">Otro</option>
               </select>
             </div>
-            <div className="form-group" style={{ padding: 0 }}>
+            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
               <label>Responsable</label>
               <select className="form-input" value={newResponsible} onChange={(e) => setNewResponsible(e.target.value)}>
                 <option value="" disabled>Seleccione...</option>
                 {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
               </select>
             </div>
-            <div className="form-group" style={{ padding: 0 }}>
+            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
               <label>Detalles / Info</label>
               <input type="text" className="form-input" value={newInfo} onChange={(e) => setNewInfo(e.target.value)} />
             </div>
@@ -226,7 +227,7 @@ export default function Calendario() {
             </form>
           </div>
         </div>
-      )}
+      ), document.body)}
 
       {/* Calendar Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', marginBottom: '1rem' }}>

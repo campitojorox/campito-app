@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -139,12 +140,12 @@ export default function GastoVenta() {
             <input type="number" step="0.01" className="form-input" required value={amount} onChange={(e) => { e.target.setCustomValidity(''); setAmount(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una cantidad')} />
           </div>
           
-          <div className="form-group" style={{ padding: 0 }}>
+          <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
             <label>Descripción / Concepto</label>
             <input type="text" className="form-input" required value={description} onChange={(e) => { e.target.setCustomValidity(''); setDescription(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una descripción')} />
           </div>
 
-          <div className="form-group" style={{ padding: 0 }}>
+          <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
             <label>Usuario Responsable</label>
             <select className="form-input" required value={user} onChange={(e) => { e.target.setCustomValidity(''); setUser(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
               <option value="" disabled>Seleccione un usuario</option>
@@ -152,7 +153,7 @@ export default function GastoVenta() {
             </select>
           </div>
 
-          <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+          <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
             <label>Comprobante / Foto</label>
             <label style={{
               display: 'flex',
@@ -198,7 +199,7 @@ export default function GastoVenta() {
             </label>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
             <button type="submit" className="btn" style={{ width: '100%', margin: 0 }} disabled={loading}>
               {loading ? 'Agregando...' : 'AGREGAR'}
             </button>
@@ -244,7 +245,7 @@ export default function GastoVenta() {
         </table>
       </div>
 
-      {selectedRecord && (
+      {selectedRecord && createPortal(
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1000, overflowY: 'auto', padding: '1rem'
@@ -288,18 +289,18 @@ export default function GastoVenta() {
                 <label>Cantidad / Monto</label>
                 <input type="number" step="0.01" className="form-input" value={editForm.amount} onChange={(e) => setEditForm({...editForm, amount: e.target.value})} />
               </div>
-              <div className="form-group" style={{ padding: 0 }}>
+              <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
                 <label>Descripción / Concepto</label>
                 <input type="text" className="form-input" value={editForm.desc} onChange={(e) => setEditForm({...editForm, desc: e.target.value})} />
               </div>
-              <div className="form-group" style={{ padding: 0 }}>
+              <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
                 <label>Usuario Responsable</label>
                 <select className="form-input" value={editForm.user} onChange={(e) => setEditForm({...editForm, user: e.target.value})}>
                   {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                 </select>
               </div>
 
-              <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+              <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
                 <label>Comprobante / Foto</label>
                 
                 {editForm.currentImage || editForm.image ? (
@@ -336,7 +337,7 @@ export default function GastoVenta() {
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '2rem' }}>
                 <button onClick={async () => {
                   const finalAmount = editForm.type === 'Retiro' ? -Math.abs(parseFloat(editForm.amount)) : Math.abs(parseFloat(editForm.amount));
                   
@@ -370,8 +371,8 @@ export default function GastoVenta() {
             </div>
           </div>
         </div>
-      )}
-      {expandedImage && (
+      ), document.body)}
+      {expandedImage && createPortal(
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, padding: '1rem'
@@ -379,9 +380,9 @@ export default function GastoVenta() {
           <button style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer' }}>&times;</button>
           <img src={expandedImage} alt="Expanded" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
         </div>
-      )}
+      ), document.body)}
 
-      {successMsg && (
+      {successMsg && createPortal(
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, padding: '1.5rem'
@@ -391,7 +392,7 @@ export default function GastoVenta() {
             <p style={{ color: 'white', fontSize: '1.1rem', margin: 0 }}>{successMsg}</p>
           </div>
         </div>
-      )}
+      ), document.body)}
     </div>
   );
 }
