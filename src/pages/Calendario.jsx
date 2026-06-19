@@ -269,18 +269,14 @@ export default function Calendario() {
                   cursor: 'pointer',
                   borderRadius: '8px',
                   backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
-                  color: isSelected ? 'white' : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)'),
+                  color: isSelected ? 'white' : (hasEvent ? dotColor : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)')),
+                  fontWeight: hasEvent ? '900' : 'normal',
+                  fontSize: hasEvent ? '1.1rem' : '1rem',
                   border: isToday ? '2px solid var(--primary)' : '2px solid transparent',
                   position: 'relative'
                 }}
               >
                 {format(day, 'd')}
-                {hasEvent && !isSelected && (
-                  <div style={{ position: 'absolute', bottom: '2px', left: '50%', transform: 'translateX(-50%)', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: dotColor }}></div>
-                )}
-                {hasEvent && isSelected && (
-                  <div style={{ position: 'absolute', bottom: '2px', left: '50%', transform: 'translateX(-50%)', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'white' }}></div>
-                )}
               </div>
             )
           })}
