@@ -371,7 +371,7 @@ export default function GastoVenta() {
             </div>
           </div>
         </div>
-      ), document.body)}
+      , document.body)}
       {expandedImage && createPortal(
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
@@ -380,7 +380,7 @@ export default function GastoVenta() {
           <button style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer' }}>&times;</button>
           <img src={expandedImage} alt="Expanded" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
         </div>
-      ), document.body)}
+      , document.body)}
 
       {successMsg && createPortal(
         <div style={{
@@ -392,7 +392,7 @@ export default function GastoVenta() {
             <p style={{ color: 'white', fontSize: '1.1rem', margin: 0 }}>{successMsg}</p>
           </div>
         </div>
-      ), document.body)}
+      , document.body)}
     </div>
   );
 }
