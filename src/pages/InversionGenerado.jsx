@@ -17,6 +17,7 @@ export default function InversionGenerado() {
   const [editForm, setEditForm] = useState({ amount: '', desc: '', user: '', type: '', image: null, currentImage: null });
   const [expandedImage, setExpandedImage] = useState(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [successMsg, setSuccessMsg] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -75,7 +76,10 @@ export default function InversionGenerado() {
     }]);
 
     if (!error) {
-      alert('Transacción guardada en la nube');
+      const msgType = type === 'Gasto' ? 'Inversión' : 'Generado';
+      setSuccessMsg(`${msgType} de ${amount}€ generada exitosamente!`);
+      setTimeout(() => setSuccessMsg(null), 2000);
+
       setAmount('');
       setDescription('');
       setUser('');
@@ -372,6 +376,18 @@ export default function InversionGenerado() {
         }} onClick={() => setExpandedImage(null)}>
           <button style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer' }}>&times;</button>
           <img src={expandedImage} alt="Expanded" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+        </div>
+      )}
+
+      {successMsg && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, padding: '1.5rem'
+        }}>
+          <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', maxWidth: '400px', border: '1px solid var(--primary)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ color: 'var(--primary)', marginBottom: '0.5rem', fontSize: '1.3rem' }}>¡Éxito!</h3>
+            <p style={{ color: 'white', fontSize: '1.1rem', margin: 0 }}>{successMsg}</p>
+          </div>
         </div>
       )}
     </div>
