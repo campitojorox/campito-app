@@ -127,7 +127,21 @@ import { supabase } from '../supabaseClient';export default function GastoRetiro
               overflow: 'hidden'
             }}>
               {image ? (
-                <img src={URL.createObjectURL(image)} alt="Preview" style={{ width: '100%', height: '150px', objectFit: 'cover', display: 'block' }} />
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <img src={URL.createObjectURL(image)} alt="Preview" style={{ width: '100%', height: '150px', objectFit: 'cover', display: 'block', borderRadius: '8px' }} />
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setImage(null); }}
+                    style={{
+                      position: 'absolute', top: '10px', right: '10px', width: '36px', height: '36px', borderRadius: '50%',
+                      backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+                      paddingBottom: '3px', zIndex: 10
+                    }}
+                  >
+                    &times;
+                  </button>
+                </div>
               ) : (
                 <>
                   <Camera size={32} style={{ marginBottom: '0.5rem' }} />
