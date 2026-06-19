@@ -160,7 +160,7 @@ export default function Calendario() {
             </div>
           </div>
         </div>
-      ), document.body)}
+      , document.body)}
 
       {isFormOpen && createPortal(
         <div style={{
@@ -227,7 +227,7 @@ export default function Calendario() {
             </form>
           </div>
         </div>
-      ), document.body)}
+      , document.body)}
 
       {/* Calendar Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', marginBottom: '1rem' }}>
