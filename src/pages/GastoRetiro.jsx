@@ -158,6 +158,9 @@ import { supabase } from '../supabaseClient';export default function GastoRetiro
           </div>
 
           <div style={{ display: 'flex', gap: '1rem' }}>
+            <button type="submit" className="btn" style={{ flex: 1, margin: 0 }} disabled={loading}>
+              {loading ? 'Guardando...' : 'Guardar'}
+            </button>
             <button 
               type="button" 
               className="btn" 
@@ -171,9 +174,6 @@ import { supabase } from '../supabaseClient';export default function GastoRetiro
               disabled={loading}
             >
               Cancelar
-            </button>
-            <button type="submit" className="btn" style={{ flex: 1, margin: 0 }} disabled={loading}>
-              {loading ? 'Guardando...' : 'Guardar'}
             </button>
           </div>
         </form>
