@@ -97,7 +97,7 @@ export default function GastoVenta() {
       
       <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
-          <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', padding: 0 }}>
             <button 
               type="button"
               onClick={() => setType('Gasto')}
@@ -109,6 +109,7 @@ export default function GastoVenta() {
                 backgroundColor: type === 'Gasto' ? 'var(--primary)' : 'var(--surface)',
                 color: type === 'Gasto' ? 'white' : 'var(--text-primary)',
                 fontWeight: '600',
+                fontSize: '1rem',
                 cursor: 'pointer'
               }}
             >
@@ -125,6 +126,7 @@ export default function GastoVenta() {
                 backgroundColor: type === 'Retiro' ? 'var(--primary)' : 'var(--surface)',
                 color: type === 'Retiro' ? 'white' : 'var(--text-primary)',
                 fontWeight: '600',
+                fontSize: '1rem',
                 cursor: 'pointer'
               }}
             >
@@ -278,8 +280,8 @@ export default function GastoVenta() {
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Gasto (invertido)</button>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Venta (generado)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', fontWeight: '600' }}>Gasto (invertido)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', fontWeight: '600' }}>Venta (generado)</button>
                 </div>
               </div>
               <div className="form-group" style={{ padding: 0 }}>
