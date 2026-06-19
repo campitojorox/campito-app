@@ -61,9 +61,8 @@ export default function Historial() {
     const userEvents = calendarEvents.filter(e => e.Responsible === u.name);
     const riego = userEvents.filter(e => e.Category === 'RIEGO').length;
     const mantenimiento = userEvents.filter(e => e.Category === 'MANTENIMIENTO').length;
-    const evento = userEvents.filter(e => e.Category === 'EVENTO').length;
     const otro = userEvents.filter(e => e.Category === 'OTRO').length;
-    return { user: u.name, riego, mantenimiento, evento, otro };
+    return { user: u.name, riego, mantenimiento, otro };
   });
 
   const formatCurrency = (val) => {
@@ -108,7 +107,6 @@ export default function Historial() {
               <th>Usuario</th>
               <th>Riego</th>
               <th>Mante.</th>
-              <th>Evento</th>
               <th>Otro</th>
             </tr>
           </thead>
@@ -118,7 +116,6 @@ export default function Historial() {
                 <td style={{ color: 'var(--text-primary)' }}>{s.user}</td>
                 <td>{s.riego}</td>
                 <td>{s.mantenimiento}</td>
-                <td>{s.evento}</td>
                 <td>{s.otro}</td>
               </tr>
             ))}
