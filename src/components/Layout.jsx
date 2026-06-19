@@ -179,7 +179,7 @@ export default function Layout({ session }) {
         </div>
       )}
 
-      <main className="main-content" style={{ minHeight: '100vh' }}>
+      <main className="main-content">
         <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users }} />
       </main>
 
