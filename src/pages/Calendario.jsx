@@ -6,10 +6,10 @@ import { supabase } from '../supabaseClient';
 import { Plus } from 'lucide-react';
 
 const categoryColors = {
-  'RIEGO': '#3b82f6', // Blue
-  'MANTENIMIENTO': '#f59e0b', // Orange
-  'EVENTO': '#8b5cf6', // Purple
-  'OTRO': '#6b7280' // Gray
+  'RIEGO': '#38bdf8', // Azul claro (Tailwind sky-400)
+  'MANTENIMIENTO': '#10b981', // Verde (Tailwind emerald-500)
+  'EVENTO': '#a855f7', // Morado (Tailwind purple-500)
+  'OTRO': '#f97316' // Naranjo (Tailwind orange-500)
 };
 
 export default function Calendario() {
