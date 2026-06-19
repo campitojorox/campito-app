@@ -62,7 +62,8 @@ export default function Registro() {
     const riego = userEvents.filter(e => e.Category === 'RIEGO').length;
     const mantenimiento = userEvents.filter(e => e.Category === 'MANTENIMIENTO').length;
     const encuentro = userEvents.filter(e => e.Category === 'ENCUENTRO').length;
-    return { user: u.name, riego, mantenimiento, encuentro };
+    const otro = userEvents.filter(e => e.Category === 'OTRO').length;
+    return { user: u.name, riego, mantenimiento, encuentro, otro };
   });
 
   const formatCurrency = (val) => {
@@ -108,6 +109,7 @@ export default function Registro() {
               <th>Riego</th>
               <th>Mantenimiento</th>
               <th>Encuentro</th>
+              <th>Otro</th>
             </tr>
           </thead>
           <tbody>
@@ -117,6 +119,7 @@ export default function Registro() {
                 <td>{s.riego}</td>
                 <td>{s.mantenimiento}</td>
                 <td>{s.encuentro}</td>
+                <td>{s.otro}</td>
               </tr>
             ))}
           </tbody>
