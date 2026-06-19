@@ -215,7 +215,7 @@ export default function Calendario() {
             </div>
             {!editingEvent ? (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar</button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Agregar</button>
                 <button type="button" className="btn" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--danger)', color: 'white', flex: 1, margin: 0, padding: '0.75rem 0' }}>Cancelar</button>
               </div>
             ) : (
@@ -229,18 +229,20 @@ export default function Calendario() {
         </div>
       , document.body)}
 
-      {/* Calendar Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', marginBottom: '1rem' }}>
-        <button onClick={prevMonth} style={{ fontSize: '1.5rem', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&lt;</button>
-        <h2 style={{ textTransform: 'capitalize', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
-          {format(currentMonth, 'MMMM yyyy', { locale: es })}
-        </h2>
-        <button onClick={nextMonth} style={{ fontSize: '1.5rem', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&gt;</button>
-      </div>
+      {!(isSearchOpen && searchQuery.trim() !== '') && (
+        <>
+          {/* Calendar Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', marginBottom: '1rem' }}>
+            <button onClick={prevMonth} style={{ fontSize: '1.5rem', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&lt;</button>
+            <h2 style={{ textTransform: 'capitalize', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
+              {format(currentMonth, 'MMMM yyyy', { locale: es })}
+            </h2>
+            <button onClick={nextMonth} style={{ fontSize: '1.5rem', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: 'white', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&gt;</button>
+          </div>
 
-      {/* Calendar Grid */}
-      <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+          {/* Calendar Grid */}
+          <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
           <div>L</div><div>M</div><div>X</div><div>J</div><div>V</div><div>S</div><div>D</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' }}>
@@ -257,6 +259,8 @@ export default function Calendario() {
             // Get color of first event for the dot
             const dotColor = hasEvent ? (categoryColors[eventsThisDay[0].Category] || 'var(--primary)') : 'transparent';
 
+            const isToday = isSameDay(day, new Date());
+
             return (
               <div 
                 key={i} 
@@ -268,6 +272,7 @@ export default function Calendario() {
                   borderRadius: '8px',
                   backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
                   color: isSelected ? 'white' : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)'),
+                  border: isToday ? '2px solid var(--primary)' : '2px solid transparent',
                   position: 'relative'
                 }}
               >
@@ -283,6 +288,8 @@ export default function Calendario() {
           })}
         </div>
       </div>
+      </>
+      )}
 
       {/* Event List for Selected Day or Search Results */}
       <div style={{ marginTop: '1.5rem' }}>

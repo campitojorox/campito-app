@@ -18,6 +18,7 @@ export default function GastoVenta() {
   const [editForm, setEditForm] = useState({ amount: '', desc: '', user: '', type: '', image: null, currentImage: null });
   const [expandedImage, setExpandedImage] = useState(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isConfirmingImageDelete, setIsConfirmingImageDelete] = useState(false);
   const [successMsg, setSuccessMsg] = useState(null);
 
   useEffect(() => {
@@ -295,6 +296,25 @@ export default function GastoVenta() {
               </div>
             )}
 
+            {/* Custom Confirm Image Delete Overlay */}
+            {isConfirmingImageDelete && (
+              <div style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, borderRadius: '8px', padding: '1.5rem'
+              }}>
+                <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', border: '1px solid var(--danger)' }}>
+                  <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas borrar permanentemente esta imagen?</h4>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button onClick={() => setIsConfirmingImageDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
+                    <button onClick={() => {
+                      setEditForm({...editForm, currentImage: null, image: null});
+                      setIsConfirmingImageDelete(false);
+                    }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, color: 'var(--primary)' }}>Editar Transacción</h3>
             </div>
@@ -335,7 +355,7 @@ export default function GastoVenta() {
                     />
                     <button 
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setEditForm({...editForm, currentImage: null, image: null}); }}
+                      onClick={(e) => { e.stopPropagation(); setIsConfirmingImageDelete(true); }}
                       style={{
                         position: 'absolute', top: '10px', right: '10px', width: '36px', height: '36px', borderRadius: '50%',
                         backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
