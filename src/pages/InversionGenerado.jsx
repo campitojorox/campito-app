@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-export default function InversionVenta() {
+export default function InversionGenerado() {
   const { users } = useOutletContext();
   const [type, setType] = useState('Inversion');
   const [amount, setAmount] = useState('');
@@ -89,7 +89,7 @@ export default function InversionVenta() {
 
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
-      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Inversion / Venta</h2>
+      <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Inversion / Generado</h2>
       
       <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
@@ -124,7 +124,7 @@ export default function InversionVenta() {
                 cursor: 'pointer'
               }}
             >
-              Venta (Generado)
+              Generado (Venta)
             </button>
           </div>
 
@@ -275,7 +275,7 @@ export default function InversionVenta() {
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                   <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Inversion (Gasto)</button>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Venta (Generado)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'var(--surface)', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}>Generado (Venta)</button>
                 </div>
               </div>
               <div className="form-group" style={{ padding: 0 }}>
