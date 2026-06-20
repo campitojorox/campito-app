@@ -208,11 +208,11 @@ select.form-input {
   background-size: 0.65rem auto;
 }
 
-/* Make date and time picker icons light gray */
+/* Hide native date and time picker icons */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.7) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
-  cursor: pointer;
+  display: none;
+  -webkit-appearance: none;
 }
 
 .btn {
