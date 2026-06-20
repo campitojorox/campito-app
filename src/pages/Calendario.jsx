@@ -145,7 +145,12 @@ export default function Calendario() {
 
   const renderForm = () => (
     <div id="event-form">
-          <h2 style={{ marginTop: editingEvent ? '1rem' : '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: editingEvent ? '1rem' : '2rem', marginBottom: '1.5rem' }}>
+            <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
+            {editingEvent && (
+              <button type="button" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
+            )}
+          </div>
           <div style={{ marginBottom: '1.5rem' }}>
             <form onSubmit={handleAddEvent}>
             

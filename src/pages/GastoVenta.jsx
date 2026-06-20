@@ -93,7 +93,7 @@ export default function GastoVenta() {
   };
 
   const renderEditForm = () => (
-    <div style={{ position: 'relative', width: '100%', padding: '1.5rem', backgroundColor: 'var(--surface)', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: 'relative', width: '100%', padding: '1rem 0', backgroundColor: 'transparent', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
       
       {/* Custom Confirm Delete Overlay */}
       {isConfirmingDelete && (
@@ -238,12 +238,37 @@ export default function GastoVenta() {
 
             refetchTransactions();
             setSelectedRecord(null);
-          }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar</button>
+          }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
           <button type="button" onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
         </div>
       </div>
     </div>
   );
+
+  const renderRow = (r, i) => {
+    // Para las re-renderizaciones por slice, la key original puede dar problemas si se basa en i.
+    const key = r.TransactionID || i;
+    return (
+      <tr 
+        key={key} 
+        style={{ cursor: 'pointer' }}
+        onClick={() => {
+          setSelectedRecord(r);
+          setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Invertido', image: null, currentImage: r.Imagen || null });
+          setIsConfirmingDelete(false);
+        }}
+      >
+        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
+        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
+        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
+          {formatCurrency(Math.abs(r.Amount))}
+        </td>
+        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
+          {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
@@ -385,48 +410,54 @@ export default function GastoVenta() {
       <h2 className="section-title" style={{ marginTop: '2.5rem', color: 'white' }}>
         {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
       </h2>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="data-table" style={{ whiteSpace: 'nowrap' }}>
-          <thead>
-            <tr>
-              <th>Fecha ↓</th>
-              <th>Usuario</th>
-              <th>Cantidad</th>
-              <th>Cat.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayRecords.map((r, i) => (
-              selectedRecord && selectedRecord.TransactionID === r.TransactionID ? (
-                <tr key={r.TransactionID || i}>
-                  <td colSpan="4" style={{ padding: 0 }}>
-                    {renderEditForm()}
-                  </td>
+      
+      {!selectedRecord ? (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ whiteSpace: 'nowrap' }}>
+            <thead>
+              <tr>
+                <th>Fecha ↓</th>
+                <th>Usuario</th>
+                <th>Cantidad</th>
+                <th>Cat.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayRecords.map((r, i) => renderRow(r, i))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table" style={{ whiteSpace: 'nowrap', marginBottom: 0 }}>
+              <thead>
+                <tr>
+                  <th>Fecha ↓</th>
+                  <th>Usuario</th>
+                  <th>Cantidad</th>
+                  <th>Cat.</th>
                 </tr>
-              ) : (
-                <tr 
-                  key={r.TransactionID || i} 
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    setSelectedRecord(r);
-                    setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Invertido', image: null, currentImage: r.Imagen || null });
-                    setIsConfirmingDelete(false);
-                  }}
-                >
-                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
-                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
-                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
-                    {formatCurrency(Math.abs(r.Amount))}
-                  </td>
-                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
-                    {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
-                  </td>
-                </tr>
-              )
-            ))}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {displayRecords.slice(0, displayRecords.findIndex(r => r.TransactionID === selectedRecord.TransactionID)).map((r, i) => renderRow(r, i))}
+              </tbody>
+            </table>
+          </div>
+          
+          <div style={{ margin: '1.5rem 0' }}>
+            {renderEditForm()}
+          </div>
+          
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table" style={{ whiteSpace: 'nowrap', marginTop: 0 }}>
+              <tbody>
+                {displayRecords.slice(displayRecords.findIndex(r => r.TransactionID === selectedRecord.TransactionID) + 1).map((r, i) => renderRow(r, i))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
 
       {expandedImage && createPortal((
