@@ -146,7 +146,7 @@ export default function Calendario() {
 
   const renderForm = () => (
     <div id="event-form">
-          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
+          <h2 style={{ marginTop: editingEvent ? '1rem' : '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
           <div style={{ marginBottom: '1.5rem' }}>
             <form onSubmit={handleAddEvent}>
             
@@ -330,22 +330,27 @@ export default function Calendario() {
             const evColor = categoryColors[ev.Category] || 'var(--primary)';
             return (
               <div key={i} style={{ marginBottom: '0.5rem' }}>
-                <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', marginBottom: '0.5rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <strong style={{ fontSize: '1.1rem', color: evColor }}>{ev.Category}</strong>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                    {ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''} - {ev["End Time"] ? ev["End Time"].substring(0,5) : ''}
+                {(editingEvent && editingEvent.EventID === ev.EventID && isFormOpen) ? (
+                  <div style={{ padding: '0 1rem 1rem 1rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
+                    {renderForm()}
                   </div>
-                </div>
-                <p style={{ margin: '0.5rem 0', color: 'var(--text-primary)' }}>{ev.Info || 'Sin detalles adicionales'}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                  <small style={{ color: 'var(--text-secondary)' }}>Usuario: <span style={{ color: 'var(--text-primary)' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
-                  {ev["End Date"] && ev["End Date"] !== ev.Date && (
-                    <small style={{ color: 'var(--text-secondary)' }}>Hasta: {ev["End Date"].split(' ')[0]}</small>
-                  )}
-                </div>
-                </div>
-                {editingEvent && editingEvent.EventID === ev.EventID && isFormOpen && renderForm()}
+                ) : (
+                  <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '1.1rem', color: evColor }}>{ev.Category}</strong>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                        {ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''} - {ev["End Time"] ? ev["End Time"].substring(0,5) : ''}
+                      </div>
+                    </div>
+                    <p style={{ margin: '0.5rem 0', color: 'var(--text-primary)' }}>{ev.Info || 'Sin detalles adicionales'}</p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                      <small style={{ color: 'var(--text-secondary)' }}>Usuario: <span style={{ color: 'var(--text-primary)' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
+                      {ev["End Date"] && ev["End Date"] !== ev.Date && (
+                        <small style={{ color: 'var(--text-secondary)' }}>Hasta: {ev["End Date"].split(' ')[0]}</small>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })
