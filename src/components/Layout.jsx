@@ -13,6 +13,8 @@ export default function Layout({ session }) {
   const [userForm, setUserForm] = useState({ name: '', email: '', password: '' });
   const [isConfirmingDeleteUser, setIsConfirmingDeleteUser] = useState(false);
   const [users, setUsers] = useState([]);
+  const [isManagingUser, setIsManagingUser] = useState(false);
+  const [manageUserError, setManageUserError] = useState('');
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
 
@@ -93,39 +95,78 @@ export default function Layout({ session }) {
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 4000, padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          {isConfirmingDeleteUser && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-              backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 4100, padding: '1.5rem'
-            }}>
-              <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', maxWidth: '400px', border: '1px solid var(--danger)' }}>
-                <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas borrar a este usuario? Esto no borrará su historial.</h4>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button onClick={() => setIsConfirmingDeleteUser(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
-                  <button onClick={() => {
-                    setUsers(users.filter(u => u.id !== editingUser.id));
-                    setEditingUser(null);
-                    setIsConfirmingDeleteUser(false);
-                  }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
+            {isConfirmingDeleteUser && (
+              <div style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 4100, padding: '1.5rem'
+              }}>
+                <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', maxWidth: '400px', border: '1px solid var(--danger)' }}>
+                  <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Borrar a este usuario permanentemente?</h4>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button onClick={() => setIsConfirmingDeleteUser(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
+                    <button onClick={async () => {
+                      setIsManagingUser(true);
+                      setManageUserError('');
+                      try {
+                        const res = await fetch('/api/manage-users', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'DELETE', userId: editingUser.id })
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Error al borrar');
+                        await fetchUsers();
+                        setEditingUser(null);
+                        setIsConfirmingDeleteUser(false);
+                      } catch (err) {
+                        setManageUserError(err.message);
+                        setIsConfirmingDeleteUser(false);
+                      } finally {
+                        setIsManagingUser(false);
+                      }
+                    }} disabled={isManagingUser} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>
+                      {isManagingUser ? 'Borrando...' : 'Sí, Borrar'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
           <div className="card" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ margin: 0, color: 'var(--primary)' }}>{editingUser ? (editingUser.id ? 'Editar Usuario' : 'Nuevo Usuario') : 'Gestionar Usuarios'}</h3>
               <button onClick={() => { setIsUsersModalOpen(false); setEditingUser(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1.5rem', paddingBottom: '3px' }}>&times;</button>
             </div>
             
+            {manageUserError && (
+              <div style={{ color: 'var(--danger)', marginBottom: '1rem', textAlign: 'center', fontWeight: 'bold' }}>
+                {manageUserError}
+              </div>
+            )}
             {editingUser ? (
-              <form onSubmit={(e) => {
+              <form onSubmit={async (e) => {
                 e.preventDefault();
-                if (editingUser.id) {
-                  setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...userForm } : u));
-                } else {
-                  setUsers([...users, { id: Date.now(), ...userForm }]);
+                setIsManagingUser(true);
+                setManageUserError('');
+                try {
+                  const res = await fetch('/api/manage-users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      action: editingUser.id ? 'UPDATE' : 'CREATE',
+                      userId: editingUser.id,
+                      userForm
+                    })
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || 'Error al guardar usuario');
+                  
+                  await fetchUsers();
+                  setEditingUser(null);
+                } catch (err) {
+                  setManageUserError(err.message);
+                } finally {
+                  setIsManagingUser(false);
                 }
-                setEditingUser(null);
               }}>
                 <div className="form-group" style={{ padding: 0 }}>
                   <label>Nombre</label>
@@ -136,13 +177,15 @@ export default function Layout({ session }) {
                   <input type="email" className="form-input" required value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} />
                 </div>
                 <div className="form-group" style={{ padding: 0 }}>
-                  <label>Password (Confirmación por correo)</label>
-                  <input type="password" className="form-input" required value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
+                  <label>Contraseña {editingUser.id ? '(Dejar vacío para no cambiar)' : ''}</label>
+                  <input type="password" placeholder={editingUser.id ? '******' : ''} className="form-input" required={!editingUser.id} value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
                 </div>
                 
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => setEditingUser(null)} style={{ flex: 1, margin: 0, backgroundColor: 'var(--surface)', color: 'white' }}>Cancelar</button>
-                  <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0 }}>Guardar</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => { setEditingUser(null); setManageUserError(''); }} style={{ flex: 1, margin: 0, backgroundColor: 'var(--surface)', color: 'white' }}>Cancelar</button>
+                  <button type="submit" disabled={isManagingUser} className="btn btn-primary" style={{ flex: 1, margin: 0 }}>
+                    {isManagingUser ? 'Guardando...' : 'Guardar'}
+                  </button>
                 </div>
                 {editingUser.id && (
                   <button type="button" onClick={() => setIsConfirmingDeleteUser(true)} className="btn btn-secondary" style={{ width: '100%', margin: '2rem 0 0 0', backgroundColor: 'var(--surface)', color: 'var(--danger)', border: '1px solid var(--border)' }}>Borrar Usuario</button>
