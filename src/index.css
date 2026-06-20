@@ -94,8 +94,8 @@ button {
 }
 
 .nav-item.active {
-  background-color: #9edb9e; /* Original light green */
-  color: #1a1a1a;
+  background-color: var(--primary);
+  color: white;
   font-weight: 600;
 }
 
