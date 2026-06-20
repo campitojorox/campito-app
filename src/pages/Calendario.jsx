@@ -331,9 +331,7 @@ export default function Calendario() {
             return (
               <div key={i} style={{ marginBottom: '0.5rem' }}>
                 {(editingEvent && editingEvent.EventID === ev.EventID && isFormOpen) ? (
-                  <div style={{ padding: '0 1rem 1rem 1rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
-                    {renderForm()}
-                  </div>
+                  renderForm()
                 ) : (
                   <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
