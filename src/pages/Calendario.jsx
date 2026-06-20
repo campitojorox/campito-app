@@ -4,7 +4,7 @@ import { useOutletContext } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '../supabaseClient';
-import { Plus } from 'lucide-react';
+import { Plus, Calendar, Clock, Tag, User, AlignLeft } from 'lucide-react';
 
 const categoryColors = {
   'RIEGO': '#38bdf8', // Azul claro (Tailwind sky-400)
@@ -176,44 +176,58 @@ export default function Calendario() {
             
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label>Fecha Inicio</label>
-                <input type="date" className="form-input" required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                <div className="input-with-icon">
+                  <Calendar className="input-icon" size={20} />
+                  <input type="date" className="form-input" required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label>Fecha Término</label>
-                <input type="date" className="form-input" required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                <div className="input-with-icon">
+                  <Calendar className="input-icon" size={20} />
+                  <input type="date" className="form-input" required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label>Hora Inicio</label>
-                <input type="time" className="form-input" required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                <div className="input-with-icon">
+                  <Clock className="input-icon" size={20} />
+                  <input type="time" className="form-input" required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label>Hora Término</label>
-                <input type="time" className="form-input" required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                <div className="input-with-icon">
+                  <Clock className="input-icon" size={20} />
+                  <input type="time" className="form-input" required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                </div>
               </div>
             </div>
 
             <div className="form-group" style={{ padding: 0 }}>
-              <label>Categoría</label>
-              <select className="form-input" value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
-                <option value="RIEGO">Riego</option>
-                <option value="MANTENIMIENTO">Mantenimiento</option>
-                <option value="OTRO">Otro</option>
-              </select>
+              <div className="input-with-icon">
+                <Tag className="input-icon" size={20} />
+                <select className="form-input" value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+                  <option value="RIEGO">Riego</option>
+                  <option value="MANTENIMIENTO">Mantenimiento</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
             </div>
             <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-              <label>Responsable</label>
-              <select className="form-input" value={newResponsible} onChange={(e) => setNewResponsible(e.target.value)}>
-                <option value="" disabled>Seleccione...</option>
-                {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-              </select>
+              <div className="input-with-icon">
+                <User className="input-icon" size={20} />
+                <select className="form-input" value={newResponsible} onChange={(e) => setNewResponsible(e.target.value)}>
+                  <option value="" disabled>Seleccione...</option>
+                  {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
+              </div>
             </div>
             <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-              <label>Detalles / Info</label>
-              <input type="text" className="form-input" value={newInfo} onChange={(e) => setNewInfo(e.target.value)} />
+              <div className="input-with-icon">
+                <AlignLeft className="input-icon" size={20} />
+                <input type="text" className="form-input" value={newInfo} onChange={(e) => setNewInfo(e.target.value)} placeholder="Detalles / Info" />
+              </div>
             </div>
             {!editingEvent ? (
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>

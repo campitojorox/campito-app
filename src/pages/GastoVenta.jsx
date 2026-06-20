@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
-import { Camera } from 'lucide-react';
+import { Camera, DollarSign, AlignLeft, User } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export default function GastoVenta() {
@@ -155,21 +155,27 @@ export default function GastoVenta() {
           </div>
 
           <div className="form-group" style={{ padding: 0 }}>
-            <label>Cantidad / Monto</label>
-            <input type="number" step="0.01" className="form-input" required value={amount} onChange={(e) => { e.target.setCustomValidity(''); setAmount(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una cantidad')} />
+            <div className="input-with-icon">
+              <DollarSign className="input-icon" size={20} />
+              <input type="number" step="0.01" className="form-input" required value={amount} onChange={(e) => { e.target.setCustomValidity(''); setAmount(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una cantidad')} placeholder="Cantidad / Monto" />
+            </div>
           </div>
           
           <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-            <label>Descripción / Concepto</label>
-            <input type="text" className="form-input" required value={description} onChange={(e) => { e.target.setCustomValidity(''); setDescription(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una descripción')} />
+            <div className="input-with-icon">
+              <AlignLeft className="input-icon" size={20} />
+              <input type="text" className="form-input" required value={description} onChange={(e) => { e.target.setCustomValidity(''); setDescription(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una descripción')} placeholder="Descripción / Concepto" />
+            </div>
           </div>
 
           <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-            <label>Usuario Responsable</label>
-            <select className="form-input" required value={user} onChange={(e) => { e.target.setCustomValidity(''); setUser(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
-              <option value="" disabled>Seleccione un usuario</option>
-              {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-            </select>
+            <div className="input-with-icon">
+              <User className="input-icon" size={20} />
+              <select className="form-input" required value={user} onChange={(e) => { e.target.setCustomValidity(''); setUser(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
+                <option value="" disabled>Seleccione un usuario</option>
+                {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+              </select>
+            </div>
           </div>
 
           <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
@@ -327,19 +333,26 @@ export default function GastoVenta() {
                   <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: '1px solid var(--primary)', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'transparent', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', fontWeight: '600' }}>Venta (generado)</button>
                 </div>
               </div>
-              <div className="form-group" style={{ padding: 0 }}>
-                <label>Cantidad / Monto</label>
-                <input type="number" step="0.01" className="form-input" value={editForm.amount} onChange={(e) => setEditForm({...editForm, amount: e.target.value})} />
+              <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+                <div className="input-with-icon">
+                  <DollarSign className="input-icon" size={20} />
+                  <input type="number" step="0.01" className="form-input" value={editForm.amount} onChange={(e) => setEditForm({...editForm, amount: e.target.value})} placeholder="Cantidad / Monto" />
+                </div>
               </div>
-              <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-                <label>Descripción / Concepto</label>
-                <input type="text" className="form-input" value={editForm.desc} onChange={(e) => setEditForm({...editForm, desc: e.target.value})} />
+              <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+                <div className="input-with-icon">
+                  <AlignLeft className="input-icon" size={20} />
+                  <input type="text" className="form-input" value={editForm.desc} onChange={(e) => setEditForm({...editForm, desc: e.target.value})} placeholder="Descripción / Concepto" />
+                </div>
               </div>
-              <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-                <label>Usuario Responsable</label>
-                <select className="form-input" value={editForm.user} onChange={(e) => setEditForm({...editForm, user: e.target.value})}>
-                  {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-                </select>
+              <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+                <div className="input-with-icon">
+                  <User className="input-icon" size={20} />
+                  <select className="form-input" value={editForm.user} onChange={(e) => setEditForm({...editForm, user: e.target.value})}>
+                    <option value="" disabled>Seleccione un usuario</option>
+                    {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>

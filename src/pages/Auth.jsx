@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Trees } from 'lucide-react';
+import { Trees, Mail, Lock } from 'lucide-react';
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
@@ -60,26 +60,30 @@ export default function Auth() {
         )}
         <form onSubmit={handleLogin}>
           <div className="form-group" style={{ padding: 0, marginBottom: '1.5rem' }}>
-            <label style={{ color: 'var(--text-primary)' }}>Email</label>
-            <input 
-              type="email" 
-              className="form-input" 
-              required 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@email.com"
-            />
+            <div className="input-with-icon">
+              <Mail className="input-icon" size={20} />
+              <input 
+                type="email" 
+                className="form-input" 
+                required 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Ingresa tu email"
+              />
+            </div>
           </div>
           <div className="form-group" style={{ padding: 0, marginBottom: '2rem' }}>
-            <label style={{ color: 'var(--text-primary)' }}>Contraseña</label>
-            <input 
-              type="password" 
-              className="form-input" 
-              required 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
+            <div className="input-with-icon">
+              <Lock className="input-icon" size={20} />
+              <input 
+                type="password" 
+                className="form-input" 
+                required 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Ingresa tu contraseña"
+              />
+            </div>
           </div>
           <button 
             type="submit" 

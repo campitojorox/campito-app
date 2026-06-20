@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, RefreshCw, Trees, X } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, RefreshCw, Trees, X, User, Mail, Lock } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export default function Layout({ session }) {
@@ -178,16 +178,22 @@ export default function Layout({ session }) {
                 }
               }}>
                 <div className="form-group" style={{ padding: 0 }}>
-                  <label>Nombre</label>
-                  <input type="text" className="form-input" required value={userForm.name} onChange={e => setUserForm({...userForm, name: e.target.value})} />
+                  <div className="input-with-icon">
+                    <User className="input-icon" size={20} />
+                    <input type="text" className="form-input" required value={userForm.name} onChange={e => setUserForm({...userForm, name: e.target.value})} placeholder="Nombre" />
+                  </div>
                 </div>
                 <div className="form-group" style={{ padding: 0 }}>
-                  <label>Email</label>
-                  <input type="email" className="form-input" required value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} />
+                  <div className="input-with-icon">
+                    <Mail className="input-icon" size={20} />
+                    <input type="email" className="form-input" required value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} placeholder="Email" />
+                  </div>
                 </div>
                 <div className="form-group" style={{ padding: 0 }}>
-                  <label>Contraseña {editingUser.id ? '(Dejar vacío para no cambiar)' : ''}</label>
-                  <input type="password" placeholder={editingUser.id ? '******' : ''} className="form-input" required={!editingUser.id} value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
+                  <div className="input-with-icon">
+                    <Lock className="input-icon" size={20} />
+                    <input type="password" placeholder={editingUser.id ? 'Nueva Contraseña (o dejar vacío)' : 'Contraseña'} className="form-input" required={!editingUser.id} value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
+                  </div>
                 </div>
                 
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
