@@ -184,7 +184,7 @@ export default function GastoVenta() {
             <div className="input-with-icon">
               <User className="input-icon" size={20} />
               <select className="form-input" required value={user} onChange={(e) => { e.target.setCustomValidity(''); setUser(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
-                <option value="" disabled>Seleccione un usuario</option>
+                <option value="" disabled>Usuario...</option>
                 {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
               </select>
             </div>
@@ -363,7 +363,7 @@ export default function GastoVenta() {
                 <div className="input-with-icon">
                   <User className="input-icon" size={20} />
                   <select className="form-input" value={editForm.user} onChange={(e) => setEditForm({...editForm, user: e.target.value})}>
-                    <option value="" disabled>Seleccione un usuario</option>
+                    <option value="" disabled>Usuario...</option>
                     {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                   </select>
                 </div>
