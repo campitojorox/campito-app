@@ -1,12 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { lazy } from 'react';
 import Layout from './components/Layout';
-import Calendario from './pages/Calendario';
-import Resumen from './pages/Resumen';
-import GastoVenta from './pages/GastoVenta';
 import Auth from './pages/Auth';
 import './index.css';
+
+const Calendario = lazy(() => import('./pages/Calendario'));
+const Resumen = lazy(() => import('./pages/Resumen'));
+const GastoVenta = lazy(() => import('./pages/GastoVenta'));
 
 function App() {
   const [session, setSession] = useState(null);

@@ -1,77 +1,55 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Camera } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { formatCurrency } from '../utils/helpers';
 
 export default function Resumen() {
-  const [records, setRecords] = useState([]);
-  const [calendarEvents, setCalendarEvents] = useState([]);
+  const { users, events, transactions } = useOutletContext();
 
-  const [selectedRecord, setSelectedRecord] = useState(null);
-  const [editForm, setEditForm] = useState({ amount: '', desc: '', user: '', type: '', image: null, currentImage: null });
-  const [expandedImage, setExpandedImage] = useState(null);
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-  const { users } = useOutletContext();
+  const records = useMemo(() => {
+    return (transactions || []).map(tx => ({
+      TransactionID: tx.id,
+      Date: tx.date.split('T')[0] + " 00:00:00",
+      User: tx.profiles ? tx.profiles.name : 'Desconocido',
+      Category: tx.type,
+      Value: Math.abs(tx.amount),
+      Amount: tx.amount,
+      Description: tx.description,
+      Imagen: tx.image_url
+    }));
+  }, [transactions]);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const calendarEvents = useMemo(() => {
+    return (events || []).map(ev => ({
+      Responsible: ev.profiles ? ev.profiles.name : 'Todos',
+      Category: ev.category
+    }));
+  }, [events]);
 
-  const fetchData = async () => {
-    const { data: txData } = await supabase.from('transactions').select('*, profiles(name)');
-    if (txData) {
-      setRecords(txData.map(tx => ({
-        TransactionID: tx.id,
-        Date: tx.date.split('T')[0] + " 00:00:00",
-        User: tx.profiles ? tx.profiles.name : 'Desconocido',
-        Category: tx.type,
-        Value: Math.abs(tx.amount),
-        Amount: tx.amount,
-        Description: tx.description,
-        Imagen: tx.image_url
-      })));
-    }
+  const finances = useMemo(() => {
+    const financesTmp = (users || []).map(u => {
+      const userRecords = records.filter(r => r.User === u.name);
+      const balance = userRecords.reduce((acc, r) => acc + parseFloat(r.Amount || 0), 0);
+      return { user: u.name, balance };
+    });
+    const maxBalance = financesTmp.length > 0 ? Math.max(...financesTmp.map(f => f.balance)) : 0;
+    return financesTmp.map(f => ({
+      user: f.user,
+      balance: f.balance,
+      diferencia: f.balance - maxBalance
+    }));
+  }, [users, records]);
 
-    const { data: evData } = await supabase.from('events').select('*, profiles(name)');
-    if (evData) {
-      setCalendarEvents(evData.map(ev => ({
-        Responsible: ev.profiles ? ev.profiles.name : 'Todos',
-        Category: ev.category
-      })));
-    }
-  };
+  const stats = useMemo(() => {
+    return (users || []).filter(u => u.name !== 'Campito').map(u => {
+      const userEvents = calendarEvents.filter(e => e.Responsible === u.name);
+      const riego = userEvents.filter(e => e.Category === 'RIEGO').length;
+      const mantenimiento = userEvents.filter(e => e.Category === 'MANTENIMIENTO').length;
+      const otro = userEvents.filter(e => e.Category === 'OTRO').length;
+      return { user: u.name, riego, mantenimiento, otro };
+    });
+  }, [users, calendarEvents]);
 
-  // Calcular Finanzas
-  const financesTmp = users.map(u => {
-    const userRecords = records.filter(r => r.User === u.name);
-    const balance = userRecords.reduce((acc, r) => acc + parseFloat(r.Amount || 0), 0);
-    return { user: u.name, balance };
-  });
 
-  const maxBalance = Math.max(...financesTmp.map(f => f.balance));
-
-  const finances = financesTmp.map(f => ({
-    user: f.user,
-    balance: f.balance,
-    diferencia: f.balance - maxBalance
-  }));
-
-  // Calcular Estadisticas (Filtrando a 'Campito')
-  const stats = users.filter(u => u.name !== 'Campito').map(u => {
-    const userEvents = calendarEvents.filter(e => e.Responsible === u.name);
-    const riego = userEvents.filter(e => e.Category === 'RIEGO').length;
-    const mantenimiento = userEvents.filter(e => e.Category === 'MANTENIMIENTO').length;
-    const otro = userEvents.filter(e => e.Category === 'OTRO').length;
-    return { user: u.name, riego, mantenimiento, otro };
-  });
-
-  const formatCurrency = (val) => {
-    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
-    return formatter.format(val);
-  };
-
-  // Sort records newest first
-  const sortedRecords = [...records].sort((a, b) => new Date(b.Date) - new Date(a.Date));
 
   return (
     <div style={{ paddingBottom: '2rem' }}>

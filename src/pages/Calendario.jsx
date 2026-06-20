@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
@@ -17,10 +17,11 @@ export default function Calendario() {
   const isSearchOpen = context?.isSearchOpen || false;
   const searchQuery = context?.searchQuery || '';
   const users = context?.users || [];
+  const rawEvents = context?.events || [];
+  const refetchEvents = context?.refetchEvents || (() => {});
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [events, setEvents] = useState([]);
   
   // Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -39,27 +40,19 @@ export default function Calendario() {
     setNewEndDate(newDate);
   }, [newDate]);
 
-  useEffect(() => {
-    fetchEvents();
-  }, []);
-
-  const fetchEvents = async () => {
-    const { data } = await supabase.from('events').select('*, profiles(name)');
-    if (data) {
-      const mapped = data.map(ev => ({
-        EventID: ev.id,
-        Date: ev.date ? (ev.date.split('T')[0] + " 00:00:00") : null,
-        "End Date": ev.end_date ? (ev.end_date.split('T')[0] + " 00:00:00") : (ev.date ? (ev.date.split('T')[0] + " 00:00:00") : null),
-        "Start Time": ev.start_time ? ev.start_time.substring(0,5) + ':00' : null,
-        "End Time": ev.end_time ? ev.end_time.substring(0,5) + ':00' : null,
-        Category: ev.category,
-        Info: ev.info,
-        Responsible: ev.profiles ? ev.profiles.name : 'Sin Asignar',
-        responsible_id: ev.responsible_id
-      }));
-      setEvents(mapped);
-    }
-  };
+  const events = useMemo(() => {
+    return rawEvents.map(ev => ({
+      EventID: ev.id,
+      Date: ev.date ? (ev.date.split('T')[0] + " 00:00:00") : null,
+      "End Date": ev.end_date ? (ev.end_date.split('T')[0] + " 00:00:00") : (ev.date ? (ev.date.split('T')[0] + " 00:00:00") : null),
+      "Start Time": ev.start_time ? ev.start_time.substring(0,5) + ':00' : null,
+      "End Time": ev.end_time ? ev.end_time.substring(0,5) + ':00' : null,
+      Category: ev.category,
+      Info: ev.info,
+      Responsible: ev.profiles ? ev.profiles.name : 'Sin Asignar',
+      responsible_id: ev.responsible_id
+    }));
+  }, [rawEvents]);
 
   const handleAddEvent = async (e) => {
     e.preventDefault();
@@ -84,7 +77,7 @@ export default function Calendario() {
       await supabase.from('events').insert([payload]);
     }
     
-    fetchEvents(); // Reload from DB
+    refetchEvents(); // Reload from DB
     setIsFormOpen(false);
     setEditingEvent(null);
   };
@@ -105,43 +98,49 @@ export default function Calendario() {
     }, 100);
   };
 
-  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
-  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
-  const onDateClick = (day) => {
+  const nextMonth = useCallback(() => setCurrentMonth(prev => addMonths(prev, 1)), []);
+  const prevMonth = useCallback(() => setCurrentMonth(prev => subMonths(prev, 1)), []);
+  const onDateClick = useCallback((day) => {
     setSelectedDate(day);
     setIsFormOpen(false);
     setEditingEvent(null);
-  };
+  }, []);
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
-  const days = eachDayOfInterval({ start: startDate, end: endDate });
+  const monthStart = useMemo(() => startOfMonth(currentMonth), [currentMonth]);
+  const monthEnd = useMemo(() => endOfMonth(monthStart), [monthStart]);
+  const startDate = useMemo(() => startOfWeek(monthStart, { weekStartsOn: 1 }), [monthStart]);
+  const endDate = useMemo(() => endOfWeek(monthEnd, { weekStartsOn: 1 }), [monthEnd]);
+  const days = useMemo(() => eachDayOfInterval({ start: startDate, end: endDate }), [startDate, endDate]);
 
-  const selectedDayEvents = events.filter(ev => {
-    if(!ev.Date) return false;
-    const startDate = new Date(ev.Date.split(' ')[0]);
-    startDate.setHours(0,0,0,0);
-    const endDateStr = ev["End Date"] || ev.Date;
-    const endDate = new Date(endDateStr.split(' ')[0]);
-    endDate.setHours(0,0,0,0);
-    const currentDay = new Date(selectedDate);
-    currentDay.setHours(0,0,0,0);
-    return currentDay >= startDate && currentDay <= endDate;
-  });
+  const selectedDayEvents = useMemo(() => {
+    return events.filter(ev => {
+      if(!ev.Date) return false;
+      const startDate = new Date(ev.Date.split(' ')[0]);
+      startDate.setHours(0,0,0,0);
+      const endDateStr = ev["End Date"] || ev.Date;
+      const endDate = new Date(endDateStr.split(' ')[0]);
+      endDate.setHours(0,0,0,0);
+      const currentDay = new Date(selectedDate);
+      currentDay.setHours(0,0,0,0);
+      return currentDay >= startDate && currentDay <= endDate;
+    });
+  }, [events, selectedDate]);
 
-  const searchResults = events.filter(ev => {
+  const searchResults = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return (
-      (ev.Category && ev.Category.toLowerCase().includes(q)) ||
-      (ev.Info && ev.Info.toLowerCase().includes(q)) ||
-      (ev.Responsible && ev.Responsible.toLowerCase().includes(q)) ||
-      (ev.Date && ev.Date.toLowerCase().includes(q))
-    );
-  });
+    return events.filter(ev => {
+      return (
+        (ev.Category && ev.Category.toLowerCase().includes(q)) ||
+        (ev.Info && ev.Info.toLowerCase().includes(q)) ||
+        (ev.Responsible && ev.Responsible.toLowerCase().includes(q)) ||
+        (ev.Date && ev.Date.toLowerCase().includes(q))
+      );
+    });
+  }, [events, searchQuery]);
 
-  const displayEvents = (isSearchOpen && searchQuery.trim() !== '') ? searchResults : selectedDayEvents;
+  const displayEvents = useMemo(() => {
+    return (isSearchOpen && searchQuery.trim() !== '') ? searchResults : selectedDayEvents;
+  }, [isSearchOpen, searchQuery, searchResults, selectedDayEvents]);
 
 
   const renderForm = () => (
@@ -238,7 +237,7 @@ export default function Calendario() {
               <button onClick={() => setIsConfirmingDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
               <button onClick={async () => {
                 await supabase.from('events').delete().eq('id', editingEvent.EventID);
-                fetchEvents();
+                refetchEvents();
                 setIsFormOpen(false);
                 setEditingEvent(null);
                 setIsConfirmingDelete(false);

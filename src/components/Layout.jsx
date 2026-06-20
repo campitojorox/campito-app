@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, Suspense } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, RefreshCw, Trees, X, User, Mail, Lock } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useDataCache } from '../hooks/useDataCache';
 
 export default function Layout({ session }) {
   const location = useLocation();
@@ -12,21 +13,12 @@ export default function Layout({ session }) {
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({ name: '', email: '', password: '' });
   const [isConfirmingDeleteUser, setIsConfirmingDeleteUser] = useState(false);
-  const [users, setUsers] = useState([]);
+  const { users, events, transactions, refetchUsers, refetchEvents, refetchTransactions } = useDataCache();
   const [isManagingUser, setIsManagingUser] = useState(false);
   const [manageUserError, setManageUserError] = useState('');
   const [manageUserSuccess, setManageUserSuccess] = useState('');
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    const { data, error } = await supabase.from('profiles').select('*').order('name');
-    if (data) setUsers(data);
-  };
 
   return (
     <div className="app-container">
@@ -116,7 +108,7 @@ export default function Layout({ session }) {
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error || 'Error al borrar');
-                        await fetchUsers();
+                        await refetchUsers();
                         setEditingUser(null);
                         setIsConfirmingDeleteUser(false);
                       } catch (err) {
@@ -167,7 +159,7 @@ export default function Layout({ session }) {
                   const data = await res.json();
                   if (!res.ok) throw new Error(data.error || 'Error al guardar usuario');
                   
-                  await fetchUsers();
+                  await refetchUsers();
                   setManageUserSuccess(editingUser.id ? '¡Usuario actualizado correctamente!' : '¡Usuario creado correctamente!');
                   setTimeout(() => setManageUserSuccess(''), 3000);
                   setEditingUser(null);
@@ -243,7 +235,9 @@ export default function Layout({ session }) {
       )}
 
       <main className="main-content">
-        <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users }} />
+        <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>Cargando página...</div>}>
+          <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users, events, transactions, refetchUsers, refetchEvents, refetchTransactions }} />
+        </Suspense>
       </main>
 
       {/* Bottom Navigation mimicking AppSheet */}

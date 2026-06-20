@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
 import { Camera, DollarSign, AlignLeft, User, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { formatCurrency, highlightText } from '../utils/helpers';
 
 export default function GastoVenta() {
-  const { users, searchQuery = '', isSearchOpen = false } = useOutletContext();
+  const { users, transactions, refetchTransactions, searchQuery = '', isSearchOpen = false } = useOutletContext();
   const [type, setType] = useState('Invertido');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -13,7 +14,6 @@ export default function GastoVenta() {
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const [records, setRecords] = useState([]);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [editForm, setEditForm] = useState({ amount: '', desc: '', user: '', type: '', image: null, currentImage: null });
   const [expandedImage, setExpandedImage] = useState(null);
@@ -21,48 +21,31 @@ export default function GastoVenta() {
   const [isConfirmingImageDelete, setIsConfirmingImageDelete] = useState(false);
   const [successMsg, setSuccessMsg] = useState(null);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const records = useMemo(() => {
+    return (transactions || []).map(tx => ({
+      TransactionID: tx.id,
+      Date: tx.date.split('T')[0] + " 00:00:00",
+      User: tx.profiles ? tx.profiles.name : 'Desconocido',
+      Category: tx.type,
+      Value: Math.abs(tx.amount),
+      Amount: tx.amount,
+      Description: tx.description,
+      Imagen: tx.image_url
+    }));
+  }, [transactions]);
 
-  const fetchData = async () => {
-    const { data: txData } = await supabase.from('transactions').select('*, profiles(name)');
-    if (txData) {
-      setRecords(txData.map(tx => ({
-        TransactionID: tx.id,
-        Date: tx.date.split('T')[0] + " 00:00:00",
-        User: tx.profiles ? tx.profiles.name : 'Desconocido',
-        Category: tx.type,
-        Value: Math.abs(tx.amount),
-        Amount: tx.amount,
-        Description: tx.description,
-        Imagen: tx.image_url
-      })));
-    }
-  };
 
-  const formatCurrency = (val) => {
-    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
-    return formatter.format(val);
-  };
 
-  const highlightText = (text, highlight) => {
-    if (!highlight || !highlight.trim()) return text;
-    const regex = new RegExp(`(${highlight})`, 'gi');
-    const parts = String(text).split(regex);
-    return parts.map((part, i) => 
-      regex.test(part) ? <span key={i} style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{part}</span> : part
-    );
-  };
-
-  const sortedRecords = [...records].sort((a, b) => new Date(b.Date) - new Date(a.Date));
-  const displayRecords = (isSearchOpen && searchQuery.trim() !== '') 
-    ? sortedRecords.filter(r => 
-        (r.User && r.User.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (r.Description && r.Description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (r.Category && r.Category.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : sortedRecords;
+  const sortedRecords = useMemo(() => [...records].sort((a, b) => new Date(b.Date) - new Date(a.Date)), [records]);
+  const displayRecords = useMemo(() => {
+    return (isSearchOpen && searchQuery.trim() !== '') 
+      ? sortedRecords.filter(r => 
+          (r.User && r.User.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (r.Description && r.Description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (r.Category && r.Category.toLowerCase().includes(searchQuery.toLowerCase()))
+        )
+      : sortedRecords;
+  }, [isSearchOpen, searchQuery, sortedRecords]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -75,7 +58,7 @@ export default function GastoVenta() {
     if (image) {
       const fileExt = image.name.split('.').pop();
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const { data, error } = await supabase.storage.from('comprobantes').upload(fileName, image);
+      const { error } = await supabase.storage.from('comprobantes').upload(fileName, image);
       if (!error) {
         const { data: publicData } = supabase.storage.from('comprobantes').getPublicUrl(fileName);
         imageUrl = publicData.publicUrl;
@@ -102,7 +85,7 @@ export default function GastoVenta() {
       setDescription('');
       setUser('');
       setImage(null);
-      fetchData();
+      refetchTransactions();
     } else {
       alert('Error guardando transacción: ' + error.message);
     }
@@ -303,7 +286,7 @@ export default function GastoVenta() {
                     <button onClick={() => setIsConfirmingDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
                     <button onClick={async () => {
                       await supabase.from('transactions').delete().eq('id', selectedRecord.TransactionID);
-                      fetchData();
+                      refetchTransactions();
                       setSelectedRecord(null);
                       setIsConfirmingDelete(false);
                     }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
@@ -414,7 +397,7 @@ export default function GastoVenta() {
                   if (editForm.image) {
                     const fileExt = editForm.image.name.split('.').pop();
                     const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-                    const { data, error } = await supabase.storage.from('comprobantes').upload(fileName, editForm.image);
+                    const { error } = await supabase.storage.from('comprobantes').upload(fileName, editForm.image);
                     if (!error) {
                       const { data: publicData } = supabase.storage.from('comprobantes').getPublicUrl(fileName);
                       imageUrl = publicData.publicUrl;
@@ -432,7 +415,7 @@ export default function GastoVenta() {
                     image_url: imageUrl
                   }).eq('id', selectedRecord.TransactionID);
 
-                  fetchData();
+                  refetchTransactions();
                   setSelectedRecord(null);
                 }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
                 <button onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
