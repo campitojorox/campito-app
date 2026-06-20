@@ -258,7 +258,7 @@ export default function GastoVenta() {
                   {formatCurrency(Math.abs(r.Amount))}
                 </td>
                 <td>
-                  <span className={`category-badge ${r.Category === 'Gasto' ? 'danger' : 'success'}`}>
+                  <span style={{ color: r.Category === 'Gasto' ? 'var(--text-secondary)' : 'var(--success)' }}>
                     {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
                   </span>
                 </td>
