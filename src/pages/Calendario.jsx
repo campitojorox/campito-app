@@ -273,7 +273,7 @@ export default function Calendario() {
             <div className="form-group" style={{ padding: 0 }}>
               <div className="input-with-icon">
                 <Tag className="input-icon" size={20} />
-                <select className="form-input" required value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+                <select className="form-input" required value={newCategory} onChange={(e) => { e.target.setCustomValidity(''); setNewCategory(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona una categoría')}>
                   <option value="" disabled>Categoría...</option>
                   <option value="RIEGO">Riego</option>
                   <option value="MANTENIMIENTO">Mantenimiento</option>
@@ -284,7 +284,7 @@ export default function Calendario() {
             <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
               <div className="input-with-icon">
                 <User className="input-icon" size={20} />
-                <select className="form-input" value={newResponsible} onChange={(e) => setNewResponsible(e.target.value)}>
+                <select className="form-input" required value={newResponsible} onChange={(e) => { e.target.setCustomValidity(''); setNewResponsible(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
                   <option value="" disabled>Usuario...</option>
                   {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
                 </select>
@@ -293,7 +293,7 @@ export default function Calendario() {
             <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
               <div className="input-with-icon">
                 <AlignLeft className="input-icon" size={20} />
-                <input type="text" className="form-input" value={newInfo} onChange={(e) => setNewInfo(e.target.value)} placeholder="Detalles / Info" />
+                <input type="text" className="form-input" required value={newInfo} onChange={(e) => { e.target.setCustomValidity(''); setNewInfo(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa los detalles / info')} placeholder="Detalles / Info" />
               </div>
             </div>
             {!editingEvent ? (
