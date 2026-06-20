@@ -32,7 +32,8 @@ export default function Auth() {
       justifyContent: 'center',
       alignItems: 'center',
       padding: '2rem',
-      backgroundColor: 'var(--bg-color)'
+      backgroundColor: 'var(--bg-color)',
+      overflowY: 'auto'
     }}>
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
         <div style={{ 
