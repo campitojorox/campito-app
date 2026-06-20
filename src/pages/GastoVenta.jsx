@@ -270,15 +270,13 @@ export default function GastoVenta() {
                   setIsConfirmingDelete(false);
                 }}
               >
-                <td>{r.Date ? r.Date.split(' ')[0] : ''}</td>
-                <td>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
-                <td style={{ color: r.Amount < 0 ? 'var(--success)' : 'var(--text-secondary)' }}>
+                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
+                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
+                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
                   {formatCurrency(Math.abs(r.Amount))}
                 </td>
-                <td>
-                  <span style={{ color: r.Category === 'Gasto' ? 'var(--text-secondary)' : 'var(--success)' }}>
-                    {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
-                  </span>
+                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
+                  {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
                 </td>
               </tr>
             ))}
