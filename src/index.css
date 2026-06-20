@@ -86,20 +86,21 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  font-size: 0.75rem;
   color: var(--text-secondary);
-  padding: 1rem 0.5rem;
+  padding: 0.8rem 0.5rem;
   flex: 1;
+  text-transform: uppercase;
 }
 
 .nav-item.active {
-  background-color: #cbe56d;
+  background-color: #9edb9e;
   color: #1a1a1a;
   font-weight: 600;
 }
 
 .nav-item svg {
-  margin: 0;
+  margin-bottom: 0.3rem;
 }
 
 .main-content {
