@@ -143,6 +143,88 @@ export default function Calendario() {
 
   const displayEvents = (isSearchOpen && searchQuery.trim() !== '') ? searchResults : selectedDayEvents;
 
+
+  const renderForm = () => (
+    <div id="event-form">
+          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <form onSubmit={handleAddEvent}>
+            
+            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.2rem' }}>
+              <div className="form-group" style={{ flex: 1, padding: 0 }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Inicio</label>
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
+                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                </div>
+              </div>
+              <div className="form-group" style={{ flex: 1, padding: 0 }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Término</label>
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
+                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
+              <div className="form-group" style={{ flex: 1, padding: 0 }}>
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
+                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                </div>
+              </div>
+              <div className="form-group" style={{ flex: 1, padding: 0 }}>
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
+                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="form-group" style={{ padding: 0 }}>
+              <div className="input-with-icon">
+                <Tag className="input-icon" size={20} />
+                <select className="form-input" required value={newCategory} onChange={(e) => { e.target.setCustomValidity(''); setNewCategory(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona una categoría')}>
+                  <option value="" disabled>Categoría...</option>
+                  <option value="RIEGO">Riego</option>
+                  <option value="MANTENIMIENTO">Mantenimiento</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
+              <div className="input-with-icon">
+                <User className="input-icon" size={20} />
+                <select className="form-input" required value={newResponsible} onChange={(e) => { e.target.setCustomValidity(''); setNewResponsible(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
+                  <option value="" disabled>Usuario...</option>
+                  {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
+              <div className="input-with-icon">
+                <AlignLeft className="input-icon" size={20} />
+                <input type="text" className="form-input" required value={newInfo} onChange={(e) => { e.target.setCustomValidity(''); setNewInfo(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa los detalles / info')} placeholder="Detalles / Info" />
+              </div>
+            </div>
+            {!editingEvent ? (
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Agregar</button>
+                <button type="button" className="btn" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--danger)', color: 'white', flex: 1, margin: 0, padding: '0.75rem 0' }}>Cancelar</button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
+                <button type="button" onClick={(e) => { e.preventDefault(); setIsConfirmingDelete(true); }} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
+              </div>
+            )}
+            </form>
+          </div>
+        </div>
+      )
+  );
+
   return (
     <div style={{ position: 'relative', minHeight: '100%', padding: '1rem' }}>
       
@@ -232,85 +314,7 @@ export default function Calendario() {
       </>
       )}
 
-      {isFormOpen && (
-        <div id="event-form">
-          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <form onSubmit={handleAddEvent}>
-            
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.2rem' }}>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Inicio</label>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Término</label>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
-                </div>
-              </div>
-            </div>
-
-            <div className="form-group" style={{ padding: 0 }}>
-              <div className="input-with-icon">
-                <Tag className="input-icon" size={20} />
-                <select className="form-input" required value={newCategory} onChange={(e) => { e.target.setCustomValidity(''); setNewCategory(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona una categoría')}>
-                  <option value="" disabled>Categoría...</option>
-                  <option value="RIEGO">Riego</option>
-                  <option value="MANTENIMIENTO">Mantenimiento</option>
-                  <option value="OTRO">Otro</option>
-                </select>
-              </div>
-            </div>
-            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-              <div className="input-with-icon">
-                <User className="input-icon" size={20} />
-                <select className="form-input" required value={newResponsible} onChange={(e) => { e.target.setCustomValidity(''); setNewResponsible(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
-                  <option value="" disabled>Usuario...</option>
-                  {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-              <div className="input-with-icon">
-                <AlignLeft className="input-icon" size={20} />
-                <input type="text" className="form-input" required value={newInfo} onChange={(e) => { e.target.setCustomValidity(''); setNewInfo(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa los detalles / info')} placeholder="Detalles / Info" />
-              </div>
-            </div>
-            {!editingEvent ? (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Agregar</button>
-                <button type="button" className="btn" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--danger)', color: 'white', flex: 1, margin: 0, padding: '0.75rem 0' }}>Cancelar</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
-                <button type="button" onClick={(e) => { e.preventDefault(); setIsConfirmingDelete(true); }} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
-              </div>
-            )}
-            </form>
-          </div>
-        </div>
-      )}
+      {isFormOpen && !editingEvent && renderForm()}
 
       {/* Event List for Selected Day or Search Results */}
       <div style={{ marginTop: '1.5rem' }}>
@@ -326,7 +330,8 @@ export default function Calendario() {
           displayEvents.map((ev, i) => {
             const evColor = categoryColors[ev.Category] || 'var(--primary)';
             return (
-              <div key={i} className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', marginBottom: '0.5rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
+              <div key={i} style={{ marginBottom: '0.5rem' }}>
+                <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', marginBottom: '0.5rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong style={{ fontSize: '1.1rem', color: evColor }}>{ev.Category}</strong>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
@@ -340,6 +345,8 @@ export default function Calendario() {
                     <small style={{ color: 'var(--text-secondary)' }}>Hasta: {ev["End Date"].split(' ')[0]}</small>
                   )}
                 </div>
+                </div>
+                {editingEvent && editingEvent.EventID === ev.EventID && isFormOpen && renderForm()}
               </div>
             );
           })
