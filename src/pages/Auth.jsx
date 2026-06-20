@@ -26,16 +26,16 @@ export default function Auth() {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      justifyContent: 'center',
-      alignItems: 'center',
       padding: '2rem',
       backgroundColor: 'var(--bg-color)',
-      overflowY: 'auto'
+      overflowY: 'auto',
+      alignItems: 'center'
     }}>
-      <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+      <div style={{ margin: 'auto 0', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
         <div style={{ 
           width: '80px', 
           height: '80px', 
@@ -90,6 +90,7 @@ export default function Auth() {
             {loading ? 'Iniciando sesión...' : 'Entrar'}
           </button>
         </form>
+      </div>
       </div>
     </div>
   );
