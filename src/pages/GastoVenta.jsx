@@ -268,7 +268,7 @@ export default function GastoVenta() {
         </table>
       </div>
 
-      {selectedRecord && createPortal(
+      {selectedRecord && createPortal((
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1000, overflowY: 'auto', padding: '1rem'
@@ -413,8 +413,8 @@ export default function GastoVenta() {
             </div>
           </div>
         </div>
-      , document.body)}
-      {expandedImage && createPortal(
+      ), document.body)}
+      {expandedImage && createPortal((
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000, padding: '1rem'
@@ -422,9 +422,9 @@ export default function GastoVenta() {
           <button style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer' }}>&times;</button>
           <img src={expandedImage} alt="Expanded" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
         </div>
-      , document.body)}
+      ), document.body)}
 
-      {successMsg && createPortal(
+      {successMsg && createPortal((
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, padding: '1.5rem'
@@ -434,7 +434,7 @@ export default function GastoVenta() {
             <p style={{ color: 'white', fontSize: '1.1rem', margin: 0 }}>{successMsg}</p>
           </div>
         </div>
-      , document.body)}
+      ), document.body)}
     </div>
   );
 }
