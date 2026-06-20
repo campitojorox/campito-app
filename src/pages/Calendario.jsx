@@ -170,7 +170,7 @@ export default function Calendario() {
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
           {/* Calendar Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', marginTop: '1.5rem' }}>
             <button onClick={prevMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>◀</button>
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
               {format(currentMonth, 'MMMM yyyy', { locale: es }).toUpperCase()}
@@ -314,9 +314,11 @@ export default function Calendario() {
 
       {/* Event List for Selected Day or Search Results */}
       <div style={{ marginTop: '1.5rem' }}>
-        <h3 style={{ fontSize: '1rem', color: 'white', marginBottom: '1rem' }}>
-          {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayEvents.length})` : `Eventos del ${format(selectedDate, "d 'de' MMMM", { locale: es })}`}
-        </h3>
+        {(isSearchOpen && searchQuery.trim() !== '') && (
+          <h3 style={{ fontSize: '1rem', color: 'white', marginBottom: '1rem' }}>
+            Resultados de búsqueda ({displayEvents.length})
+          </h3>
+        )}
         
         {displayEvents.length === 0 ? (
           <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '2rem' }}>{(isSearchOpen && searchQuery.trim() !== '') ? 'No se encontraron resultados.' : 'No hay eventos para este día.'}</p>
