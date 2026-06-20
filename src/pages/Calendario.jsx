@@ -30,7 +30,7 @@ export default function Calendario() {
   const [newEndDate, setNewEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [newStartTime, setNewStartTime] = useState('08:00');
   const [newEndTime, setNewEndTime] = useState('09:00');
-  const [newCategory, setNewCategory] = useState('RIEGO');
+  const [newCategory, setNewCategory] = useState('');
   const [newResponsible, setNewResponsible] = useState('');
   const [newInfo, setNewInfo] = useState('');
 
@@ -95,7 +95,7 @@ export default function Calendario() {
     setNewEndDate(ev["End Date"] ? ev["End Date"].split(' ')[0] : format(selectedDate, 'yyyy-MM-dd'));
     setNewStartTime(ev["Start Time"] ? ev["Start Time"].substring(0,5) : '08:00');
     setNewEndTime(ev["End Time"] ? ev["End Time"].substring(0,5) : '09:00');
-    setNewCategory(ev.Category || 'RIEGO');
+    setNewCategory(ev.Category || '');
     setNewResponsible(ev.Responsible || 'Ariel');
     setNewInfo(ev.Info || '');
     setIsFormOpen(true);
@@ -179,29 +179,29 @@ export default function Calendario() {
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Inicio</label>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'right' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Término</label>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'right' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
                 </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon">
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'right' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon">
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'right' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -209,7 +209,8 @@ export default function Calendario() {
             <div className="form-group" style={{ padding: 0 }}>
               <div className="input-with-icon">
                 <Tag className="input-icon" size={20} />
-                <select className="form-input" value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+                <select className="form-input" required value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+                  <option value="" disabled>Categoría...</option>
                   <option value="RIEGO">Riego</option>
                   <option value="MANTENIMIENTO">Mantenimiento</option>
                   <option value="OTRO">Otro</option>
