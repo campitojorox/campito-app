@@ -99,8 +99,10 @@ export default function Calendario() {
     setNewResponsible(ev.Responsible === 'Sin Asignar' ? '' : ev.Responsible);
     setNewInfo(ev.Info || '');
     setIsFormOpen(true);
-    const mainContent = document.querySelector('.main-content');
-    if (mainContent) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(() => {
+      const formElement = document.getElementById('event-form');
+      if (formElement) formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
@@ -165,13 +167,75 @@ export default function Calendario() {
         </div>
       ), document.body)}
 
-      {isFormOpen && createPortal((
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1000, overflowY: 'auto', padding: '1rem'
-        }}>
-          <div className="card" style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '2rem auto', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem', color: 'white' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h3>
+      {!(isSearchOpen && searchQuery.trim() !== '') && (
+        <>
+          {/* Calendar Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <button onClick={prevMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>◀</button>
+            <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+              {format(currentMonth, 'MMMM yyyy', { locale: es }).toUpperCase()}
+            </h2>
+            <button onClick={nextMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>▶</button>
+          </div>
+
+          {/* Calendar Grid */}
+          <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+          <div>L</div><div>M</div><div>X</div><div>J</div><div>V</div><div>S</div><div>D</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' }}>
+          {days.map((day, i) => {
+            const isSelected = isSameDay(day, selectedDate);
+            const isCurrentMonth = isSameMonth(day, monthStart);
+            
+            // Check if there's an event this day
+            const eventsThisDay = events.filter(ev => {
+              if(!ev.Date) return false;
+              const startDate = new Date(ev.Date.split(' ')[0]);
+              startDate.setHours(0,0,0,0);
+              const endDateStr = ev["End Date"] || ev.Date;
+              const endDate = new Date(endDateStr.split(' ')[0]);
+              endDate.setHours(0,0,0,0);
+              const currentDay = new Date(day);
+              currentDay.setHours(0,0,0,0);
+              return currentDay >= startDate && currentDay <= endDate;
+            });
+            const hasEvent = eventsThisDay.length > 0;
+            // Get color of first event for the dot
+            const dotColor = hasEvent ? (categoryColors[eventsThisDay[0].Category] || 'var(--primary)') : 'transparent';
+
+            const isToday = isSameDay(day, new Date());
+
+            return (
+              <div 
+                key={i} 
+                onClick={() => onDateClick(day)}
+                style={{
+                  padding: '10px 0',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  borderRadius: '8px',
+                  backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
+                  color: isSelected ? 'white' : (hasEvent ? dotColor : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)')),
+                  fontWeight: hasEvent ? '900' : 'normal',
+                  fontSize: hasEvent ? '1.1rem' : '1rem',
+                  border: isToday ? '2px solid var(--primary)' : '2px solid transparent',
+                  position: 'relative'
+                }}
+              >
+                {format(day, 'd')}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+      </>
+      )}
+
+      {isFormOpen && (
+        <div id="event-form">
+          <h2 style={{ marginTop: '0', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
+          <div style={{ marginBottom: '1.5rem' }}>
             <form onSubmit={handleAddEvent}>
             
             <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.2rem' }}>
@@ -246,71 +310,6 @@ export default function Calendario() {
             </form>
           </div>
         </div>
-      ), document.body)}
-
-      {!(isSearchOpen && searchQuery.trim() !== '') && (
-        <>
-          {/* Calendar Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <button onClick={prevMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>◀</button>
-            <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
-              {format(currentMonth, 'MMMM yyyy', { locale: es }).toUpperCase()}
-            </h2>
-            <button onClick={nextMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>▶</button>
-          </div>
-
-          {/* Calendar Grid */}
-          <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-          <div>L</div><div>M</div><div>X</div><div>J</div><div>V</div><div>S</div><div>D</div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' }}>
-          {days.map((day, i) => {
-            const isSelected = isSameDay(day, selectedDate);
-            const isCurrentMonth = isSameMonth(day, monthStart);
-            
-            // Check if there's an event this day
-            const eventsThisDay = events.filter(ev => {
-              if(!ev.Date) return false;
-              const startDate = new Date(ev.Date.split(' ')[0]);
-              startDate.setHours(0,0,0,0);
-              const endDateStr = ev["End Date"] || ev.Date;
-              const endDate = new Date(endDateStr.split(' ')[0]);
-              endDate.setHours(0,0,0,0);
-              const currentDay = new Date(day);
-              currentDay.setHours(0,0,0,0);
-              return currentDay >= startDate && currentDay <= endDate;
-            });
-            const hasEvent = eventsThisDay.length > 0;
-            // Get color of first event for the dot
-            const dotColor = hasEvent ? (categoryColors[eventsThisDay[0].Category] || 'var(--primary)') : 'transparent';
-
-            const isToday = isSameDay(day, new Date());
-
-            return (
-              <div 
-                key={i} 
-                onClick={() => onDateClick(day)}
-                style={{
-                  padding: '10px 0',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  borderRadius: '8px',
-                  backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
-                  color: isSelected ? 'white' : (hasEvent ? dotColor : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)')),
-                  fontWeight: hasEvent ? '900' : 'normal',
-                  fontSize: hasEvent ? '1.1rem' : '1rem',
-                  border: isToday ? '2px solid var(--primary)' : '2px solid transparent',
-                  position: 'relative'
-                }}
-              >
-                {format(day, 'd')}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      </>
       )}
 
       {/* Event List for Selected Day or Search Results */}
@@ -358,8 +357,10 @@ export default function Calendario() {
             setNewInfo('');
             setEditingEvent(null);
             setIsFormOpen(true);
-            const mainContent = document.querySelector('.main-content');
-            if (mainContent) mainContent.scrollTo({ top: 0, behavior: 'smooth' });
+            setTimeout(() => {
+              const formElement = document.getElementById('event-form');
+              if (formElement) formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
           }}
           className="fab"
         >
