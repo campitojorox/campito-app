@@ -222,7 +222,6 @@ export default function Calendario() {
             </form>
           </div>
         </div>
-      )
   );
 
   return (
