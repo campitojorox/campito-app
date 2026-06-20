@@ -249,16 +249,13 @@ export default function Layout({ session }) {
       {/* Bottom Navigation mimicking AppSheet */}
       <nav className="bottom-nav">
         <NavLink to="/calendario" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Calendar size={24} style={{ display: 'block', margin: '0 auto' }} />
-          <span>Calendario</span>
+          <Calendar size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
         <NavLink to="/gasto-venta" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Euro size={24} style={{ display: 'block', margin: '0 auto' }} />
-          <span>Gasto / Venta</span>
+          <Euro size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
         <NavLink to="/resumen" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <BarChart2 size={24} style={{ display: 'block', margin: '0 auto' }} />
-          <span>Resumen</span>
+          <BarChart2 size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
       </nav>
     </div>

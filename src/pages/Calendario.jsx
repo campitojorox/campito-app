@@ -205,7 +205,7 @@ export default function Calendario() {
             <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
               <div className="input-with-icon">
                 <AlignLeft className="input-icon" size={20} />
-                <input type="text" className="form-input" required value={newInfo} onChange={(e) => { e.target.setCustomValidity(''); setNewInfo(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa los detalles / info')} placeholder="Detalles / Info" />
+                <input type="text" className="form-input" value={newInfo} onChange={(e) => setNewInfo(e.target.value)} placeholder="Detalles / Info" />
               </div>
             </div>
             {!editingEvent ? (
