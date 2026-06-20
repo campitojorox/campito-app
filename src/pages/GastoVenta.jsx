@@ -113,7 +113,7 @@ export default function GastoVenta() {
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
-          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--primary)', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
+          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
           
           <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
@@ -124,13 +124,14 @@ export default function GastoVenta() {
               style={{
                 flex: 1,
                 padding: '0.8rem',
-                borderRadius: '4px',
-                border: '1px solid var(--primary)',
-                backgroundColor: type === 'Gasto' ? 'var(--primary)' : 'transparent',
-                color: type === 'Gasto' ? 'white' : 'var(--text-primary)',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: type === 'Gasto' ? 'var(--primary)' : 'white',
+                color: type === 'Gasto' ? 'white' : '#2b3d41',
                 fontWeight: '600',
                 fontSize: '1rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
               }}
             >
               Gasto (invertido)
@@ -141,13 +142,14 @@ export default function GastoVenta() {
               style={{
                 flex: 1,
                 padding: '0.8rem',
-                borderRadius: '4px',
-                border: '1px solid var(--primary)',
-                backgroundColor: type === 'Retiro' ? 'var(--primary)' : 'transparent',
-                color: type === 'Retiro' ? 'white' : 'var(--text-primary)',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: type === 'Retiro' ? 'var(--primary)' : 'white',
+                color: type === 'Retiro' ? 'white' : '#2b3d41',
                 fontWeight: '600',
                 fontSize: '1rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
               }}
             >
               Venta (generado)
@@ -179,19 +181,19 @@ export default function GastoVenta() {
           </div>
 
           <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-            <label>Comprobante / Foto</label>
             <label style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               padding: image ? '0' : '2rem',
-              border: '2px dashed var(--border)',
+              border: 'none',
               borderRadius: '8px',
-              backgroundColor: 'var(--surface)',
+              backgroundColor: 'white',
               cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              overflow: 'hidden'
+              color: '#2b3d41',
+              overflow: 'hidden',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
             }}>
               {image ? (
                 <div style={{ position: 'relative', width: '100%' }}>
@@ -234,7 +236,7 @@ export default function GastoVenta() {
         </>
       )}
 
-      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>
+      <h2 className="section-title" style={{ marginTop: '2.5rem', color: 'white' }}>
         {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
       </h2>
       <div style={{ overflowX: 'auto' }}>
@@ -321,16 +323,16 @@ export default function GastoVenta() {
               </div>
             )}
 
-            <div style={{ marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, color: 'var(--primary)' }}>Editar Transacción</h3>
             </div>
             
             <div style={{ color: 'var(--text-primary)' }}>
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: '1px solid var(--primary)', borderRadius: '4px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'transparent', color: editForm.type === 'Gasto' ? 'white' : 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', fontWeight: '600' }}>Gasto (invertido)</button>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: '1px solid var(--primary)', borderRadius: '4px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'transparent', color: editForm.type === 'Retiro' ? 'white' : 'var(--text-primary)', cursor: 'pointer', fontSize: '1rem', fontWeight: '600' }}>Venta (generado)</button>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? 'var(--primary)' : 'white', color: editForm.type === 'Gasto' ? 'white' : '#2b3d41', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>Gasto (invertido)</button>
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? 'var(--primary)' : 'white', color: editForm.type === 'Retiro' ? 'white' : '#2b3d41', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>Venta (generado)</button>
                 </div>
               </div>
               <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
@@ -382,8 +384,8 @@ export default function GastoVenta() {
                 ) : (
                   <label style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    padding: '2rem', border: '2px dashed var(--border)', borderRadius: '8px',
-                    backgroundColor: 'var(--surface)', cursor: 'pointer', color: 'var(--text-secondary)'
+                    padding: '2rem', border: 'none', borderRadius: '8px',
+                    backgroundColor: 'white', cursor: 'pointer', color: '#2b3d41', boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
                   }}>
                     <Camera size={32} style={{ marginBottom: '0.5rem' }} />
                     <span>Subir comprobante</span>
