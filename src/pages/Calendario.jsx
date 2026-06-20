@@ -174,32 +174,34 @@ export default function Calendario() {
             <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem', color: 'var(--primary)' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h3>
             <form onSubmit={handleAddEvent}>
             
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon">
-                  <Calendar className="input-icon" size={20} />
-                  <input type="date" className="form-input" required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Inicio</label>
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
+                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon">
-                  <Calendar className="input-icon" size={20} />
-                  <input type="date" className="form-input" required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Término</label>
+                <div className="input-with-icon" style={{ marginBottom: 0 }}>
+                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <div className="input-with-icon">
-                  <Clock className="input-icon" size={20} />
-                  <input type="time" className="form-input" required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <div className="input-with-icon">
-                  <Clock className="input-icon" size={20} />
-                  <input type="time" className="form-input" required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
                 </div>
               </div>
             </div>
