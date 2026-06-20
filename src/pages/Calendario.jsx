@@ -316,7 +316,7 @@ export default function Calendario() {
       {isFormOpen && !editingEvent && renderForm()}
 
       {/* Event List for Selected Day or Search Results */}
-      <div style={{ marginTop: '1.5rem' }}>
+      <div style={{ marginTop: '3rem' }}>
         {(isSearchOpen && searchQuery.trim() !== '') && (
           <h3 style={{ fontSize: '1rem', color: 'white', marginBottom: '1rem' }}>
             Resultados de búsqueda ({displayEvents.length})
