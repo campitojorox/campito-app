@@ -15,6 +15,7 @@ export default function Layout({ session }) {
   const [users, setUsers] = useState([]);
   const [isManagingUser, setIsManagingUser] = useState(false);
   const [manageUserError, setManageUserError] = useState('');
+  const [manageUserSuccess, setManageUserSuccess] = useState('');
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
 
@@ -142,11 +143,17 @@ export default function Layout({ session }) {
                 {manageUserError}
               </div>
             )}
+            {manageUserSuccess && (
+              <div style={{ color: 'var(--success, #10b981)', marginBottom: '1rem', textAlign: 'center', fontWeight: 'bold', padding: '0.5rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '4px', border: '1px solid var(--success, #10b981)' }}>
+                {manageUserSuccess}
+              </div>
+            )}
             {editingUser ? (
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 setIsManagingUser(true);
                 setManageUserError('');
+                setManageUserSuccess('');
                 try {
                   const res = await fetch('/api/manage-users', {
                     method: 'POST',
@@ -161,6 +168,8 @@ export default function Layout({ session }) {
                   if (!res.ok) throw new Error(data.error || 'Error al guardar usuario');
                   
                   await fetchUsers();
+                  setManageUserSuccess(editingUser.id ? '¡Usuario actualizado correctamente!' : '¡Usuario creado correctamente!');
+                  setTimeout(() => setManageUserSuccess(''), 3000);
                   setEditingUser(null);
                 } catch (err) {
                   setManageUserError(err.message);
