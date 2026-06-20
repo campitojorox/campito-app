@@ -179,14 +179,14 @@ export default function Calendario() {
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Inicio</label>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center', fontSize: '0.95rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Término</label>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                  <input type="date" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center', fontSize: '0.95rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -195,13 +195,13 @@ export default function Calendario() {
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center', fontSize: '0.95rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
                   <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                  <input type="time" className="form-input" style={{ paddingLeft: '2rem', textAlign: 'center', fontSize: '0.95rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -221,7 +221,7 @@ export default function Calendario() {
               <div className="input-with-icon">
                 <User className="input-icon" size={20} />
                 <select className="form-input" value={newResponsible} onChange={(e) => setNewResponsible(e.target.value)}>
-                  <option value="" disabled>Seleccione...</option>
+                  <option value="" disabled>Usuario...</option>
                   {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
                 </select>
               </div>
@@ -334,7 +334,7 @@ export default function Calendario() {
                 </div>
                 <p style={{ margin: '0.5rem 0', color: 'var(--text-primary)' }}>{ev.Info || 'Sin detalles adicionales'}</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                  <small style={{ color: 'var(--text-secondary)' }}>Resp: <span style={{ color: 'var(--text-primary)' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
+                  <small style={{ color: 'var(--text-secondary)' }}>Usuario: <span style={{ color: 'var(--text-primary)' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
                   {ev["End Date"] && ev["End Date"] !== ev.Date && (
                     <small style={{ color: 'var(--text-secondary)' }}>Hasta: {ev["End Date"].split(' ')[0]}</small>
                   )}
