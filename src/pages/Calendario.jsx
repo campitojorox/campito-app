@@ -234,7 +234,7 @@ export default function Calendario() {
 
       {isFormOpen && (
         <div id="event-form">
-          <h2 style={{ marginTop: '0', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
+          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
           <div style={{ marginBottom: '1.5rem' }}>
             <form onSubmit={handleAddEvent}>
             
