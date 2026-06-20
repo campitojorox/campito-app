@@ -92,6 +92,159 @@ export default function GastoVenta() {
     setLoading(false);
   };
 
+  const renderEditForm = () => (
+    <div style={{ position: 'relative', width: '100%', padding: '1.5rem', backgroundColor: 'var(--surface)', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+      
+      {/* Custom Confirm Delete Overlay */}
+      {isConfirmingDelete && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '1.5rem'
+        }}>
+          <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', border: '1px solid var(--danger)' }}>
+            <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas borrar permanentemente esta transacción?</h4>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button type="button" onClick={() => setIsConfirmingDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
+              <button type="button" onClick={async () => {
+                await supabase.from('transactions').delete().eq('id', selectedRecord.TransactionID);
+                refetchTransactions();
+                setSelectedRecord(null);
+                setIsConfirmingDelete(false);
+              }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirm Image Delete Overlay */}
+      {isConfirmingImageDelete && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '1.5rem'
+        }}>
+          <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', border: '1px solid var(--danger)' }}>
+            <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas borrar permanentemente esta imagen?</h4>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button type="button" onClick={() => setIsConfirmingImageDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
+              <button type="button" onClick={() => {
+                setEditForm({...editForm, currentImage: null, image: null});
+                setIsConfirmingImageDelete(false);
+              }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h3 style={{ margin: 0, color: 'var(--primary)' }}>Editar Transacción</h3>
+        <button type="button" onClick={() => setSelectedRecord(null)} style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
+      </div>
+      
+      <div style={{ color: 'var(--text-primary)' }}>
+        <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+            <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Gasto' ? 'var(--primary)' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              {editForm.type === 'Gasto' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Gasto
+            </button>
+            <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Retiro' ? 'var(--primary)' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              {editForm.type === 'Retiro' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Venta
+            </button>
+          </div>
+        </div>
+        <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+          <div className="input-with-icon">
+            <DollarSign className="input-icon" size={20} />
+            <input type="number" step="0.01" className="form-input" value={editForm.amount} onChange={(e) => setEditForm({...editForm, amount: e.target.value})} placeholder="Cantidad / Monto" />
+          </div>
+        </div>
+        <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+          <div className="input-with-icon">
+            <AlignLeft className="input-icon" size={20} />
+            <input type="text" className="form-input" value={editForm.desc} onChange={(e) => setEditForm({...editForm, desc: e.target.value})} placeholder="Descripción / Concepto" />
+          </div>
+        </div>
+        <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+          <div className="input-with-icon">
+            <User className="input-icon" size={20} />
+            <select className="form-input" value={editForm.user} onChange={(e) => setEditForm({...editForm, user: e.target.value})}>
+              <option value="" disabled>Usuario...</option>
+              {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
+          <label>Comprobante / Foto</label>
+          
+          {editForm.currentImage || editForm.image ? (
+            <div style={{ position: 'relative', display: 'inline-block', width: '100%', textAlign: 'center' }}>
+              <img 
+                src={editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage} 
+                alt="Comprobante actual" 
+                onClick={() => setExpandedImage(editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage)}
+                style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)', cursor: 'pointer' }} 
+              />
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setIsConfirmingImageDelete(true); }}
+                style={{
+                  position: 'absolute', top: '10px', right: '10px', width: '36px', height: '36px', borderRadius: '50%',
+                  backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+                  paddingBottom: '3px'
+                }}
+              >
+                &times;
+              </button>
+            </div>
+          ) : (
+            <label style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '2rem', border: 'none', borderRadius: '8px',
+              backgroundColor: 'white', cursor: 'pointer', color: '#2b3d41', boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+            }}>
+              <Camera size={32} style={{ marginBottom: '0.5rem' }} />
+              <span>Subir comprobante</span>
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setEditForm({...editForm, image: e.target.files[0]})} />
+            </label>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '2rem' }}>
+          <button type="button" onClick={async () => {
+            const finalAmount = editForm.type === 'Retiro' ? -Math.abs(parseFloat(editForm.amount)) : Math.abs(parseFloat(editForm.amount));
+            
+            let imageUrl = editForm.currentImage;
+            if (editForm.image) {
+              const fileExt = editForm.image.name.split('.').pop();
+              const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+              const { error } = await supabase.storage.from('comprobantes').upload(fileName, editForm.image);
+              if (!error) {
+                const { data: publicData } = supabase.storage.from('comprobantes').getPublicUrl(fileName);
+                imageUrl = publicData.publicUrl;
+              }
+            }
+
+            const respUser = users.find(u => u.name === editForm.user);
+            const userId = respUser ? respUser.id : null;
+
+            await supabase.from('transactions').update({
+              amount: finalAmount,
+              type: editForm.type,
+              description: editForm.desc,
+              user_id: userId,
+              image_url: imageUrl
+            }).eq('id', selectedRecord.TransactionID);
+
+            refetchTransactions();
+            setSelectedRecord(null);
+          }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar</button>
+          <button type="button" onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
       {!(isSearchOpen && searchQuery.trim() !== '') && (
@@ -244,186 +397,38 @@ export default function GastoVenta() {
           </thead>
           <tbody>
             {displayRecords.map((r, i) => (
-              <tr 
-                key={r.TransactionID || i} 
-                style={{ cursor: 'pointer' }}
-                onClick={() => {
-                  setSelectedRecord(r);
-                  setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Invertido', image: null, currentImage: r.Imagen || null });
-                  setIsConfirmingDelete(false);
-                }}
-              >
-                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
-                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
-                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
-                  {formatCurrency(Math.abs(r.Amount))}
-                </td>
-                <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
-                  {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
-                </td>
-              </tr>
+              selectedRecord && selectedRecord.TransactionID === r.TransactionID ? (
+                <tr key={r.TransactionID || i}>
+                  <td colSpan="4" style={{ padding: 0 }}>
+                    {renderEditForm()}
+                  </td>
+                </tr>
+              ) : (
+                <tr 
+                  key={r.TransactionID || i} 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    setSelectedRecord(r);
+                    setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Invertido', image: null, currentImage: r.Imagen || null });
+                    setIsConfirmingDelete(false);
+                  }}
+                >
+                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
+                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
+                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
+                    {formatCurrency(Math.abs(r.Amount))}
+                  </td>
+                  <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
+                    {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
+                  </td>
+                </tr>
+              )
             ))}
           </tbody>
         </table>
       </div>
 
-      {selectedRecord && createPortal((
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1000, overflowY: 'auto', padding: '1rem'
-        }}>
-          <div className="card" style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '2rem auto', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
-            
-            {/* Custom Confirm Delete Overlay */}
-            {isConfirmingDelete && (
-              <div style={{
-                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, borderRadius: '8px', padding: '1.5rem'
-              }}>
-                <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', border: '1px solid var(--danger)' }}>
-                  <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas borrar permanentemente esta transacción?</h4>
-                  <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button onClick={() => setIsConfirmingDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
-                    <button onClick={async () => {
-                      await supabase.from('transactions').delete().eq('id', selectedRecord.TransactionID);
-                      refetchTransactions();
-                      setSelectedRecord(null);
-                      setIsConfirmingDelete(false);
-                    }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* Custom Confirm Image Delete Overlay */}
-            {isConfirmingImageDelete && (
-              <div style={{
-                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, borderRadius: '8px', padding: '1.5rem'
-              }}>
-                <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', border: '1px solid var(--danger)' }}>
-                  <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas borrar permanentemente esta imagen?</h4>
-                  <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button onClick={() => setIsConfirmingImageDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
-                    <button onClick={() => {
-                      setEditForm({...editForm, currentImage: null, image: null});
-                      setIsConfirmingImageDelete(false);
-                    }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, color: 'var(--primary)' }}>Editar Transacción</h3>
-            </div>
-            
-            <div style={{ color: 'var(--text-primary)' }}>
-              <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
-                <label>Tipo</label>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Gasto' ? 'var(--primary)' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                    {editForm.type === 'Gasto' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Gasto (invertido)
-                  </button>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Retiro' ? 'var(--primary)' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                    {editForm.type === 'Retiro' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Venta (generado)
-                  </button>
-                </div>
-              </div>
-              <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
-                <div className="input-with-icon">
-                  <DollarSign className="input-icon" size={20} />
-                  <input type="number" step="0.01" className="form-input" value={editForm.amount} onChange={(e) => setEditForm({...editForm, amount: e.target.value})} placeholder="Cantidad / Monto" />
-                </div>
-              </div>
-              <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
-                <div className="input-with-icon">
-                  <AlignLeft className="input-icon" size={20} />
-                  <input type="text" className="form-input" value={editForm.desc} onChange={(e) => setEditForm({...editForm, desc: e.target.value})} placeholder="Descripción / Concepto" />
-                </div>
-              </div>
-              <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
-                <div className="input-with-icon">
-                  <User className="input-icon" size={20} />
-                  <select className="form-input" value={editForm.user} onChange={(e) => setEditForm({...editForm, user: e.target.value})}>
-                    <option value="" disabled>Usuario...</option>
-                    {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-                <label>Comprobante / Foto</label>
-                
-                {editForm.currentImage || editForm.image ? (
-                  <div style={{ position: 'relative', display: 'inline-block', width: '100%', textAlign: 'center' }}>
-                    <img 
-                      src={editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage} 
-                      alt="Comprobante actual" 
-                      onClick={() => setExpandedImage(editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage)}
-                      style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)', cursor: 'pointer' }} 
-                    />
-                    <button 
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setIsConfirmingImageDelete(true); }}
-                      style={{
-                        position: 'absolute', top: '10px', right: '10px', width: '36px', height: '36px', borderRadius: '50%',
-                        backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
-                        paddingBottom: '3px'
-                      }}
-                    >
-                      &times;
-                    </button>
-                  </div>
-                ) : (
-                  <label style={{
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    padding: '2rem', border: 'none', borderRadius: '8px',
-                    backgroundColor: 'white', cursor: 'pointer', color: '#2b3d41', boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-                  }}>
-                    <Camera size={32} style={{ marginBottom: '0.5rem' }} />
-                    <span>Subir comprobante</span>
-                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setEditForm({...editForm, image: e.target.files[0]})} />
-                  </label>
-                )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '2rem' }}>
-                <button onClick={async () => {
-                  const finalAmount = editForm.type === 'Retiro' ? -Math.abs(parseFloat(editForm.amount)) : Math.abs(parseFloat(editForm.amount));
-                  
-                  let imageUrl = editForm.currentImage;
-                  if (editForm.image) {
-                    const fileExt = editForm.image.name.split('.').pop();
-                    const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-                    const { error } = await supabase.storage.from('comprobantes').upload(fileName, editForm.image);
-                    if (!error) {
-                      const { data: publicData } = supabase.storage.from('comprobantes').getPublicUrl(fileName);
-                      imageUrl = publicData.publicUrl;
-                    }
-                  }
-
-                  const respUser = users.find(u => u.name === editForm.user);
-                  const userId = respUser ? respUser.id : null;
-
-                  await supabase.from('transactions').update({
-                    amount: finalAmount,
-                    type: editForm.type,
-                    description: editForm.desc,
-                    user_id: userId,
-                    image_url: imageUrl
-                  }).eq('id', selectedRecord.TransactionID);
-
-                  refetchTransactions();
-                  setSelectedRecord(null);
-                }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
-                <button onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ), document.body)}
       {expandedImage && createPortal((
         <div style={{
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
