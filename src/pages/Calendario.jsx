@@ -96,7 +96,7 @@ export default function Calendario() {
     setNewStartTime(ev["Start Time"] ? ev["Start Time"].substring(0,5) : '08:00');
     setNewEndTime(ev["End Time"] ? ev["End Time"].substring(0,5) : '09:00');
     setNewCategory(ev.Category || '');
-    setNewResponsible(ev.Responsible || 'Ariel');
+    setNewResponsible(ev.Responsible === 'Sin Asignar' ? '' : ev.Responsible);
     setNewInfo(ev.Info || '');
     setIsFormOpen(true);
     const mainContent = document.querySelector('.main-content');
@@ -171,7 +171,7 @@ export default function Calendario() {
           backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1000, overflowY: 'auto', padding: '1rem'
         }}>
           <div className="card" style={{ position: 'relative', width: '100%', maxWidth: '400px', margin: '2rem auto', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem' }}>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem', color: 'var(--primary)' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h3>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.5rem', color: 'white' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h3>
             <form onSubmit={handleAddEvent}>
             
             <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.2rem' }}>
@@ -325,7 +325,7 @@ export default function Calendario() {
           displayEvents.map((ev, i) => {
             const evColor = categoryColors[ev.Category] || 'var(--primary)';
             return (
-              <div key={i} className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', marginBottom: '0.5rem', border: `1px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
+              <div key={i} className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', marginBottom: '0.5rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <strong style={{ fontSize: '1.1rem', color: evColor }}>{ev.Category}</strong>
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
@@ -350,6 +350,12 @@ export default function Calendario() {
         <button 
           onClick={() => {
             setNewDate(format(selectedDate, 'yyyy-MM-dd'));
+            setNewEndDate(format(selectedDate, 'yyyy-MM-dd'));
+            setNewStartTime('08:00');
+            setNewEndTime('09:00');
+            setNewCategory('');
+            setNewResponsible('');
+            setNewInfo('');
             setEditingEvent(null);
             setIsFormOpen(true);
             const mainContent = document.querySelector('.main-content');
