@@ -234,12 +234,12 @@ export default function Calendario() {
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
           {/* Calendar Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', marginBottom: '1rem' }}>
-            <button onClick={prevMonth} style={{ fontSize: '1.5rem', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#ccc', color: 'black', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&lt;</button>
-            <h2 style={{ textTransform: 'capitalize', margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
-              {format(currentMonth, 'MMMM yyyy', { locale: es })}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <button onClick={prevMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>◀</button>
+            <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+              {format(currentMonth, 'MMMM yyyy', { locale: es }).toUpperCase()}
             </h2>
-            <button onClick={nextMonth} style={{ fontSize: '1.5rem', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#ccc', color: 'black', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', paddingBottom: '3px' }}>&gt;</button>
+            <button onClick={nextMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>▶</button>
           </div>
 
           {/* Calendar Grid */}
