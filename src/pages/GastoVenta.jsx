@@ -135,10 +135,10 @@ export default function GastoVenta() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '0.5rem'
+                position: 'relative'
               }}
             >
-              {type === 'Gasto' && <CheckCircle2 size={20} fill="var(--primary)" color="white" />}
+              {type === 'Gasto' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />}
               Gasto (invertido)
             </button>
             <button 
@@ -158,10 +158,10 @@ export default function GastoVenta() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '0.5rem'
+                position: 'relative'
               }}
             >
-              {type === 'Retiro' && <CheckCircle2 size={20} fill="var(--primary)" color="white" />}
+              {type === 'Retiro' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />}
               Venta (generado)
             </button>
           </div>
@@ -341,11 +341,11 @@ export default function GastoVenta() {
               <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
                 <label>Tipo</label>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Gasto' ? '#2b3d41' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                    {editForm.type === 'Gasto' && <CheckCircle2 size={20} fill="var(--primary)" color="white" />} Gasto (invertido)
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Gasto' ? '#2b3d41' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    {editForm.type === 'Gasto' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Gasto (invertido)
                   </button>
-                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Retiro' ? '#2b3d41' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                    {editForm.type === 'Retiro' && <CheckCircle2 size={20} fill="var(--primary)" color="white" />} Venta (generado)
+                  <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Retiro' ? '#2b3d41' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                    {editForm.type === 'Retiro' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Venta (generado)
                   </button>
                 </div>
               </div>
