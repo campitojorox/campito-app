@@ -255,7 +255,7 @@ export default function GastoVenta() {
                 <td>{r.Date ? r.Date.split(' ')[0] : ''}</td>
                 <td>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
                 <td style={{ color: r.Amount < 0 ? 'var(--success)' : 'var(--text-secondary)' }}>
-                  {formatCurrency(r.Amount)}
+                  {formatCurrency(Math.abs(r.Amount))}
                 </td>
                 <td>
                   <span className={`category-badge ${r.Category === 'Gasto' ? 'danger' : 'success'}`}>
