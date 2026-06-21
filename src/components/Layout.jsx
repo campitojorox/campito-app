@@ -14,6 +14,7 @@ export default function Layout({ session }) {
   const [editingUser, setEditingUser] = useState(null);
   const [userForm, setUserForm] = useState({ name: '', email: '', password: '' });
   const [isConfirmingDeleteUser, setIsConfirmingDeleteUser] = useState(false);
+  const [isConfirmingSignOut, setIsConfirmingSignOut] = useState(false);
   const { users, events, transactions, refetchUsers, refetchEvents, refetchTransactions } = useDataCache();
   const [isManagingUser, setIsManagingUser] = useState(false);
   const [manageUserError, setManageUserError] = useState('');
@@ -70,6 +71,28 @@ export default function Layout({ session }) {
         </div>
       </header>
 
+      {/* Logout Confirmation Modal */}
+      {isConfirmingSignOut && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 5000, padding: '1.5rem'
+        }}>
+          <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', maxWidth: '400px', border: '1px solid var(--danger)' }}>
+            <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas cerrar sesión?</h4>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button onClick={() => setIsConfirmingSignOut(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
+              <button onClick={async () => {
+                await supabase.auth.signOut();
+                setIsConfirmingSignOut(false);
+                setIsMenuOpen(false);
+              }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>
+                Desconectar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar Drawer */}
       {isMenuOpen && (
         <div style={{
@@ -120,10 +143,7 @@ export default function Layout({ session }) {
             </div>
             
             <div style={{ marginTop: 'auto' }}>
-              <button onClick={async () => {
-                await supabase.auth.signOut();
-                setIsMenuOpen(false);
-              }} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}>
+              <button onClick={() => setIsConfirmingSignOut(true)} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--danger)', color: 'white', border: 'none' }}>
                 Desconectar
               </button>
             </div>
