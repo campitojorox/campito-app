@@ -97,7 +97,7 @@ export default function Layout({ session }) {
                 }}
               >
                 {needRefresh ? <RefreshCw size={20} /> : <CheckCircle size={20} />}
-                {needRefresh ? 'Actualizar' : 'OK! Actualizado'}
+                {needRefresh ? 'Actualizar' : 'Actualizado'}
               </button>
             </div>
             
