@@ -1,29 +1,137 @@
-import React, { useState } from 'react';
-import { Pencil, Navigation, Copy, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Pencil, Navigation, Copy, X, Crosshair } from 'lucide-react';
+import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import { kml } from '@tmcw/togeojson';
+import { DOMParser } from '@xmldom/xmldom';
+import L from 'leaflet';
+
+// Componente para manejar el punto de GPS y el botón de centrar
+function GpsTracker() {
+  const [position, setPosition] = useState(null);
+  const map = useMap();
+
+  useEffect(() => {
+    // Pedir ubicación constantemente
+    map.locate({ watch: true, enableHighAccuracy: true });
+    
+    map.on('locationfound', (e) => {
+      setPosition(e.latlng);
+    });
+
+    map.on('locationerror', (e) => {
+      console.warn("GPS Error:", e.message);
+    });
+  }, [map]);
+
+  return (
+    <>
+      {position && (
+        <L.circleMarker 
+          center={position} 
+          pathOptions={{ color: 'white', fillColor: '#4285F4', fillOpacity: 1, weight: 2 }} 
+          radius={7} 
+        />
+      )}
+      
+      <button 
+        onClick={() => {
+          if (position) {
+            map.flyTo(position, 16);
+          } else {
+            map.locate({ setView: true, enableHighAccuracy: true });
+          }
+        }}
+        style={{
+          position: 'absolute',
+          bottom: '20px',
+          right: '20px',
+          zIndex: 1000,
+          backgroundColor: 'white',
+          border: 'none',
+          borderRadius: '50%',
+          width: '44px',
+          height: '44px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+          cursor: 'pointer'
+        }}
+        title="Centrar en mi ubicación"
+      >
+        <Crosshair size={24} color="#666" />
+      </button>
+    </>
+  );
+}
+
+// Convertir GeoJSON points a Leaflet Layers
+const pointToLayer = (feature, latlng) => {
+  return L.circleMarker(latlng, {
+    radius: 6,
+    fillColor: feature.properties['marker-color'] || '#ff0000',
+    color: '#fff',
+    weight: 2,
+    opacity: 1,
+    fillOpacity: 0.8
+  });
+};
+
+// Estilos de las líneas extraídos del KML
+const featureStyle = (feature) => {
+  return {
+    color: feature.properties.stroke || '#ff0000',
+    weight: feature.properties['stroke-width'] || 3,
+    opacity: feature.properties['stroke-opacity'] || 1,
+    fillColor: feature.properties.fill || '#ff0000',
+    fillOpacity: feature.properties['fill-opacity'] || 0.2,
+  };
+};
 
 export default function Mapas() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [geoData, setGeoData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Nuevo mapa
-  const iframeUrl = 'https://www.google.com/maps/d/embed?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
-  
   // Link de edición
   const editUrl = 'https://www.google.com/maps/d/u/1/edit?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
   
-  // Link del visor (Navigation)
+  // Link del visor nativo (Navigation)
   const viewerUrl = 'https://www.google.com/maps/d/viewer?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
-  
-  // Satélite
-  const finalIframeUrl = iframeUrl + '&t=k';
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(editUrl);
     alert('¡Enlace copiado! Pégalo en Safari o Chrome.');
   };
 
+  useEffect(() => {
+    const fetchKML = async () => {
+      try {
+        setLoading(true);
+        // Llamamos a nuestro proxy interno en Vercel
+        const response = await fetch('/api/get-kml');
+        if (!response.ok) throw new Error("Error al descargar KML");
+        const kmlText = await response.text();
+        
+        // Convertir KML a GeoJSON
+        const parser = new DOMParser();
+        const kmlDom = parser.parseFromString(kmlText, 'text/xml');
+        const converted = kml(kmlDom);
+        
+        setGeoData(converted);
+      } catch (err) {
+        console.error("Error loading KML", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchKML();
+  }, []);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      {/* Contenedor de botones flotantes */}
+      {/* Contenedor de botones flotantes (Opciones de My Maps) */}
       <div style={{
         position: 'absolute',
         top: '16px',
@@ -48,9 +156,7 @@ export default function Mapas() {
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            boxShadow: '0 4px 10px rgba(0,0,0,0.4)',
-            opacity: iframeUrl === 'PLACEHOLDER_MAP_URL' ? 0.5 : 1,
-            pointerEvents: iframeUrl === 'PLACEHOLDER_MAP_URL' ? 'none' : 'auto'
+            boxShadow: '0 4px 10px rgba(0,0,0,0.4)'
           }}
           title="Abrir en Google Maps para Navegar"
         >
@@ -70,9 +176,7 @@ export default function Mapas() {
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            boxShadow: '0 4px 10px rgba(0,0,0,0.4)',
-            opacity: iframeUrl === 'PLACEHOLDER_MAP_URL' ? 0.5 : 1,
-            pointerEvents: iframeUrl === 'PLACEHOLDER_MAP_URL' ? 'none' : 'auto'
+            boxShadow: '0 4px 10px rgba(0,0,0,0.4)'
           }}
           title="Opciones de Edición"
         >
@@ -103,32 +207,40 @@ export default function Mapas() {
                 Intentar Abrir Forzado
               </a>
             </div>
-            <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '1rem', textAlign: 'center' }}>
-              Truco: Mantén presionado el botón azul de arriba y elige "Abrir en pestaña nueva".
-            </p>
           </div>
         </div>
       )}
 
-      {iframeUrl === 'PLACEHOLDER_MAP_URL' ? (
-        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--surface)', color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
-          <p>Esperando el enlace de inserción de Google My Maps...</p>
+      {loading ? (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--surface)', color: 'var(--text-secondary)' }}>
+          <p>Sincronizando capas topográficas...</p>
         </div>
       ) : (
-        <div style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
-          <iframe 
-            src={finalIframeUrl} 
-            width="100%" 
-            height="100%" 
-            style={{ 
-              border: 'none', 
-              backgroundColor: '#fff', 
-              display: 'block',
-              marginTop: '-100px', // Oculta la tarjeta superior completa de Google
-              height: 'calc(100% + 116px)' // 100px compensan arriba, y 16px extras hunden la franja blanca suavemente
-            }}
-            title="Google Maps"
-          ></iframe>
+        <div style={{ width: '100%', height: '100%' }}>
+          <MapContainer 
+            center={[36.758913, -4.869032]} // Centro por defecto (Campito Jorox)
+            zoom={13} 
+            style={{ width: '100%', height: '100%', zIndex: 1 }}
+            zoomControl={false} // Desactivamos el zoom por defecto para moverlo
+          >
+            {/* Capa de Satélite de Alta Resolución de Esri (Gratuita) */}
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+            />
+            
+            {/* Dibujar las líneas y polígonos del KML */}
+            {geoData && (
+              <GeoJSON 
+                data={geoData} 
+                style={featureStyle} 
+                pointToLayer={pointToLayer} 
+              />
+            )}
+
+            {/* Radar GPS y Punto Azul */}
+            <GpsTracker />
+          </MapContainer>
         </div>
       )}
     </div>
