@@ -1,6 +1,6 @@
 import { useState, Suspense } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle, Globe } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -33,10 +33,12 @@ export default function Layout({ session }) {
   });
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
+  const isMapasPage = location.pathname === '/mapas';
 
   return (
     <div className="app-container">
       {/* Top App Bar mimicking AppSheet */}
+      {!isMapasPage && (
       <header className="app-header" style={{ padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
@@ -70,6 +72,7 @@ export default function Layout({ session }) {
           )}
         </div>
       </header>
+      )}
 
       {/* Logout Confirmation Modal */}
       {isConfirmingSignOut && (
@@ -312,7 +315,7 @@ export default function Layout({ session }) {
         </div>
       )}
 
-      <main className="main-content">
+      <main className={`main-content ${isMapasPage ? 'no-padding' : ''}`}>
         <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>Cargando página...</div>}>
           <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users, events, transactions, refetchUsers, refetchEvents, refetchTransactions, currentUser }} />
         </Suspense>
@@ -328,6 +331,9 @@ export default function Layout({ session }) {
         </NavLink>
         <NavLink to="/resumen" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <BarChart2 size={32} style={{ display: 'block', margin: '0 auto' }} />
+        </NavLink>
+        <NavLink to="/mapas" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <Globe size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
       </nav>
     </div>

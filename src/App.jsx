@@ -9,6 +9,7 @@ import './index.css';
 const Calendario = lazy(() => import('./pages/Calendario'));
 const Resumen = lazy(() => import('./pages/Resumen'));
 const GastoVenta = lazy(() => import('./pages/GastoVenta'));
+const Mapas = lazy(() => import('./pages/Mapas'));
 
 function App() {
   const [session, setSession] = useState(null);
@@ -72,6 +73,7 @@ function App() {
           <Route path="calendario" element={<Calendario />} />
           <Route path="gasto-venta" element={<GastoVenta />} />
           <Route path="resumen" element={<Resumen />} />
+          <Route path="mapas" element={<Mapas />} />
         </Route>
       </Routes>
       </BrowserRouter>
