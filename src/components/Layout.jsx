@@ -1,8 +1,9 @@
 import { useState, Suspense } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 
 export default function Layout({ session }) {
   const location = useLocation();
@@ -17,6 +18,18 @@ export default function Layout({ session }) {
   const [isManagingUser, setIsManagingUser] = useState(false);
   const [manageUserError, setManageUserError] = useState('');
   const [manageUserSuccess, setManageUserSuccess] = useState('');
+  
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered(r) {
+      console.log('SW Registered: ', r);
+    },
+    onRegisterError(error) {
+      console.log('SW registration error', error);
+    },
+  });
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
 
@@ -67,6 +80,24 @@ export default function Layout({ session }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <button onClick={() => { setIsMenuOpen(false); setIsUsersModalOpen(true); }} className="btn btn-secondary" style={{ width: '100%', margin: 0, backgroundColor: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
                 Gestionar Usuarios
+              </button>
+              <button 
+                onClick={() => {
+                  if (needRefresh) {
+                    updateServiceWorker(true);
+                  }
+                }} 
+                disabled={!needRefresh}
+                className={`btn ${needRefresh ? 'btn-primary' : 'btn-secondary'}`} 
+                style={{ 
+                  width: '100%', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', 
+                  backgroundColor: needRefresh ? 'var(--primary)' : 'var(--surface)', 
+                  color: needRefresh ? 'white' : 'var(--text-primary)', 
+                  border: '1px solid var(--border)' 
+                }}
+              >
+                {needRefresh ? <RefreshCw size={20} /> : <CheckCircle size={20} />}
+                {needRefresh ? 'Actualizar' : 'OK! Actualizado'}
               </button>
             </div>
             

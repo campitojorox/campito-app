@@ -49,7 +49,7 @@ export default defineConfig({
     react(),
     vercelApiMock(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['icon-192x192.png', 'icon-512x512.png'],
       manifest: {
         name: 'Campito Jorox',
