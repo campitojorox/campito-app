@@ -137,7 +137,7 @@ export default function Layout({ session }) {
                   border: '1px solid var(--border)' 
                 }}
               >
-                {needRefresh ? <RefreshCw size={20} /> : <CheckCircle size={20} />}
+                {needRefresh ? <RefreshCw size={20} className="icon-pulse" /> : <CheckCircle size={20} />}
                 {needRefresh ? 'Actualizar' : 'Actualizado'}
               </button>
             </div>
