@@ -1,6 +1,6 @@
 import { useState, Suspense } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle, Globe } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle, Globe, Copy } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -19,6 +19,12 @@ export default function Layout({ session }) {
   const [isManagingUser, setIsManagingUser] = useState(false);
   const [manageUserError, setManageUserError] = useState('');
   const [manageUserSuccess, setManageUserSuccess] = useState('');
+  const [isMapasModalOpen, setIsMapasModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  
+  const viewerUrl = 'https://www.google.com/maps/d/viewer?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
+  const editUrl = 'https://www.google.com/maps/d/u/1/edit?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
+  const generalUrl = 'https://www.google.com/maps';
   
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -33,12 +39,10 @@ export default function Layout({ session }) {
   });
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
-  const isMapasPage = location.pathname === '/mapas';
 
   return (
     <div className="app-container">
       {/* Top App Bar mimicking AppSheet */}
-      {!isMapasPage && (
       <header className="app-header" style={{ padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
@@ -72,7 +76,6 @@ export default function Layout({ session }) {
           )}
         </div>
       </header>
-      )}
 
       {/* Logout Confirmation Modal */}
       {isConfirmingSignOut && (
@@ -158,6 +161,64 @@ export default function Layout({ session }) {
               <button onClick={() => setIsConfirmingSignOut(true)} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--danger)', color: 'white', border: 'none' }}>
                 Desconectar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mapas Modal */}
+      {isMapasModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 4000, padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', position: 'relative' }}>
+            <button onClick={() => setIsMapasModalOpen(false)} style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
+              <X size={24} />
+            </button>
+            <h3 style={{ color: 'var(--primary)', marginTop: 0, marginBottom: '1.5rem', textAlign: 'center' }}>Mapas</h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <a href={generalUrl} target="_blank" rel="noopener noreferrer" onClick={() => setIsMapasModalOpen(false)} className="btn btn-primary" style={{ margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#4285F4', border: 'none' }}>
+                Abrir Google Maps
+              </a>
+              <a href={viewerUrl} target="_blank" rel="noopener noreferrer" onClick={() => setIsMapasModalOpen(false)} className="btn btn-primary" style={{ margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                Cargar Mapa Campito Jorox
+              </a>
+              <button onClick={() => { setIsMapasModalOpen(false); setIsEditModalOpen(true); }} className="btn btn-secondary" style={{ margin: 0, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)' }}>
+                Editar Mapas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Editar Mapas Modal */}
+      {isEditModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 5000, padding: '1rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', position: 'relative' }}>
+            <button onClick={() => setIsEditModalOpen(false)} style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
+              <X size={24} />
+            </button>
+            <h3 style={{ color: 'var(--primary)', marginTop: 0, marginBottom: '1rem' }}>Editar Mapa en Móvil</h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              Los celulares abren automáticamente la App de Google Maps, la cual <strong>no permite editar</strong>. Para ver las herramientas de dibujo, debes usar el navegador (Safari o Chrome) y pedir la <strong>"Vista de Computadora"</strong>.
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '1.5rem' }}>
+              <button onClick={() => {
+                navigator.clipboard.writeText(editUrl);
+                alert('¡Enlace copiado! Pégalo en Safari o Chrome.');
+              }} className="btn" style={{ margin: 0, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <Copy size={18} /> Copiar Enlace
+              </button>
+              <a href={editUrl} target="_blank" rel="noopener noreferrer" onClick={() => setIsEditModalOpen(false)} className="btn btn-primary" style={{ margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                Intentar Abrir Forzado
+              </a>
             </div>
           </div>
         </div>
@@ -315,7 +376,7 @@ export default function Layout({ session }) {
         </div>
       )}
 
-      <main className={`main-content ${isMapasPage ? 'no-padding' : ''}`}>
+      <main className="main-content">
         <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>Cargando página...</div>}>
           <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users, events, transactions, refetchUsers, refetchEvents, refetchTransactions, currentUser }} />
         </Suspense>
@@ -332,9 +393,9 @@ export default function Layout({ session }) {
         <NavLink to="/resumen" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <BarChart2 size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
-        <NavLink to="/mapas" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <div className="nav-item" style={{ cursor: 'pointer' }} onClick={() => setIsMapasModalOpen(true)}>
           <Globe size={32} style={{ display: 'block', margin: '0 auto' }} />
-        </NavLink>
+        </div>
       </nav>
     </div>
   );
