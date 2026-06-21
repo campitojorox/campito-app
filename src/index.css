@@ -247,3 +247,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
   z-index: 100;
 }
+
+#portrait-lock-overlay {
+  display: none;
+}
+
+@media screen and (orientation: landscape) and (max-width: 950px) {
+  #portrait-lock-overlay {
+    display: flex !important;
+  }
+  .app-container {
+    display: none !important;
+  }
+}

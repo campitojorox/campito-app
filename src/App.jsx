@@ -44,7 +44,28 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    <>
+      <div id="portrait-lock-overlay" style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'var(--bg-color)',
+        zIndex: 9999,
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        color: 'white',
+        textAlign: 'center',
+        padding: '2rem'
+      }}>
+        <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📱</div>
+        <h2 style={{ color: 'var(--primary)', marginBottom: '1rem' }}>Modo Vertical</h2>
+        <p style={{ color: 'var(--text-secondary)' }}>Por favor, gira tu teléfono. Esta aplicación está diseñada para usarse exclusivamente en orientación vertical.</p>
+      </div>
+
+      <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout session={session} />}>
           <Route index element={<Navigate to="/calendario" replace />} />
@@ -53,7 +74,8 @@ function App() {
           <Route path="resumen" element={<Resumen />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </>
   );
 }
 
