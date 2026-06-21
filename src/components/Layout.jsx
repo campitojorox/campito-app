@@ -143,7 +143,7 @@ export default function Layout({ session }) {
             </div>
             
             <div style={{ marginTop: 'auto' }}>
-              <button onClick={() => setIsConfirmingSignOut(true)} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--danger)', color: 'white', border: 'none' }}>
+              <button onClick={() => setIsConfirmingSignOut(true)} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--success)', color: 'white', border: 'none' }}>
                 Desconectar
               </button>
             </div>
