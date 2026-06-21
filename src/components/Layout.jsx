@@ -38,8 +38,26 @@ export default function Layout({ session }) {
       {/* Top App Bar mimicking AppSheet */}
       <header className="app-header" style={{ padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button style={{ color: 'white' }} onClick={() => setIsMenuOpen(true)}>
+          <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
             <MenuIcon size={24} />
+            {needRefresh && (
+              <span style={{
+                position: 'absolute',
+                top: '-6px',
+                right: '-8px',
+                backgroundColor: 'var(--primary)',
+                color: 'white',
+                borderRadius: '50%',
+                width: '18px',
+                height: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                border: '2px solid var(--bg-color)'
+              }}>!</span>
+            )}
           </button>
           <Trees size={32} color="var(--primary)" />
         </div>
