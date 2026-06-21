@@ -15,6 +15,12 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+      window.screen.orientation.lock("portrait").catch((err) => {
+        console.warn("Screen orientation lock failed: ", err);
+      });
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);

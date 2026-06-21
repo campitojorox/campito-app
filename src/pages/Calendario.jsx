@@ -12,6 +12,16 @@ const categoryColors = {
   'OTRO': '#f97316' // Naranjo (Tailwind orange-500)
 };
 
+const formatDateToDDMMYY = (dateStr) => {
+  if (!dateStr) return '';
+  const datePart = dateStr.split(' ')[0]; // "YYYY-MM-DD"
+  const parts = datePart.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1]}-${parts[0].slice(2)}`;
+  }
+  return datePart;
+};
+
 export default function Calendario() {
   const context = useOutletContext();
   const isSearchOpen = context?.isSearchOpen || false;
@@ -19,6 +29,7 @@ export default function Calendario() {
   const users = context?.users || [];
   const rawEvents = context?.events || [];
   const refetchEvents = context?.refetchEvents || (() => {});
+  const currentUser = context?.currentUser || 'Usuario Login';
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -320,7 +331,7 @@ export default function Calendario() {
       {isFormOpen && !editingEvent && renderForm()}
 
       {/* Event List for Selected Day or Search Results */}
-      <div style={{ marginTop: '3rem' }}>
+      <div style={{ marginTop: '3rem', paddingBottom: '6rem' }}>
         {(isSearchOpen && searchQuery.trim() !== '') && (
           <h3 style={{ fontSize: '1rem', color: 'white', marginBottom: '1rem' }}>
             Resultados de búsqueda ({displayEvents.length})
@@ -340,16 +351,18 @@ export default function Calendario() {
                   <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <strong style={{ fontSize: '1.1rem', color: evColor }}>{ev.Category}</strong>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'right' }}>
-                        {ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''} - {ev["End Time"] ? ev["End Time"].substring(0,5) : ''}
-                      </div>
                     </div>
                     <p style={{ margin: '0.5rem 0', color: 'var(--text-primary)' }}>{ev.Info || 'Sin detalles adicionales'}</p>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                      <small style={{ color: 'var(--text-secondary)' }}>Usuario: <span style={{ color: 'var(--text-primary)' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
-                      {ev["End Date"] && ev["End Date"] !== ev.Date && (
-                        <small style={{ color: 'var(--text-secondary)' }}>Hasta: {ev["End Date"].split(' ')[0]}</small>
-                      )}
+                    <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0.75rem -1rem' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '0.5rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem' }}>
+                        <small style={{ color: 'var(--text-secondary)' }}>Desde: <span style={{ color: 'var(--text-primary)' }}>{formatDateToDDMMYY(ev.Date)}</span> / <span style={{ color: 'var(--text-primary)' }}>{ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''}</span></small>
+                        <small style={{ color: 'var(--text-secondary)' }}>Hasta: <span style={{ color: 'var(--text-primary)' }}>{formatDateToDDMMYY(ev["End Date"] || ev.Date)}</span> / <span style={{ color: 'var(--text-primary)' }}>{ev["End Time"] ? ev["End Time"].substring(0,5) : ''}</span></small>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem', textAlign: 'right' }}>
+                        <small style={{ color: 'var(--text-secondary)' }}>Usuario: <span style={{ color: 'var(--text-primary)' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
+                        <small style={{ color: 'var(--text-secondary)' }}>por: <span style={{ color: 'var(--text-primary)' }}>{currentUser}</span></small>
+                      </div>
                     </div>
                   </div>
                 )}
