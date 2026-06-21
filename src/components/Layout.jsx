@@ -96,7 +96,7 @@ export default function Layout({ session }) {
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <button onClick={() => { setIsMenuOpen(false); setIsUsersModalOpen(true); }} className="btn btn-secondary" style={{ width: '100%', margin: 0, backgroundColor: 'var(--surface)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+              <button onClick={() => { setIsMenuOpen(false); setIsUsersModalOpen(true); }} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}>
                 Gestionar Usuarios
               </button>
               <button 
@@ -123,7 +123,7 @@ export default function Layout({ session }) {
               <button onClick={async () => {
                 await supabase.auth.signOut();
                 setIsMenuOpen(false);
-              }} className="btn btn-secondary" style={{ width: '100%', margin: 0, backgroundColor: 'var(--surface)', color: 'var(--danger)', border: '1px solid var(--border)' }}>
+              }} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}>
                 Desconectar
               </button>
             </div>
