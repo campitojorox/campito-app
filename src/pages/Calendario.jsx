@@ -4,7 +4,7 @@ import { useOutletContext } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '../supabaseClient';
-import { Plus, Calendar, Clock, Tag, User, AlignLeft } from 'lucide-react';
+import { Plus, Calendar, Clock, User, AlignLeft, CheckCircle2 } from 'lucide-react';
 
 const categoryColors = {
   'RIEGO': '#38bdf8', // Azul claro (Tailwind sky-400)
@@ -43,6 +43,7 @@ export default function Calendario() {
   const [newStartTime, setNewStartTime] = useState('08:00');
   const [newEndTime, setNewEndTime] = useState('09:00');
   const [newCategory, setNewCategory] = useState('');
+  const [newSubcategory, setNewSubcategory] = useState('');
   const [newResponsible, setNewResponsible] = useState('');
   const [newInfo, setNewInfo] = useState('');
 
@@ -68,6 +69,18 @@ export default function Calendario() {
   const handleAddEvent = async (e) => {
     e.preventDefault();
     
+    if (!newCategory) {
+      alert("Por favor, selecciona una categoría.");
+      return;
+    }
+
+    if (newCategory === 'RIEGO' && !newSubcategory) {
+      alert("Por favor, selecciona una subcategoría para Riego (La Nana o El Moro).");
+      return;
+    }
+
+    const finalCategory = newCategory === 'RIEGO' ? `RIEGO - ${newSubcategory}` : newCategory;
+
     // Find responsible_id from the user's selected name (newResponsible)
     const respUser = users.find(u => u.name === newResponsible);
     const respId = respUser ? respUser.id : null;
@@ -77,7 +90,7 @@ export default function Calendario() {
       end_date: newEndDate + "T00:00:00Z",
       start_time: newStartTime + ":00",
       end_time: newEndTime + ":00",
-      category: newCategory,
+      category: finalCategory,
       responsible_id: respId,
       info: newInfo
     };
@@ -99,7 +112,18 @@ export default function Calendario() {
     setNewEndDate(ev["End Date"] ? ev["End Date"].split(' ')[0] : format(selectedDate, 'yyyy-MM-dd'));
     setNewStartTime(ev["Start Time"] ? ev["Start Time"].substring(0,5) : '08:00');
     setNewEndTime(ev["End Time"] ? ev["End Time"].substring(0,5) : '09:00');
-    setNewCategory(ev.Category || '');
+    
+    const cat = ev.Category || '';
+    if (cat.startsWith('RIEGO')) {
+      setNewCategory('RIEGO');
+      if (cat.includes('La Nana')) setNewSubcategory('La Nana');
+      else if (cat.includes('El Moro')) setNewSubcategory('El Moro');
+      else setNewSubcategory('');
+    } else {
+      setNewCategory(cat);
+      setNewSubcategory('');
+    }
+
     setNewResponsible(ev.Responsible === 'Sin Asignar' ? '' : ev.Responsible);
     setNewInfo(ev.Info || '');
     setIsFormOpen(true);
@@ -153,6 +177,37 @@ export default function Calendario() {
     return (isSearchOpen && searchQuery.trim() !== '') ? searchResults : selectedDayEvents;
   }, [isSearchOpen, searchQuery, searchResults, selectedDayEvents]);
 
+  const lastEventsStats = useMemo(() => {
+    let lastNana = null;
+    let lastMoro = null;
+    let lastMant = null;
+    
+    let lastNanaEv = null;
+    let lastMoroEv = null;
+    let lastMantEv = null;
+
+    events.forEach(ev => {
+      if (!ev.Date) return;
+      const evDate = new Date(ev.Date.split(' ')[0]);
+      
+      if (ev.Category === 'RIEGO - La Nana') {
+        if (!lastNana || evDate > lastNana) { lastNana = evDate; lastNanaEv = ev; }
+      } else if (ev.Category === 'RIEGO - El Moro') {
+        if (!lastMoro || evDate > lastMoro) { lastMoro = evDate; lastMoroEv = ev; }
+      } else if (ev.Category === 'MANTENIMIENTO') {
+        if (!lastMant || evDate > lastMant) { lastMant = evDate; lastMantEv = ev; }
+      }
+    });
+
+    return {
+      nanaDate: lastNana ? format(lastNana, 'dd/MM/yyyy') : 'N/A',
+      nanaEvent: lastNanaEv,
+      moroDate: lastMoro ? format(lastMoro, 'dd/MM/yyyy') : 'N/A',
+      moroEvent: lastMoroEv,
+      mantDate: lastMant ? format(lastMant, 'dd/MM/yyyy') : 'N/A',
+      mantEvent: lastMantEv
+    };
+  }, [events]);
 
   const renderForm = () => (
     <div id="event-form">
@@ -197,17 +252,128 @@ export default function Calendario() {
               </div>
             </div>
 
-            <div className="form-group" style={{ padding: 0 }}>
-              <div className="input-with-icon">
-                <Tag className="input-icon" size={20} />
-                <select className="form-input" required value={newCategory} onChange={(e) => { e.target.setCustomValidity(''); setNewCategory(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona una categoría')}>
-                  <option value="" disabled>Categoría...</option>
-                  <option value="RIEGO">Riego</option>
-                  <option value="MANTENIMIENTO">Mantenimiento</option>
-                  <option value="OTRO">Otro</option>
-                </select>
-              </div>
+            <div className="form-group" style={{ padding: 0, marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
+              <button 
+                type="button"
+                onClick={() => setNewCategory('RIEGO')}
+                style={{
+                  flex: 1,
+                  padding: '0.8rem 0.2rem',
+                  borderRadius: '8px',
+                  border: newCategory === 'RIEGO' ? `2px solid ${categoryColors['RIEGO']}` : `2px solid transparent`,
+                  backgroundColor: newCategory === 'RIEGO' ? 'transparent' : categoryColors['RIEGO'],
+                  color: newCategory === 'RIEGO' ? categoryColors['RIEGO'] : 'white',
+                  fontWeight: '600',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative'
+                }}
+              >
+                {newCategory === 'RIEGO' && <CheckCircle2 size={18} fill="white" color={categoryColors['RIEGO']} style={{ marginRight: '0.3rem' }} />}
+                Riego
+              </button>
+              <button 
+                type="button"
+                onClick={() => setNewCategory('MANTENIMIENTO')}
+                style={{
+                  flex: 1,
+                  padding: '0.8rem 0.2rem',
+                  borderRadius: '8px',
+                  border: newCategory === 'MANTENIMIENTO' ? `2px solid ${categoryColors['MANTENIMIENTO']}` : `2px solid transparent`,
+                  backgroundColor: newCategory === 'MANTENIMIENTO' ? 'transparent' : categoryColors['MANTENIMIENTO'],
+                  color: newCategory === 'MANTENIMIENTO' ? categoryColors['MANTENIMIENTO'] : 'white',
+                  fontWeight: '600',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative'
+                }}
+              >
+                {newCategory === 'MANTENIMIENTO' && <CheckCircle2 size={18} fill="white" color={categoryColors['MANTENIMIENTO']} style={{ marginRight: '0.3rem' }} />}
+                Mant.
+              </button>
+              <button 
+                type="button"
+                onClick={() => setNewCategory('OTRO')}
+                style={{
+                  flex: 1,
+                  padding: '0.8rem 0.2rem',
+                  borderRadius: '8px',
+                  border: newCategory === 'OTRO' ? `2px solid ${categoryColors['OTRO']}` : `2px solid transparent`,
+                  backgroundColor: newCategory === 'OTRO' ? 'transparent' : categoryColors['OTRO'],
+                  color: newCategory === 'OTRO' ? categoryColors['OTRO'] : 'white',
+                  fontWeight: '600',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative'
+                }}
+              >
+                {newCategory === 'OTRO' && <CheckCircle2 size={18} fill="white" color={categoryColors['OTRO']} style={{ marginRight: '0.3rem' }} />}
+                Otro
+              </button>
             </div>
+            
+            {newCategory === 'RIEGO' && (
+              <div className="form-group" style={{ padding: 0, marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setNewSubcategory('La Nana')}
+                  style={{
+                    flex: 1,
+                    padding: '0.6rem 0.2rem',
+                    borderRadius: '8px',
+                    border: newSubcategory === 'La Nana' ? `2px solid ${categoryColors['RIEGO']}` : `2px solid transparent`,
+                    backgroundColor: newSubcategory === 'La Nana' ? 'transparent' : categoryColors['RIEGO'],
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative'
+                  }}
+                >
+                  {newSubcategory === 'La Nana' && <CheckCircle2 size={16} fill="white" color={categoryColors['RIEGO']} style={{ marginRight: '0.3rem' }} />}
+                  La Nana
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewSubcategory('El Moro')}
+                  style={{
+                    flex: 1,
+                    padding: '0.6rem 0.2rem',
+                    borderRadius: '8px',
+                    border: newSubcategory === 'El Moro' ? `2px solid ${categoryColors['RIEGO']}` : `2px solid transparent`,
+                    backgroundColor: newSubcategory === 'El Moro' ? 'transparent' : categoryColors['RIEGO'],
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative'
+                  }}
+                >
+                  {newSubcategory === 'El Moro' && <CheckCircle2 size={16} fill="white" color={categoryColors['RIEGO']} style={{ marginRight: '0.3rem' }} />}
+                  El Moro
+                </button>
+              </div>
+            )}
             <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
               <div className="input-with-icon">
                 <User className="input-icon" size={20} />
@@ -265,8 +431,36 @@ export default function Calendario() {
 
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
+          {/* Last Events Stats */}
+          <div style={{ marginTop: 0, marginBottom: '1rem' }}>
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', color: 'white', textAlign: 'left', fontWeight: 'bold' }}>Última actualización</h3>
+            <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)', display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
+              <div 
+                onClick={() => lastEventsStats.nanaEvent && openEdit(lastEventsStats.nanaEvent)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.nanaEvent ? 'pointer' : 'default' }}
+              >
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>La Nana</span>
+                <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.nanaDate}</span>
+              </div>
+              <div 
+                onClick={() => lastEventsStats.moroEvent && openEdit(lastEventsStats.moroEvent)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.moroEvent ? 'pointer' : 'default' }}
+              >
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>El Moro</span>
+                <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.moroDate}</span>
+              </div>
+              <div 
+                onClick={() => lastEventsStats.mantEvent && openEdit(lastEventsStats.mantEvent)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.mantEvent ? 'pointer' : 'default' }}
+              >
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>Mant.</span>
+                <span style={{ color: categoryColors['MANTENIMIENTO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.mantDate}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Calendar Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', marginTop: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2.5rem', marginBottom: '1.5rem' }}>
             <button onClick={prevMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>◀</button>
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
               {format(currentMonth, 'MMMM yyyy', { locale: es }).toUpperCase()}
@@ -298,7 +492,7 @@ export default function Calendario() {
             });
             const hasEvent = eventsThisDay.length > 0;
             // Get color of first event for the dot
-            const dotColor = hasEvent ? (categoryColors[eventsThisDay[0].Category] || 'var(--primary)') : 'transparent';
+            const dotColor = hasEvent ? (eventsThisDay[0].Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (categoryColors[eventsThisDay[0].Category] || 'var(--primary)')) : 'transparent';
 
             const isToday = isSameDay(day, new Date());
 
@@ -325,6 +519,7 @@ export default function Calendario() {
           })}
         </div>
       </div>
+
       </>
       )}
 
@@ -342,7 +537,7 @@ export default function Calendario() {
           <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '2rem' }}>{(isSearchOpen && searchQuery.trim() !== '') ? 'No se encontraron resultados.' : 'No hay eventos para este día.'}</p>
         ) : (
           displayEvents.map((ev, i) => {
-            const evColor = categoryColors[ev.Category] || 'var(--primary)';
+            const evColor = ev.Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (categoryColors[ev.Category] || 'var(--primary)');
             return (
               <div key={i} style={{ marginBottom: '0.5rem' }}>
                 {(editingEvent && editingEvent.EventID === ev.EventID && isFormOpen) ? (
@@ -381,6 +576,7 @@ export default function Calendario() {
             setNewStartTime('08:00');
             setNewEndTime('09:00');
             setNewCategory('');
+            setNewSubcategory('');
             setNewResponsible('');
             setNewInfo('');
             setEditingEvent(null);
