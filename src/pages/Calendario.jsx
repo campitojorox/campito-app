@@ -228,9 +228,9 @@ export default function Calendario() {
                   flex: 1,
                   padding: '0.8rem 0.2rem',
                   borderRadius: '8px',
-                  border: newCategory === 'RIEGO' ? `2px solid ${categoryColors['RIEGO']}` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'RIEGO' ? 'transparent' : categoryColors['RIEGO'],
-                  color: newCategory === 'RIEGO' ? categoryColors['RIEGO'] : 'white',
+                  border: newCategory === 'RIEGO' ? `2px solid #9edb9e` : `2px solid transparent`,
+                  backgroundColor: newCategory === 'RIEGO' ? '#9edb9e' : categoryColors['RIEGO'],
+                  color: newCategory === 'RIEGO' ? '#1a1a1a' : 'white',
                   fontWeight: '600',
                   fontSize: '0.9rem',
                   cursor: 'pointer',
@@ -241,7 +241,7 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
-                {newCategory === 'RIEGO' && <CheckCircle2 size={18} fill="white" color={categoryColors['RIEGO']} style={{ marginRight: '0.3rem' }} />}
+                {newCategory === 'RIEGO' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                 Riego
               </button>
               <button 
@@ -251,9 +251,9 @@ export default function Calendario() {
                   flex: 1,
                   padding: '0.8rem 0.2rem',
                   borderRadius: '8px',
-                  border: newCategory === 'MANTENIMIENTO' ? `2px solid ${categoryColors['MANTENIMIENTO']}` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'MANTENIMIENTO' ? 'transparent' : categoryColors['MANTENIMIENTO'],
-                  color: newCategory === 'MANTENIMIENTO' ? categoryColors['MANTENIMIENTO'] : 'white',
+                  border: newCategory === 'MANTENIMIENTO' ? `2px solid #9edb9e` : `2px solid transparent`,
+                  backgroundColor: newCategory === 'MANTENIMIENTO' ? '#9edb9e' : categoryColors['MANTENIMIENTO'],
+                  color: newCategory === 'MANTENIMIENTO' ? '#1a1a1a' : 'white',
                   fontWeight: '600',
                   fontSize: '0.9rem',
                   cursor: 'pointer',
@@ -264,7 +264,7 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
-                {newCategory === 'MANTENIMIENTO' && <CheckCircle2 size={18} fill="white" color={categoryColors['MANTENIMIENTO']} style={{ marginRight: '0.3rem' }} />}
+                {newCategory === 'MANTENIMIENTO' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                 Mant.
               </button>
               <button 
@@ -274,9 +274,9 @@ export default function Calendario() {
                   flex: 1,
                   padding: '0.8rem 0.2rem',
                   borderRadius: '8px',
-                  border: newCategory === 'OTRO' ? `2px solid ${categoryColors['OTRO']}` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'OTRO' ? 'transparent' : categoryColors['OTRO'],
-                  color: newCategory === 'OTRO' ? categoryColors['OTRO'] : 'white',
+                  border: newCategory === 'OTRO' ? `2px solid #9edb9e` : `2px solid transparent`,
+                  backgroundColor: newCategory === 'OTRO' ? '#9edb9e' : categoryColors['OTRO'],
+                  color: newCategory === 'OTRO' ? '#1a1a1a' : 'white',
                   fontWeight: '600',
                   fontSize: '0.9rem',
                   cursor: 'pointer',
@@ -287,7 +287,7 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
-                {newCategory === 'OTRO' && <CheckCircle2 size={18} fill="white" color={categoryColors['OTRO']} style={{ marginRight: '0.3rem' }} />}
+                {newCategory === 'OTRO' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                 Otro
               </button>
             </div>

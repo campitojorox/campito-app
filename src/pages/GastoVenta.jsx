@@ -143,12 +143,42 @@ export default function GastoVenta() {
       
       <div style={{ color: 'var(--text-primary)' }}>
         <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-            <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Gasto' ? 'var(--primary)' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-              {editForm.type === 'Gasto' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Gasto
+          <div style={{ display: 'flex', gap: '1rem', paddingBottom: '0.5rem', width: '100%' }}>
+            {users.map(u => (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setEditForm({...editForm, user: u.name})}
+                style={{
+                  flex: 1,
+                  padding: '0.8rem 0',
+                  borderRadius: '12px',
+                  border: editForm.user === u.name ? `2px solid #9edb9e` : `2px solid transparent`,
+                  backgroundColor: editForm.user === u.name ? '#9edb9e' : 'var(--primary)',
+                  color: editForm.user === u.name ? '#1a1a1a' : 'white',
+                  fontWeight: '600',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                }}
+              >
+                {editForm.user === u.name && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
+                {u.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+            <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#9edb9e' : 'var(--primary)', color: editForm.type === 'Gasto' ? '#1a1a1a' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              {editForm.type === 'Gasto' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />} Gasto
             </button>
-            <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#f3f4f6' : 'var(--primary)', color: editForm.type === 'Retiro' ? 'var(--primary)' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-              {editForm.type === 'Retiro' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />} Venta
+            <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#9edb9e' : 'var(--primary)', color: editForm.type === 'Retiro' ? '#1a1a1a' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              {editForm.type === 'Retiro' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />} Venta
             </button>
           </div>
         </div>
@@ -162,15 +192,6 @@ export default function GastoVenta() {
           <div className="input-with-icon">
             <AlignLeft className="input-icon" size={20} />
             <input type="text" className="form-input" value={editForm.desc} onChange={(e) => setEditForm({...editForm, desc: e.target.value})} placeholder="Descripción / Concepto" />
-          </div>
-        </div>
-        <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
-          <div className="input-with-icon">
-            <User className="input-icon" size={20} />
-            <select className="form-input" value={editForm.user} onChange={(e) => setEditForm({...editForm, user: e.target.value})}>
-              <option value="" disabled>Usuario...</option>
-              {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
-            </select>
           </div>
         </div>
 
@@ -279,6 +300,40 @@ export default function GastoVenta() {
           
           <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
+          <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: '1rem', paddingBottom: '0.5rem', width: '100%' }}>
+              {users.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => {
+                    const fakeEvent = { target: { setCustomValidity: () => {} } };
+                    fakeEvent.target.setCustomValidity('');
+                    setUser(u.name);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.8rem 0',
+                    borderRadius: '12px',
+                    border: user === u.name ? `2px solid #9edb9e` : `2px solid transparent`,
+                    backgroundColor: user === u.name ? '#9edb9e' : 'var(--primary)',
+                    color: user === u.name ? '#1a1a1a' : 'white',
+                    fontWeight: '600',
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                  }}
+                >
+                  {user === u.name && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
+                  {u.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', padding: 0 }}>
             <button 
               type="button"
@@ -288,8 +343,8 @@ export default function GastoVenta() {
                 padding: '0.8rem',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: type === 'Gasto' ? '#f3f4f6' : 'var(--primary)',
-                color: type === 'Gasto' ? 'var(--primary)' : 'white',
+                backgroundColor: type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
+                color: type === 'Gasto' ? '#1a1a1a' : 'white',
                 fontWeight: '600',
                 fontSize: '1rem',
                 cursor: 'pointer',
@@ -300,7 +355,7 @@ export default function GastoVenta() {
                 position: 'relative'
               }}
             >
-              {type === 'Gasto' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />}
+              {type === 'Gasto' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />}
               Gasto (invertido)
             </button>
             <button 
@@ -311,8 +366,8 @@ export default function GastoVenta() {
                 padding: '0.8rem',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: type === 'Retiro' ? '#f3f4f6' : 'var(--primary)',
-                color: type === 'Retiro' ? 'var(--primary)' : 'white',
+                backgroundColor: type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
+                color: type === 'Retiro' ? '#1a1a1a' : 'white',
                 fontWeight: '600',
                 fontSize: '1rem',
                 cursor: 'pointer',
@@ -323,7 +378,7 @@ export default function GastoVenta() {
                 position: 'relative'
               }}
             >
-              {type === 'Retiro' && <CheckCircle2 size={26} fill="var(--primary)" color="white" style={{ position: 'absolute', left: '1rem' }} />}
+              {type === 'Retiro' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />}
               Venta (generado)
             </button>
           </div>
@@ -339,16 +394,6 @@ export default function GastoVenta() {
             <div className="input-with-icon">
               <AlignLeft className="input-icon" size={20} />
               <input type="text" className="form-input" required value={description} onChange={(e) => { e.target.setCustomValidity(''); setDescription(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una descripción')} placeholder="Descripción / Concepto" />
-            </div>
-          </div>
-
-          <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-            <div className="input-with-icon">
-              <User className="input-icon" size={20} />
-              <select className="form-input" required value={user} onChange={(e) => { e.target.setCustomValidity(''); setUser(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
-                <option value="" disabled>Usuario...</option>
-                {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-              </select>
             </div>
           </div>
 
