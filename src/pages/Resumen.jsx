@@ -88,7 +88,7 @@ export default function Resumen() {
       
       {/* Last Events Stats */}
       <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-        <h2 className="section-title">Última actualización</h2>
+        <h2 className="section-title">Gestiones Recientes</h2>
         <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)', display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px' }}>
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>La Nana</span>
