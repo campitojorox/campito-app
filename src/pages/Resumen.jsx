@@ -27,31 +27,32 @@ export default function Resumen() {
   };
 
   const lastEventsStats = useMemo(() => {
-    let lastNana = null;
-    let lastMoro = null;
-    let lastMant = null;
+    const categoriesToTrack = [
+      { id: 'RIEGO - La Nana', label: 'Riego', subLabel: 'La Nana', color: 'RIEGO' },
+      { id: 'RIEGO - El Moro', label: 'Riego', subLabel: 'El Moro', color: 'RIEGO' },
+      { id: 'MANTENIMIENTO - Poda', label: 'Mant.', subLabel: 'Poda', color: 'MANTENIMIENTO' },
+      { id: 'MANTENIMIENTO - Desbroza', label: 'Mant.', subLabel: 'Desbroza', color: 'MANTENIMIENTO' },
+      { id: 'MANTENIMIENTO - Fertilizado', label: 'Mant.', subLabel: 'Fertilizado', color: 'MANTENIMIENTO' },
+      { id: 'MANTENIMIENTO - Fitosanitarios', label: 'Mant.', subLabel: 'Fitosanitarios', color: 'MANTENIMIENTO' }
+    ];
+
+    const latestDates = {};
+    categoriesToTrack.forEach(cat => latestDates[cat.id] = null);
 
     (events || []).forEach(ev => {
-      if (!ev.date) return;
+      if (!ev.date || !latestDates.hasOwnProperty(ev.category)) return;
       const evDate = new Date(ev.date.split('T')[0]);
       
-      if (ev.category === 'RIEGO - La Nana') {
-        if (!lastNana || evDate > lastNana) lastNana = evDate;
-      } else if (ev.category === 'RIEGO - El Moro') {
-        if (!lastMoro || evDate > lastMoro) lastMoro = evDate;
-      } else if (ev.category && ev.category.startsWith('MANTENIMIENTO')) {
-        if (!lastMant || evDate > lastMant) lastMant = evDate;
+      if (latestDates[ev.category] === null || evDate > latestDates[ev.category]) {
+        latestDates[ev.category] = evDate;
       }
     });
 
-    return {
-      nanaDate: lastNana ? format(lastNana, 'dd/MM/yyyy') : 'N/A',
-      nanaRaw: lastNana,
-      moroDate: lastMoro ? format(lastMoro, 'dd/MM/yyyy') : 'N/A',
-      moroRaw: lastMoro,
-      mantDate: lastMant ? format(lastMant, 'dd/MM/yyyy') : 'N/A',
-      mantRaw: lastMant
-    };
+    return categoriesToTrack.map(cat => ({
+      ...cat,
+      dateFormatted: latestDates[cat.id] ? format(latestDates[cat.id], 'dd/MM/yyyy') : 'N/A',
+      rawDate: latestDates[cat.id]
+    }));
   }, [events]);
 
   const calendarEvents = useMemo(() => {
@@ -93,32 +94,23 @@ export default function Resumen() {
       {/* Last Events Stats */}
       <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
         <h2 className="section-title">Gestiones Recientes</h2>
-        <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)', display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
-          <div 
-            onClick={() => lastEventsStats.nanaRaw && navigate('/calendario', { state: { targetDate: lastEventsStats.nanaRaw.toISOString() } })}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.nanaRaw ? 'pointer' : 'default' }}
-          >
-            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>La Nana</span>
-            <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.nanaDate}</span>
-          </div>
-          <div 
-            onClick={() => lastEventsStats.moroRaw && navigate('/calendario', { state: { targetDate: lastEventsStats.moroRaw.toISOString() } })}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.moroRaw ? 'pointer' : 'default' }}
-          >
-            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>El Moro</span>
-            <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.moroDate}</span>
-          </div>
-          <div 
-            onClick={() => lastEventsStats.mantRaw && navigate('/calendario', { state: { targetDate: lastEventsStats.mantRaw.toISOString() } })}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.mantRaw ? 'pointer' : 'default' }}
-          >
-            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>Mant.</span>
-            <span style={{ color: categoryColors['MANTENIMIENTO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.mantDate}</span>
-          </div>
+        <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+          {lastEventsStats.map((stat, idx) => (
+            <div 
+              key={idx}
+              onClick={() => stat.rawDate && navigate('/calendario', { state: { targetDate: stat.rawDate.toISOString() } })}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '1 1 calc(33.333% - 0.5rem)', minWidth: '95px', backgroundColor: categoryColors[stat.color] || 'var(--primary)', padding: '0.5rem', borderRadius: '8px', cursor: stat.rawDate ? 'pointer' : 'default', marginBottom: '0.2rem', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+            >
+              <span style={{ color: 'white', fontSize: '0.75rem', marginBottom: '0.3rem', textAlign: 'center', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', fontWeight: '500' }}>
+                {stat.label} - {stat.subLabel}
+              </span>
+              <span style={{ color: 'white', fontWeight: 'bold', fontSize: '0.85rem' }}>{stat.dateFormatted}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Calendario</h2>
+      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Eventos Calendario</h2>
       <div style={{ width: '100%', height: 350, backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem 1rem 1rem 0', marginTop: '1rem' }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={stats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
