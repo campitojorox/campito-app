@@ -21,6 +21,7 @@ export default function GastoVenta() {
   const [isConfirmingImageDelete, setIsConfirmingImageDelete] = useState(false);
   const [successMsg, setSuccessMsg] = useState(null);
 
+
   const records = useMemo(() => {
     return (transactions || []).map(tx => ({
       TransactionID: tx.id,

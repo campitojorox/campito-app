@@ -9,7 +9,7 @@ import { Plus, Calendar, Clock, User, AlignLeft, CheckCircle2 } from 'lucide-rea
 const categoryColors = {
   'RIEGO': '#38bdf8', // Azul claro (Tailwind sky-400)
   'MANTENIMIENTO': '#10b981', // Verde (Tailwind emerald-500)
-  'OTRO': '#f97316' // Naranjo (Tailwind orange-500)
+  'OTRO': '#8884d8' // Morado
 };
 
 const formatDateToDDMMYY = (dateStr) => {
@@ -176,38 +176,6 @@ export default function Calendario() {
   const displayEvents = useMemo(() => {
     return (isSearchOpen && searchQuery.trim() !== '') ? searchResults : selectedDayEvents;
   }, [isSearchOpen, searchQuery, searchResults, selectedDayEvents]);
-
-  const lastEventsStats = useMemo(() => {
-    let lastNana = null;
-    let lastMoro = null;
-    let lastMant = null;
-    
-    let lastNanaEv = null;
-    let lastMoroEv = null;
-    let lastMantEv = null;
-
-    events.forEach(ev => {
-      if (!ev.Date) return;
-      const evDate = new Date(ev.Date.split(' ')[0]);
-      
-      if (ev.Category === 'RIEGO - La Nana') {
-        if (!lastNana || evDate > lastNana) { lastNana = evDate; lastNanaEv = ev; }
-      } else if (ev.Category === 'RIEGO - El Moro') {
-        if (!lastMoro || evDate > lastMoro) { lastMoro = evDate; lastMoroEv = ev; }
-      } else if (ev.Category === 'MANTENIMIENTO') {
-        if (!lastMant || evDate > lastMant) { lastMant = evDate; lastMantEv = ev; }
-      }
-    });
-
-    return {
-      nanaDate: lastNana ? format(lastNana, 'dd/MM/yyyy') : 'N/A',
-      nanaEvent: lastNanaEv,
-      moroDate: lastMoro ? format(lastMoro, 'dd/MM/yyyy') : 'N/A',
-      moroEvent: lastMoroEv,
-      mantDate: lastMant ? format(lastMant, 'dd/MM/yyyy') : 'N/A',
-      mantEvent: lastMantEv
-    };
-  }, [events]);
 
   const renderForm = () => (
     <div id="event-form">
@@ -431,36 +399,8 @@ export default function Calendario() {
 
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
-          {/* Last Events Stats */}
-          <div style={{ marginTop: 0, marginBottom: '1rem' }}>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem', color: 'white', textAlign: 'left', fontWeight: 'bold' }}>Última actualización</h3>
-            <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)', display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
-              <div 
-                onClick={() => lastEventsStats.nanaEvent && openEdit(lastEventsStats.nanaEvent)}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.nanaEvent ? 'pointer' : 'default' }}
-              >
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>La Nana</span>
-                <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.nanaDate}</span>
-              </div>
-              <div 
-                onClick={() => lastEventsStats.moroEvent && openEdit(lastEventsStats.moroEvent)}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.moroEvent ? 'pointer' : 'default' }}
-              >
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>El Moro</span>
-                <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.moroDate}</span>
-              </div>
-              <div 
-                onClick={() => lastEventsStats.mantEvent && openEdit(lastEventsStats.mantEvent)}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.mantEvent ? 'pointer' : 'default' }}
-              >
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>Mant.</span>
-                <span style={{ color: categoryColors['MANTENIMIENTO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.mantDate}</span>
-              </div>
-            </div>
-          </div>
-
           {/* Calendar Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2.5rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', marginTop: '1.5rem' }}>
             <button onClick={prevMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>◀</button>
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
               {format(currentMonth, 'MMMM yyyy', { locale: es }).toUpperCase()}
