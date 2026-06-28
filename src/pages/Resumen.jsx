@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../utils/helpers';
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
 export default function Resumen() {
   const { users, events, transactions } = useOutletContext();
+  const navigate = useNavigate();
 
   const records = useMemo(() => {
     return (transactions || []).map(tx => ({
@@ -31,28 +32,31 @@ export default function Resumen() {
     let lastMant = null;
 
     (events || []).forEach(ev => {
-      if (!ev.Date) return;
-      const evDate = new Date(ev.Date.split(' ')[0]);
+      if (!ev.date) return;
+      const evDate = new Date(ev.date.split('T')[0]);
       
-      if (ev.Category === 'RIEGO - La Nana') {
+      if (ev.category === 'RIEGO - La Nana') {
         if (!lastNana || evDate > lastNana) lastNana = evDate;
-      } else if (ev.Category === 'RIEGO - El Moro') {
+      } else if (ev.category === 'RIEGO - El Moro') {
         if (!lastMoro || evDate > lastMoro) lastMoro = evDate;
-      } else if (ev.Category === 'MANTENIMIENTO') {
+      } else if (ev.category && ev.category.startsWith('MANTENIMIENTO')) {
         if (!lastMant || evDate > lastMant) lastMant = evDate;
       }
     });
 
     return {
       nanaDate: lastNana ? format(lastNana, 'dd/MM/yyyy') : 'N/A',
+      nanaRaw: lastNana,
       moroDate: lastMoro ? format(lastMoro, 'dd/MM/yyyy') : 'N/A',
-      mantDate: lastMant ? format(lastMant, 'dd/MM/yyyy') : 'N/A'
+      moroRaw: lastMoro,
+      mantDate: lastMant ? format(lastMant, 'dd/MM/yyyy') : 'N/A',
+      mantRaw: lastMant
     };
   }, [events]);
 
   const calendarEvents = useMemo(() => {
     return (events || []).map(ev => ({
-      Responsible: ev.profiles ? ev.profiles.name : 'Todos',
+      responsibles: ev.responsibles || [],
       Category: ev.category
     }));
   }, [events]);
@@ -73,9 +77,9 @@ export default function Resumen() {
 
   const stats = useMemo(() => {
     return (users || []).filter(u => u.name !== 'Campito').map(u => {
-      const userEvents = calendarEvents.filter(e => e.Responsible === u.name);
-      const riego = userEvents.filter(e => e.Category === 'RIEGO').length;
-      const mantenimiento = userEvents.filter(e => e.Category === 'MANTENIMIENTO').length;
+      const userEvents = calendarEvents.filter(e => e.responsibles.includes(u.name));
+      const riego = userEvents.filter(e => e.Category && e.Category.startsWith('RIEGO')).length;
+      const mantenimiento = userEvents.filter(e => e.Category && e.Category.startsWith('MANTENIMIENTO')).length;
       const otro = userEvents.filter(e => e.Category === 'OTRO').length;
       return { user: u.name, riego, mantenimiento, otro };
     });
@@ -90,15 +94,24 @@ export default function Resumen() {
       <div style={{ marginTop: '1rem', marginBottom: '1rem' }}>
         <h2 className="section-title">Gestiones Recientes</h2>
         <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)', display: 'flex', gap: '0.5rem', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px' }}>
+          <div 
+            onClick={() => lastEventsStats.nanaRaw && navigate('/calendario', { state: { targetDate: lastEventsStats.nanaRaw.toISOString() } })}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.nanaRaw ? 'pointer' : 'default' }}
+          >
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>La Nana</span>
             <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.nanaDate}</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px' }}>
+          <div 
+            onClick={() => lastEventsStats.moroRaw && navigate('/calendario', { state: { targetDate: lastEventsStats.moroRaw.toISOString() } })}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.moroRaw ? 'pointer' : 'default' }}
+          >
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>El Moro</span>
             <span style={{ color: categoryColors['RIEGO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.moroDate}</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px' }}>
+          <div 
+            onClick={() => lastEventsStats.mantRaw && navigate('/calendario', { state: { targetDate: lastEventsStats.mantRaw.toISOString() } })}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '8px', cursor: lastEventsStats.mantRaw ? 'pointer' : 'default' }}
+          >
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '0.2rem', textAlign: 'center' }}>Mant.</span>
             <span style={{ color: categoryColors['MANTENIMIENTO'], fontWeight: 'bold', fontSize: '0.85rem' }}>{lastEventsStats.mantDate}</span>
           </div>

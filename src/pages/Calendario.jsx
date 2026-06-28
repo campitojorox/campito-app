@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useLocation } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '../supabaseClient';
@@ -24,6 +24,7 @@ const formatDateToDDMMYY = (dateStr) => {
 
 export default function Calendario() {
   const context = useOutletContext();
+  const location = useLocation();
   const isSearchOpen = context?.isSearchOpen || false;
   const searchQuery = context?.searchQuery || '';
   const users = context?.users || [];
@@ -33,6 +34,14 @@ export default function Calendario() {
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  useEffect(() => {
+    if (location.state && location.state.targetDate) {
+      const target = new Date(location.state.targetDate);
+      setSelectedDate(target);
+      setCurrentMonth(target);
+    }
+  }, [location.state]);
   
   // Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -546,7 +555,7 @@ export default function Calendario() {
           <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '2rem' }}>{(isSearchOpen && searchQuery.trim() !== '') ? 'No se encontraron resultados.' : 'No hay eventos para este día.'}</p>
         ) : (
           displayEvents.map((ev, i) => {
-            const evColor = ev.Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (categoryColors[ev.Category] || 'var(--primary)');
+            const evColor = ev.Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (ev.Category?.startsWith('MANTENIMIENTO') ? categoryColors['MANTENIMIENTO'] : (categoryColors[ev.Category] || 'var(--primary)'));
             return (
               <div key={i} style={{ marginBottom: '0.5rem' }}>
                 {(editingEvent && editingEvent.EventID === ev.EventID && isFormOpen) ? (
