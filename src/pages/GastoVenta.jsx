@@ -165,7 +165,6 @@ export default function GastoVenta() {
                   boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
                 }}
               >
-                {editForm.user === u.name && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                 {u.name}
               </button>
             ))}
@@ -175,10 +174,10 @@ export default function GastoVenta() {
         <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
             <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#9edb9e' : 'var(--primary)', color: editForm.type === 'Gasto' ? '#1a1a1a' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-              {editForm.type === 'Gasto' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />} Gasto
+              Gasto
             </button>
             <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#9edb9e' : 'var(--primary)', color: editForm.type === 'Retiro' ? '#1a1a1a' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-              {editForm.type === 'Retiro' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />} Venta
+              Venta
             </button>
           </div>
         </div>
@@ -327,7 +326,6 @@ export default function GastoVenta() {
                     boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
                   }}
                 >
-                  {user === u.name && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                   {u.name}
                 </button>
               ))}
@@ -355,7 +353,6 @@ export default function GastoVenta() {
                 position: 'relative'
               }}
             >
-              {type === 'Gasto' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />}
               Gasto (invertido)
             </button>
             <button 
@@ -378,7 +375,6 @@ export default function GastoVenta() {
                 position: 'relative'
               }}
             >
-              {type === 'Retiro' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ position: 'absolute', left: '1rem' }} />}
               Venta (generado)
             </button>
           </div>

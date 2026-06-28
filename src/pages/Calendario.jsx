@@ -241,7 +241,6 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
-                {newCategory === 'RIEGO' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                 Riego
               </button>
               <button 
@@ -264,7 +263,6 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
-                {newCategory === 'MANTENIMIENTO' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                 Mant.
               </button>
               <button 
@@ -287,7 +285,6 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
-                {newCategory === 'OTRO' && <CheckCircle2 size={18} fill="#1a1a1a" color="#9edb9e" style={{ marginRight: '0.3rem' }} />}
                 Otro
               </button>
             </div>
