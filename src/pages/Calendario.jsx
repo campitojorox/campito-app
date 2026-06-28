@@ -69,6 +69,11 @@ export default function Calendario() {
   const handleAddEvent = async (e) => {
     e.preventDefault();
     
+    if (!newResponsible) {
+      alert("Por favor, selecciona un usuario.");
+      return;
+    }
+    
     if (!newCategory) {
       alert("Por favor, selecciona una categoría.");
       return;
@@ -78,8 +83,13 @@ export default function Calendario() {
       alert("Por favor, selecciona una subcategoría para Riego (La Nana o El Moro).");
       return;
     }
+    
+    if (newCategory === 'MANTENIMIENTO' && !newSubcategory) {
+      alert("Por favor, selecciona una subcategoría para Mantenimiento (Poda, Desbroza, Fertilizado, Fitosanitarios).");
+      return;
+    }
 
-    const finalCategory = newCategory === 'RIEGO' ? `RIEGO - ${newSubcategory}` : newCategory;
+    const finalCategory = (newCategory === 'RIEGO' || newCategory === 'MANTENIMIENTO') ? `${newCategory} - ${newSubcategory}` : newCategory;
 
     // Find responsible_id from the user's selected name (newResponsible)
     const respUser = users.find(u => u.name === newResponsible);
@@ -116,9 +126,10 @@ export default function Calendario() {
     const cat = ev.Category || '';
     if (cat.startsWith('RIEGO')) {
       setNewCategory('RIEGO');
-      if (cat.includes('La Nana')) setNewSubcategory('La Nana');
-      else if (cat.includes('El Moro')) setNewSubcategory('El Moro');
-      else setNewSubcategory('');
+      setNewSubcategory(cat.includes(' - ') ? cat.split(' - ')[1] : '');
+    } else if (cat.startsWith('MANTENIMIENTO')) {
+      setNewCategory('MANTENIMIENTO');
+      setNewSubcategory(cat.includes(' - ') ? cat.split(' - ')[1] : '');
     } else {
       setNewCategory(cat);
       setNewSubcategory('');
@@ -178,7 +189,7 @@ export default function Calendario() {
   }, [isSearchOpen, searchQuery, searchResults, selectedDayEvents]);
 
   const renderForm = () => (
-    <div id="event-form">
+    <div id="event-form" style={{ margin: '3rem 0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: editingEvent ? '1rem' : '2rem', marginBottom: '1.5rem' }}>
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
             {editingEvent && (
@@ -187,6 +198,39 @@ export default function Calendario() {
           </div>
           <div style={{ marginBottom: '1.5rem' }}>
             <form onSubmit={handleAddEvent}>
+
+            <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', paddingBottom: '0.5rem', width: '100%' }}>
+                {users.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      const fakeEvent = { target: { setCustomValidity: () => {} } };
+                      fakeEvent.target.setCustomValidity('');
+                      setNewResponsible(u.name);
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '0.8rem 0',
+                      borderRadius: '12px',
+                      border: newResponsible === u.name ? `2px solid #9edb9e` : `2px solid transparent`,
+                      backgroundColor: newResponsible === u.name ? '#9edb9e' : 'var(--primary)',
+                      color: newResponsible === u.name ? '#1a1a1a' : 'white',
+                      fontWeight: '600',
+                      fontSize: '1rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                    }}
+                  >
+                    {u.name}
+                  </button>
+                ))}
+              </div>
+            </div>
             
             <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.2rem' }}>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
@@ -229,10 +273,10 @@ export default function Calendario() {
                   padding: '0.8rem 0.2rem',
                   borderRadius: '8px',
                   border: newCategory === 'RIEGO' ? `2px solid #9edb9e` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'RIEGO' ? '#9edb9e' : categoryColors['RIEGO'],
+                  backgroundColor: newCategory === 'RIEGO' ? '#9edb9e' : 'var(--primary)',
                   color: newCategory === 'RIEGO' ? '#1a1a1a' : 'white',
                   fontWeight: '600',
-                  fontSize: '0.9rem',
+                  fontSize: '1rem',
                   cursor: 'pointer',
                   boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                   display: 'flex',
@@ -241,6 +285,7 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['RIEGO'], border: '1px solid var(--bg-color)', marginRight: '0.4rem', flexShrink: 0 }} />
                 Riego
               </button>
               <button 
@@ -251,10 +296,10 @@ export default function Calendario() {
                   padding: '0.8rem 0.2rem',
                   borderRadius: '8px',
                   border: newCategory === 'MANTENIMIENTO' ? `2px solid #9edb9e` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'MANTENIMIENTO' ? '#9edb9e' : categoryColors['MANTENIMIENTO'],
+                  backgroundColor: newCategory === 'MANTENIMIENTO' ? '#9edb9e' : 'var(--primary)',
                   color: newCategory === 'MANTENIMIENTO' ? '#1a1a1a' : 'white',
                   fontWeight: '600',
-                  fontSize: '0.9rem',
+                  fontSize: '1rem',
                   cursor: 'pointer',
                   boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                   display: 'flex',
@@ -263,6 +308,7 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['MANTENIMIENTO'], border: '1px solid var(--bg-color)', marginRight: '0.4rem', flexShrink: 0 }} />
                 Mant.
               </button>
               <button 
@@ -273,10 +319,10 @@ export default function Calendario() {
                   padding: '0.8rem 0.2rem',
                   borderRadius: '8px',
                   border: newCategory === 'OTRO' ? `2px solid #9edb9e` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'OTRO' ? '#9edb9e' : categoryColors['OTRO'],
+                  backgroundColor: newCategory === 'OTRO' ? '#9edb9e' : 'var(--primary)',
                   color: newCategory === 'OTRO' ? '#1a1a1a' : 'white',
                   fontWeight: '600',
-                  fontSize: '0.9rem',
+                  fontSize: '1rem',
                   cursor: 'pointer',
                   boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                   display: 'flex',
@@ -285,6 +331,7 @@ export default function Calendario() {
                   position: 'relative'
                 }}
               >
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['OTRO'], border: '1px solid var(--bg-color)', marginRight: '0.4rem', flexShrink: 0 }} />
                 Otro
               </button>
             </div>
@@ -298,11 +345,11 @@ export default function Calendario() {
                     flex: 1,
                     padding: '0.6rem 0.2rem',
                     borderRadius: '8px',
-                    border: newSubcategory === 'La Nana' ? `2px solid ${categoryColors['RIEGO']}` : `2px solid transparent`,
-                    backgroundColor: newSubcategory === 'La Nana' ? 'transparent' : categoryColors['RIEGO'],
-                    color: 'white',
+                    border: newSubcategory === 'La Nana' ? `2px solid #9edb9e` : `2px solid transparent`,
+                    backgroundColor: newSubcategory === 'La Nana' ? '#9edb9e' : categoryColors['RIEGO'],
+                    color: newSubcategory === 'La Nana' ? '#1a1a1a' : 'white',
                     fontWeight: '600',
-                    fontSize: '0.9rem',
+                    fontSize: '1rem',
                     cursor: 'pointer',
                     boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                     display: 'flex',
@@ -311,7 +358,6 @@ export default function Calendario() {
                     position: 'relative'
                   }}
                 >
-                  {newSubcategory === 'La Nana' && <CheckCircle2 size={16} fill="white" color={categoryColors['RIEGO']} style={{ marginRight: '0.3rem' }} />}
                   La Nana
                 </button>
                 <button
@@ -321,11 +367,11 @@ export default function Calendario() {
                     flex: 1,
                     padding: '0.6rem 0.2rem',
                     borderRadius: '8px',
-                    border: newSubcategory === 'El Moro' ? `2px solid ${categoryColors['RIEGO']}` : `2px solid transparent`,
-                    backgroundColor: newSubcategory === 'El Moro' ? 'transparent' : categoryColors['RIEGO'],
-                    color: 'white',
+                    border: newSubcategory === 'El Moro' ? `2px solid #9edb9e` : `2px solid transparent`,
+                    backgroundColor: newSubcategory === 'El Moro' ? '#9edb9e' : categoryColors['RIEGO'],
+                    color: newSubcategory === 'El Moro' ? '#1a1a1a' : 'white',
                     fontWeight: '600',
-                    fontSize: '0.9rem',
+                    fontSize: '1rem',
                     cursor: 'pointer',
                     boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                     display: 'flex',
@@ -334,20 +380,42 @@ export default function Calendario() {
                     position: 'relative'
                   }}
                 >
-                  {newSubcategory === 'El Moro' && <CheckCircle2 size={16} fill="white" color={categoryColors['RIEGO']} style={{ marginRight: '0.3rem' }} />}
                   El Moro
                 </button>
               </div>
             )}
-            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-              <div className="input-with-icon">
-                <User className="input-icon" size={20} />
-                <select className="form-input" required value={newResponsible} onChange={(e) => { e.target.setCustomValidity(''); setNewResponsible(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, selecciona un usuario')}>
-                  <option value="" disabled>Usuario...</option>
-                  {users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-                </select>
+            
+            {newCategory === 'MANTENIMIENTO' && (
+              <div className="form-group" style={{ padding: 0, marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {['Poda', 'Desbroza', 'Fertilizado', 'Fitosanitarios'].map(sub => (
+                  <button
+                    key={sub}
+                    type="button"
+                    onClick={() => setNewSubcategory(sub)}
+                    style={{
+                      flex: 1,
+                      minWidth: '45%',
+                      padding: '0.6rem 0.2rem',
+                      borderRadius: '8px',
+                      border: newSubcategory === sub ? `2px solid #9edb9e` : `2px solid transparent`,
+                      backgroundColor: newSubcategory === sub ? '#9edb9e' : categoryColors['MANTENIMIENTO'],
+                      color: newSubcategory === sub ? '#1a1a1a' : 'white',
+                      fontWeight: '600',
+                      fontSize: '1rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative'
+                    }}
+                  >
+                    {sub}
+                  </button>
+                ))}
               </div>
-            </div>
+            )}
+
             <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
               <div className="input-with-icon">
                 <AlignLeft className="input-icon" size={20} />
@@ -480,20 +548,20 @@ export default function Calendario() {
                 {(editingEvent && editingEvent.EventID === ev.EventID && isFormOpen) ? (
                   renderForm()
                 ) : (
-                  <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: `2px solid ${evColor}`, borderRadius: '8px', backgroundColor: 'var(--surface)' }}>
+                  <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: 'none', borderRadius: '8px', backgroundColor: evColor, color: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <strong style={{ fontSize: '1.1rem', color: evColor }}>{ev.Category}</strong>
+                      <strong style={{ fontSize: '1.1rem', color: 'white' }}>{ev.Category}</strong>
                     </div>
-                    <p style={{ margin: '0.5rem 0', color: 'var(--text-primary)' }}>{ev.Info || 'Sin detalles adicionales'}</p>
-                    <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0.75rem -1rem' }} />
+                    <p style={{ margin: '0.5rem 0', color: 'white', fontWeight: '500' }}>{ev.Info || 'Sin detalles adicionales'}</p>
+                    <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.3)', margin: '0.75rem -1rem' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '0.5rem' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem' }}>
-                        <small style={{ color: 'var(--text-secondary)' }}>Desde: <span style={{ color: 'var(--text-primary)' }}>{formatDateToDDMMYY(ev.Date)}</span> / <span style={{ color: 'var(--text-primary)' }}>{ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''}</span></small>
-                        <small style={{ color: 'var(--text-secondary)' }}>Hasta: <span style={{ color: 'var(--text-primary)' }}>{formatDateToDDMMYY(ev["End Date"] || ev.Date)}</span> / <span style={{ color: 'var(--text-primary)' }}>{ev["End Time"] ? ev["End Time"].substring(0,5) : ''}</span></small>
+                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Desde: <span style={{ color: 'white', fontWeight: '500' }}>{formatDateToDDMMYY(ev.Date)}</span> / <span style={{ color: 'white', fontWeight: '500' }}>{ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''}</span></small>
+                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Hasta: <span style={{ color: 'white', fontWeight: '500' }}>{formatDateToDDMMYY(ev["End Date"] || ev.Date)}</span> / <span style={{ color: 'white', fontWeight: '500' }}>{ev["End Time"] ? ev["End Time"].substring(0,5) : ''}</span></small>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem', textAlign: 'right' }}>
-                        <small style={{ color: 'var(--text-secondary)' }}>Usuario: <span style={{ color: 'var(--text-primary)' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
-                        <small style={{ color: 'var(--text-secondary)' }}>por: <span style={{ color: 'var(--text-primary)' }}>{currentUser}</span></small>
+                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Usuario: <span style={{ color: 'white', fontWeight: '500' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
+                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>por: <span style={{ color: 'white', fontWeight: '500' }}>{currentUser}</span></small>
                       </div>
                     </div>
                   </div>
