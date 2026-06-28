@@ -44,7 +44,7 @@ export default function Calendario() {
   const [newEndTime, setNewEndTime] = useState('09:00');
   const [newCategory, setNewCategory] = useState('');
   const [newSubcategory, setNewSubcategory] = useState('');
-  const [newResponsible, setNewResponsible] = useState('');
+  const [newResponsibles, setNewResponsibles] = useState([]);
   const [newInfo, setNewInfo] = useState('');
 
   // Keep End Date synced with Start Date if user hasn't manually changed it
@@ -61,16 +61,16 @@ export default function Calendario() {
       "End Time": ev.end_time ? ev.end_time.substring(0,5) + ':00' : null,
       Category: ev.category,
       Info: ev.info,
-      Responsible: ev.profiles ? ev.profiles.name : 'Sin Asignar',
-      responsible_id: ev.responsible_id
+      Responsible: ev.responsibles && ev.responsibles.length > 0 ? (context?.users && ev.responsibles.length === context.users.length ? 'Todos' : ev.responsibles.join(', ')) : 'Sin Asignar',
+      responsibles: ev.responsibles || []
     }));
   }, [rawEvents]);
 
   const handleAddEvent = async (e) => {
     e.preventDefault();
     
-    if (!newResponsible) {
-      alert("Por favor, selecciona un usuario.");
+    if (newResponsibles.length === 0) {
+      alert("Por favor, selecciona al menos un usuario.");
       return;
     }
     
@@ -91,17 +91,13 @@ export default function Calendario() {
 
     const finalCategory = (newCategory === 'RIEGO' || newCategory === 'MANTENIMIENTO') ? `${newCategory} - ${newSubcategory}` : newCategory;
 
-    // Find responsible_id from the user's selected name (newResponsible)
-    const respUser = users.find(u => u.name === newResponsible);
-    const respId = respUser ? respUser.id : null;
-
     const payload = {
       date: newDate + "T00:00:00Z",
       end_date: newEndDate + "T00:00:00Z",
       start_time: newStartTime + ":00",
       end_time: newEndTime + ":00",
       category: finalCategory,
-      responsible_id: respId,
+      responsibles: newResponsibles,
       info: newInfo
     };
 
@@ -135,7 +131,7 @@ export default function Calendario() {
       setNewSubcategory('');
     }
 
-    setNewResponsible(ev.Responsible === 'Sin Asignar' ? '' : ev.Responsible);
+    setNewResponsibles(ev.responsibles || []);
     setNewInfo(ev.Info || '');
     setIsFormOpen(true);
     setTimeout(() => {
@@ -200,35 +196,43 @@ export default function Calendario() {
             <form onSubmit={handleAddEvent}>
 
             <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', gap: '1rem', paddingBottom: '0.5rem', width: '100%' }}>
-                {users.map(u => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => {
-                      const fakeEvent = { target: { setCustomValidity: () => {} } };
-                      fakeEvent.target.setCustomValidity('');
-                      setNewResponsible(u.name);
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '0.8rem 0',
-                      borderRadius: '12px',
-                      border: newResponsible === u.name ? `2px solid #9edb9e` : `2px solid transparent`,
-                      backgroundColor: newResponsible === u.name ? '#9edb9e' : 'var(--primary)',
-                      color: newResponsible === u.name ? '#1a1a1a' : 'white',
-                      fontWeight: '600',
-                      fontSize: '1rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-                    }}
-                  >
-                    {u.name}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '0.5rem', width: '100%', flexWrap: 'wrap' }}>
+                {users.map(u => {
+                  const isSelected = newResponsibles.includes(u.name);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        const fakeEvent = { target: { setCustomValidity: () => {} } };
+                        fakeEvent.target.setCustomValidity('');
+                        if (isSelected) {
+                          setNewResponsibles(newResponsibles.filter(name => name !== u.name));
+                        } else {
+                          setNewResponsibles([...newResponsibles, u.name]);
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: '22%',
+                        padding: '0.8rem 0',
+                        borderRadius: '12px',
+                        border: isSelected ? `2px solid #9edb9e` : `2px solid transparent`,
+                        backgroundColor: isSelected ? '#9edb9e' : 'var(--primary)',
+                        color: isSelected ? '#1a1a1a' : 'white',
+                        fontWeight: '600',
+                        fontSize: '1rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                      }}
+                    >
+                      {u.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             
@@ -236,15 +240,15 @@ export default function Calendario() {
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Inicio</label>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                  <Calendar className="input-icon" size={20} />
+                  <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Término</label>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Calendar className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="date" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                  <Calendar className="input-icon" size={20} />
+                  <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -252,14 +256,14 @@ export default function Calendario() {
             <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                  <Clock className="input-icon" size={20} />
+                  <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
                 </div>
               </div>
               <div className="form-group" style={{ flex: 1, padding: 0 }}>
                 <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Clock className="input-icon" size={18} style={{ left: '0.5rem' }} />
-                  <input type="time" className="form-input" style={{ paddingLeft: '2.2rem', textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                  <Clock className="input-icon" size={20} />
+                  <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
                 </div>
               </div>
             </div>
@@ -582,7 +586,7 @@ export default function Calendario() {
             setNewEndTime('09:00');
             setNewCategory('');
             setNewSubcategory('');
-            setNewResponsible('');
+            setNewResponsibles([]);
             setNewInfo('');
             setEditingEvent(null);
             setIsFormOpen(true);
