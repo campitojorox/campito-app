@@ -277,7 +277,7 @@ export default function Calendario() {
               </div>
             </div>
 
-            <div className="form-group" style={{ padding: 0, marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
+            <div className="form-group" style={{ padding: 0, marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
               <button 
                 type="button"
                 onClick={() => setNewCategory('RIEGO')}
@@ -510,7 +510,7 @@ export default function Calendario() {
             });
             const hasEvent = eventsThisDay.length > 0;
             // Get color of first event for the dot
-            const dotColor = hasEvent ? (eventsThisDay[0].Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (categoryColors[eventsThisDay[0].Category] || 'var(--primary)')) : 'transparent';
+            const dotColor = hasEvent ? (eventsThisDay[0].Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (eventsThisDay[0].Category?.startsWith('MANTENIMIENTO') ? categoryColors['MANTENIMIENTO'] : (categoryColors[eventsThisDay[0].Category] || 'var(--primary)'))) : 'transparent';
 
             const isToday = isSameDay(day, new Date());
 
@@ -523,11 +523,11 @@ export default function Calendario() {
                   textAlign: 'center',
                   cursor: 'pointer',
                   borderRadius: '8px',
-                  backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
-                  color: isSelected ? 'white' : (hasEvent ? dotColor : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)')),
+                  backgroundColor: isSelected ? '#9edb9e' : 'transparent',
+                  color: isSelected ? '#1a1a1a' : (hasEvent ? dotColor : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)')),
                   fontWeight: hasEvent ? '900' : 'normal',
                   fontSize: hasEvent ? '1.1rem' : '1rem',
-                  border: isToday ? '2px solid var(--primary)' : '2px solid transparent',
+                  border: isToday ? '2px solid #9edb9e' : '2px solid transparent',
                   position: 'relative'
                 }}
               >
