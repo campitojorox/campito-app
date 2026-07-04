@@ -1,6 +1,6 @@
-import { useState, Suspense } from 'react';
+import { useState, Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle, Globe, Copy } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle, Globe, Copy, Download } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -21,7 +21,20 @@ export default function Layout({ session }) {
   const [manageUserSuccess, setManageUserSuccess] = useState('');
   const [isMapasModalOpen, setIsMapasModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
   const viewerUrl = 'https://www.google.com/maps/d/viewer?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
   const editUrl = 'https://www.google.com/maps/d/u/1/edit?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
   const generalUrl = 'https://www.google.com/maps';
@@ -128,6 +141,22 @@ export default function Layout({ session }) {
               <button onClick={() => { setIsMenuOpen(false); setIsUsersModalOpen(true); }} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}>
                 Gestionar Usuarios
               </button>
+              {deferredPrompt && (
+                <button 
+                  onClick={async () => {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                      setDeferredPrompt(null);
+                    }
+                  }} 
+                  className="btn" 
+                  style={{ width: '100%', margin: 0, backgroundColor: '#10b981', color: 'white', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  <Download size={18} />
+                  Instalar Aplicación
+                </button>
+              )}
               <button 
                 onClick={() => {
                   if (needRefresh) {
