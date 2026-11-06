@@ -35,7 +35,9 @@ export default async function handler(req, res) {
       Amount: tx.amount || 0,
       Description: tx.description || '',
       UserID: tx.user_id || '',
-      Imagen: tx.image_url || ''
+      Imagen: tx.image_url || '',
+      Estado: tx.status || 'ACTIVE',
+      FechaEliminado: tx.deleted_at || ''
     }));
 
     const calendario = (evRes.data || []).map(ev => {

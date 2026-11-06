@@ -162,7 +162,7 @@ function actualizarCampitoJorox() {
   if (!sheetCont) sheetCont = ss.insertSheet('CONTABILIDAD');
   sheetCont.clearContents();
 
-  const contHeaders = ['TransactionID', 'Fecha', 'Usuario', 'Categoría', 'Monto', 'Descripción', 'UserID', 'URL Imagen', 'Archivo en Drive'];
+  const contHeaders = ['TransactionID', 'Fecha', 'Usuario', 'Categoría', 'Monto', 'Descripción', 'UserID', 'URL Imagen', 'Archivo en Drive', 'Estado', 'Fecha Eliminado'];
   const contRows = [contHeaders];
 
   for (let i = 0; i < transactions.length; i++) {
@@ -178,7 +178,9 @@ function actualizarCampitoJorox() {
       tx.description || '',
       tx.user_id || '',
       tx.image_url || '',
-      ''
+      '',
+      tx.status || 'ACTIVE',
+      tx.deleted_at || ''
     ]);
   }
 

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
-import { Camera, Euro, AlignLeft } from 'lucide-react';
+import { Camera, Euro, AlignLeft, Trash2, RotateCcw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatCurrency, highlightText } from '../utils/helpers';
 
@@ -13,6 +13,7 @@ export default function GastoVenta() {
   const [user, setUser] = useState('');
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
 
   const [formErrors, setFormErrors] = useState({});
   const [editErrors, setEditErrors] = useState({});
@@ -33,13 +34,17 @@ export default function GastoVenta() {
       Value: Math.abs(tx.amount),
       Amount: tx.amount,
       Description: tx.description,
-      Imagen: tx.image_url
+      Imagen: tx.image_url,
+      status: tx.status || 'ACTIVE',
+      deleted_at: tx.deleted_at || null
     }));
   }, [transactions]);
 
   const finances = useMemo(() => {
+    // REGLA: Los cálculos de saldos de usuarios SIEMPRE se calculan sobre transacciones ACTIVAS
+    const activeRecords = records.filter(r => r.status === 'ACTIVE');
     const financesTmp = (users || []).map(u => {
-      const userRecords = records.filter(r => r.User === u.name);
+      const userRecords = activeRecords.filter(r => r.User === u.name);
       const gasto = userRecords
         .filter(r => r.Category === 'Gasto' || parseFloat(r.Amount || 0) > 0)
         .reduce((acc, r) => acc + Math.abs(parseFloat(r.Amount || 0)), 0);
@@ -59,18 +64,24 @@ export default function GastoVenta() {
     }));
   }, [users, records]);
 
-  const sortedRecords = useMemo(() => [...records].sort((a, b) => new Date(b.Date) - new Date(a.Date)), [records]);
+  // Si showTrash es true: muestra activas y eliminadas juntas intercaladas por fecha.
+  // Si showTrash es false: muestra únicamente transacciones activas.
+  const visibleRecords = useMemo(() => {
+    const list = showTrash ? records : records.filter(r => r.status === 'ACTIVE');
+    return [...list].sort((a, b) => new Date(b.Date) - new Date(a.Date));
+  }, [records, showTrash]);
+
   const displayRecords = useMemo(() => {
     return (isSearchOpen && searchQuery.trim() !== '') 
-      ? sortedRecords.filter(r => 
+      ? visibleRecords.filter(r => 
           (r.User && r.User.toLowerCase().includes(searchQuery.toLowerCase())) ||
           (r.Description && r.Description.toLowerCase().includes(searchQuery.toLowerCase())) ||
           (r.Category && r.Category.toLowerCase().includes(searchQuery.toLowerCase())) ||
           (r.Category === 'Retiro' && ('ingreso'.includes(searchQuery.toLowerCase()) || 'venta'.includes(searchQuery.toLowerCase()))) ||
           (r.Category === 'Gasto' && 'gasto'.includes(searchQuery.toLowerCase()))
         )
-      : sortedRecords;
-  }, [isSearchOpen, searchQuery, sortedRecords]);
+      : visibleRecords;
+  }, [isSearchOpen, searchQuery, visibleRecords]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -125,7 +136,8 @@ export default function GastoVenta() {
       type: type,
       amount: finalAmount,
       description: description.trim(),
-      image_url: imageUrl
+      image_url: imageUrl,
+      status: 'ACTIVE'
     }]);
 
     if (!error) {
@@ -156,15 +168,21 @@ export default function GastoVenta() {
           backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1100, padding: '1.5rem'
         }}>
           <div style={{ backgroundColor: 'var(--bg-color)', padding: '2rem 1.5rem', borderRadius: '8px', textAlign: 'center', width: '100%', border: '1px solid var(--danger)' }}>
-            <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas borrar permanentemente esta transacción?</h4>
+            <h4 style={{ color: 'white', marginBottom: '1.5rem', fontSize: '1.1rem' }}>¿Seguro que deseas eliminar esta transacción?</h4>
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button type="button" onClick={() => setIsConfirmingDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
               <button type="button" onClick={async () => {
-                await supabase.from('transactions').delete().eq('id', selectedRecord.TransactionID);
+                await supabase
+                  .from('transactions')
+                  .update({
+                    status: 'DELETED',
+                    deleted_at: new Date().toISOString()
+                  })
+                  .eq('id', selectedRecord.TransactionID);
                 refetchTransactions();
                 setSelectedRecord(null);
                 setIsConfirmingDelete(false);
-              }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Borrar</button>
+              }} className="btn" style={{ flex: 1, backgroundColor: 'var(--danger)', color: 'white', border: 'none', margin: 0 }}>Sí, Eliminar</button>
             </div>
           </div>
         </div>
@@ -190,7 +208,9 @@ export default function GastoVenta() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', marginBottom: '3.8rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Editar Transacción</h2>
+        <h2 style={{ margin: 0, fontSize: '1.5rem', color: selectedRecord?.status === 'DELETED' ? '#ef4444' : 'white', fontWeight: 'bold' }}>
+          {selectedRecord?.status === 'DELETED' ? 'Transacción Eliminada' : 'Editar Transacción'}
+        </h2>
         <button type="button" onClick={() => { setSelectedRecord(null); setEditErrors({}); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
       </div>
 
@@ -481,7 +501,27 @@ export default function GastoVenta() {
             refetchTransactions();
             setSelectedRecord(null);
           }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
-          <button type="button" onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
+          
+          {selectedRecord.status === 'DELETED' ? (
+            <button 
+              type="button" 
+              onClick={async () => {
+                await supabase
+                  .from('transactions')
+                  .update({ status: 'ACTIVE', deleted_at: null })
+                  .eq('id', selectedRecord.TransactionID);
+                refetchTransactions();
+                setSelectedRecord(null);
+              }} 
+              className="btn" 
+              style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: '#10b981', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: 'none', fontWeight: 'bold' }}
+            >
+              <RotateCcw size={18} />
+              Restaurar
+            </button>
+          ) : (
+            <button type="button" onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
+          )}
         </div>
       </div>
     </div>
@@ -490,10 +530,18 @@ export default function GastoVenta() {
   const renderRow = (r, i) => {
     // Para las re-renderizaciones por slice, la key original puede dar problemas si se basa en i.
     const key = r.TransactionID || i;
+    const isDeleted = r.status === 'DELETED';
+    const textColor = isDeleted 
+      ? '#ef4444' 
+      : (r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)');
+
     return (
       <tr 
         key={key} 
-        style={{ cursor: 'pointer' }}
+        style={{ 
+          cursor: 'pointer',
+          backgroundColor: isDeleted ? 'rgba(239, 68, 68, 0.08)' : 'transparent'
+        }}
         onClick={() => {
           setSelectedRecord(r);
           setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category === 'Retiro' ? 'Retiro' : 'Gasto', image: null, currentImage: r.Imagen || null });
@@ -501,12 +549,12 @@ export default function GastoVenta() {
           setEditErrors({});
         }}
       >
-        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
-        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
-        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
+        <td style={{ color: textColor }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
+        <td style={{ color: textColor }}>{highlightText(r.User, isSearchOpen ? searchQuery : '')}</td>
+        <td style={{ color: textColor }}>
           {formatCurrency(Math.abs(r.Amount))}
         </td>
-        <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
+        <td style={{ color: textColor }}>
           {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'INGRESO', isSearchOpen ? searchQuery : '')}
         </td>
       </tr>
@@ -794,9 +842,30 @@ export default function GastoVenta() {
         </>
       )}
 
-      <h2 className="section-title" style={{ marginTop: '5.5rem', marginBottom: '1.2rem', color: 'white' }}>
-        {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5.5rem', marginBottom: '1.2rem' }}>
+        <h2 className="section-title" style={{ margin: 0, color: 'white' }}>
+          {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
+        </h2>
+        <button
+          type="button"
+          onClick={() => setShowTrash(!showTrash)}
+          title={showTrash ? 'Ocultar transacciones eliminadas' : 'Mostrar transacciones eliminadas intercaladas'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0.45rem',
+            borderRadius: '6px',
+            backgroundColor: showTrash ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+            color: showTrash ? '#ef4444' : '#666666',
+            border: showTrash ? '1px solid #ef4444' : '1px solid transparent',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <Trash2 size={24} />
+        </button>
+      </div>
       
       {!selectedRecord ? (
         <div style={{ overflowX: 'auto' }}>
