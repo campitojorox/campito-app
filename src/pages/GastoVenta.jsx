@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
-import { Camera, DollarSign, AlignLeft, User, CheckCircle2 } from 'lucide-react';
+import { Camera, Euro, AlignLeft } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatCurrency, highlightText } from '../utils/helpers';
 
@@ -35,7 +35,27 @@ export default function GastoVenta() {
     }));
   }, [transactions]);
 
-
+  const finances = useMemo(() => {
+    const financesTmp = (users || []).map(u => {
+      const userRecords = records.filter(r => r.User === u.name);
+      const gasto = userRecords
+        .filter(r => r.Category === 'Gasto' || parseFloat(r.Amount || 0) > 0)
+        .reduce((acc, r) => acc + Math.abs(parseFloat(r.Amount || 0)), 0);
+      const venta = userRecords
+        .filter(r => r.Category === 'Retiro' || parseFloat(r.Amount || 0) < 0)
+        .reduce((acc, r) => acc + Math.abs(parseFloat(r.Amount || 0)), 0);
+      const balance = gasto - venta;
+      return { user: u.name, gasto, venta, balance };
+    });
+    const maxBalance = financesTmp.length > 0 ? Math.max(...financesTmp.map(f => f.balance)) : 0;
+    return financesTmp.map(f => ({
+      user: f.user,
+      gasto: f.gasto,
+      venta: f.venta,
+      balance: f.balance,
+      diferencia: f.balance - maxBalance
+    }));
+  }, [users, records]);
 
   const sortedRecords = useMemo(() => [...records].sort((a, b) => new Date(b.Date) - new Date(a.Date)), [records]);
   const displayRecords = useMemo(() => {
@@ -183,7 +203,7 @@ export default function GastoVenta() {
         </div>
         <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
           <div className="input-with-icon">
-            <DollarSign className="input-icon" size={20} />
+            <Euro className="input-icon" size={20} />
             <input type="number" step="0.01" className="form-input" value={editForm.amount} onChange={(e) => setEditForm({...editForm, amount: e.target.value})} placeholder="Cantidad / Monto" />
           </div>
         </div>
@@ -295,7 +315,7 @@ export default function GastoVenta() {
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
-          <h2 style={{ marginTop: '2rem', marginBottom: '1.5rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
+          <h2 style={{ marginTop: '2rem', marginBottom: '3.8rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
           
           <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
@@ -332,58 +352,73 @@ export default function GastoVenta() {
             </div>
           </div>
 
-          <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', padding: 0 }}>
+          <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '2.2rem', marginBottom: '1.5rem', padding: 0, alignItems: 'stretch' }}>
+            <div style={{ flex: '1 1 33%', minWidth: 0, display: 'flex' }}>
+              <div className="input-with-icon" style={{ marginBottom: 0, width: '100%' }}>
+                <Euro className="input-icon" size={18} style={{ left: '0.6rem' }} />
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  className="form-input" 
+                  required 
+                  value={amount} 
+                  onChange={(e) => { e.target.setCustomValidity(''); setAmount(e.target.value); }} 
+                  onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una cantidad')} 
+                  placeholder="Cantidad"
+                  style={{ padding: '0.75rem 0.4rem 0.75rem 2rem', width: '100%', height: '100%', minHeight: '44px', fontSize: '0.95rem' }} 
+                />
+              </div>
+            </div>
             <button 
               type="button"
               onClick={() => setType('Gasto')}
               style={{
-                flex: 1,
-                padding: '0.8rem',
+                flex: '1 1 33%',
+                minWidth: 0,
+                padding: '0.6rem 0.2rem',
                 borderRadius: '8px',
                 border: 'none',
                 backgroundColor: type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
                 color: type === 'Gasto' ? '#1a1a1a' : 'white',
                 fontWeight: '600',
-                fontSize: '1rem',
+                fontSize: '0.95rem',
                 cursor: 'pointer',
                 boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                position: 'relative'
+                lineHeight: 1.15
               }}
             >
-              Gasto (invertido)
+              <span>Gasto</span>
+              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(invertido)</span>
             </button>
             <button 
               type="button"
               onClick={() => setType('Retiro')}
               style={{
-                flex: 1,
-                padding: '0.8rem',
+                flex: '1 1 33%',
+                minWidth: 0,
+                padding: '0.6rem 0.2rem',
                 borderRadius: '8px',
                 border: 'none',
                 backgroundColor: type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
                 color: type === 'Retiro' ? '#1a1a1a' : 'white',
                 fontWeight: '600',
-                fontSize: '1rem',
+                fontSize: '0.95rem',
                 cursor: 'pointer',
                 boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                position: 'relative'
+                lineHeight: 1.15
               }}
             >
-              Venta (generado)
+              <span>Venta</span>
+              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
             </button>
-          </div>
-
-          <div className="form-group" style={{ padding: 0 }}>
-            <div className="input-with-icon">
-              <DollarSign className="input-icon" size={20} />
-              <input type="number" step="0.01" className="form-input" required value={amount} onChange={(e) => { e.target.setCustomValidity(''); setAmount(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una cantidad')} placeholder="Cantidad / Monto" />
-            </div>
           </div>
           
           <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
@@ -396,10 +431,11 @@ export default function GastoVenta() {
           <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
             <label style={{
               display: 'flex',
-              flexDirection: 'column',
+              flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: image ? '0' : '2rem',
+              gap: '0.6rem',
+              padding: image ? '0' : '0.8rem 1rem',
               border: 'none',
               borderRadius: '8px',
               backgroundColor: 'white',
@@ -410,12 +446,12 @@ export default function GastoVenta() {
             }}>
               {image ? (
                 <div style={{ position: 'relative', width: '100%' }}>
-                  <img src={URL.createObjectURL(image)} alt="Preview" style={{ width: '100%', height: '150px', objectFit: 'cover', display: 'block', borderRadius: '8px' }} />
+                  <img src={URL.createObjectURL(image)} alt="Preview" style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block', borderRadius: '8px' }} />
                   <button 
                     type="button"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); setImage(null); }}
                     style={{
-                      position: 'absolute', top: '10px', right: '10px', width: '36px', height: '36px', borderRadius: '50%',
+                      position: 'absolute', top: '10px', right: '10px', width: '32px', height: '32px', borderRadius: '50%',
                       backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
                       paddingBottom: '3px', zIndex: 10
@@ -426,8 +462,8 @@ export default function GastoVenta() {
                 </div>
               ) : (
                 <>
-                  <Camera size={32} style={{ marginBottom: '0.5rem' }} />
-                  <span>Subir imagen</span>
+                  <Camera size={22} />
+                  <span style={{ fontSize: '0.95rem', fontWeight: '500' }}>Subir imagen</span>
                 </>
               )}
               <input 
@@ -439,17 +475,53 @@ export default function GastoVenta() {
             </label>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '3.2rem' }}>
             <button type="submit" className="btn" style={{ width: '100%', margin: 0 }} disabled={loading}>
               {loading ? 'Agregando...' : 'AGREGAR'}
             </button>
           </div>
         </form>
       </div>
+
+      <div style={{ marginTop: '5rem', marginBottom: '5.5rem' }}>
+        <h2 className="section-title" style={{ marginTop: 0, marginBottom: '1.2rem', color: 'white' }}>Contabilidad</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ whiteSpace: 'nowrap' }}>
+            <thead>
+              <tr>
+                <th>USUARIO</th>
+                <th>GASTO (Inv.)</th>
+                <th>VENTA (Gen.)</th>
+                <th>BALANCE</th>
+                <th>DIFERENCIA</th>
+              </tr>
+            </thead>
+            <tbody>
+              {finances.map((f, i) => (
+                <tr key={i}>
+                  <td style={{ color: 'var(--text-primary)' }}>{f.user}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>
+                    {formatCurrency(f.gasto)}
+                  </td>
+                  <td style={{ color: '#8ab98a' }}>
+                    {formatCurrency(f.venta)}
+                  </td>
+                  <td style={{ color: f.balance < 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                    {formatCurrency(f.balance)}
+                  </td>
+                  <td style={{ color: f.diferencia < 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>
+                    {formatCurrency(f.diferencia)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
         </>
       )}
 
-      <h2 className="section-title" style={{ marginTop: '2.5rem', color: 'white' }}>
+      <h2 className="section-title" style={{ marginTop: '5.5rem', marginBottom: '1.2rem', color: 'white' }}>
         {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
       </h2>
       

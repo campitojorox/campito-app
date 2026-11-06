@@ -4,7 +4,7 @@ import { useOutletContext, useLocation } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '../supabaseClient';
-import { Plus, Calendar, Clock, User, AlignLeft, CheckCircle2 } from 'lucide-react';
+import { Plus, Calendar, Clock, AlignLeft } from 'lucide-react';
 
 const categoryColors = {
   'RIEGO': '#38bdf8', // Azul claro (Tailwind sky-400)
@@ -195,7 +195,7 @@ export default function Calendario() {
 
   const renderForm = () => (
     <div id="event-form" style={{ margin: '3rem 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: editingEvent ? '1rem' : '2rem', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: editingEvent ? '1rem' : '2rem', marginBottom: '3.8rem' }}>
             <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
             {editingEvent && (
               <button type="button" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
@@ -204,7 +204,7 @@ export default function Calendario() {
           <div style={{ marginBottom: '1.5rem' }}>
             <form onSubmit={handleAddEvent}>
 
-            <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
+            <div className="form-group" style={{ padding: 0, marginBottom: '1.8rem' }}>
               <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '0.5rem', width: '100%', flexWrap: 'wrap' }}>
                 {users.map(u => {
                   const isSelected = newResponsibles.includes(u.name);
@@ -245,39 +245,41 @@ export default function Calendario() {
               </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.2rem' }}>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Inicio</label>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Calendar className="input-icon" size={20} />
-                  <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-                </div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div className="input-with-icon" style={{ flex: '1.1 1 0', marginBottom: 0, position: 'relative' }}>
+                <Calendar className="input-icon" size={18} style={{ left: '0.75rem' }} />
+                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
+                  (Inicio)
+                </span>
+                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.4rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
               </div>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem', marginBottom: '0.2rem', display: 'block' }}>Término</label>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Calendar className="input-icon" size={20} />
-                  <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.5rem' }}>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Clock className="input-icon" size={20} />
-                  <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
-                </div>
-              </div>
-              <div className="form-group" style={{ flex: 1, padding: 0 }}>
-                <div className="input-with-icon" style={{ marginBottom: 0 }}>
-                  <Clock className="input-icon" size={20} />
-                  <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
-                </div>
+              <div className="input-with-icon" style={{ flex: '0.9 1 0', marginBottom: 0, position: 'relative' }}>
+                <Clock className="input-icon" size={18} style={{ left: '0.75rem' }} />
+                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
+                  (Inicio)
+                </span>
+                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.4rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
               </div>
             </div>
 
-            <div className="form-group" style={{ padding: 0, marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.85rem' }}>
+              <div className="input-with-icon" style={{ flex: '1.1 1 0', marginBottom: 0, position: 'relative' }}>
+                <Calendar className="input-icon" size={18} style={{ left: '0.75rem' }} />
+                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
+                  (Término)
+                </span>
+                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.8rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+              </div>
+              <div className="input-with-icon" style={{ flex: '0.9 1 0', marginBottom: 0, position: 'relative' }}>
+                <Clock className="input-icon" size={18} style={{ left: '0.75rem' }} />
+                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
+                  (Término)
+                </span>
+                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.8rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="form-group" style={{ padding: 0, marginTop: '3.2rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
               <button 
                 type="button"
                 onClick={() => setNewCategory('RIEGO')}
@@ -436,12 +438,12 @@ export default function Calendario() {
               </div>
             </div>
             {!editingEvent ? (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '3rem' }}>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Agregar</button>
                 <button type="button" className="btn" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--danger)', color: 'white', flex: 1, margin: 0, padding: '0.75rem 0' }}>Cancelar</button>
               </div>
             ) : (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '3rem' }}>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
                 <button type="button" onClick={(e) => { e.preventDefault(); setIsConfirmingDelete(true); }} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
               </div>

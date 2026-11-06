@@ -37,10 +37,9 @@ export default function Layout({ session }) {
   }, []);
   const viewerUrl = 'https://www.google.com/maps/d/viewer?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
   const editUrl = 'https://www.google.com/maps/d/u/1/edit?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
-  const generalUrl = 'https://www.google.com/maps';
   
   const {
-    needRefresh: [needRefresh, setNeedRefresh],
+    needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegistered(r) {
@@ -205,12 +204,18 @@ export default function Layout({ session }) {
             <button onClick={() => setIsMapasModalOpen(false)} style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
               <X size={24} />
             </button>
-            <h3 style={{ color: 'var(--primary)', marginTop: 0, marginBottom: '1.5rem', textAlign: 'center' }}>Mapas</h3>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <a href={generalUrl} target="_blank" rel="noopener noreferrer" onClick={() => setIsMapasModalOpen(false)} className="btn btn-primary" style={{ margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#4285F4', border: 'none' }}>
-                Abrir Google Maps
-              </a>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.8rem' }}>
+              <p style={{
+                textAlign: 'center',
+                fontWeight: 'bold',
+                fontSize: '1.05rem',
+                color: '#fbbf24',
+                margin: 0,
+                padding: '0.2rem 0'
+              }}>
+                ¡PRIMERO ABRE GOOGLE MAPS!
+              </p>
               <a href={viewerUrl} target="_blank" rel="noopener noreferrer" onClick={() => setIsMapasModalOpen(false)} className="btn btn-primary" style={{ margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 Cargar Mapa Campito Jorox
               </a>

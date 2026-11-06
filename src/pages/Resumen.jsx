@@ -1,25 +1,11 @@
 import { useMemo } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
-import { formatCurrency } from '../utils/helpers';
 import { format } from 'date-fns';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function Resumen() {
-  const { users, events, transactions } = useOutletContext();
+  const { users, events } = useOutletContext();
   const navigate = useNavigate();
-
-  const records = useMemo(() => {
-    return (transactions || []).map(tx => ({
-      TransactionID: tx.id,
-      Date: tx.date.split('T')[0] + " 00:00:00",
-      User: tx.profiles ? tx.profiles.name : 'Desconocido',
-      Category: tx.type,
-      Value: Math.abs(tx.amount),
-      Amount: tx.amount,
-      Description: tx.description,
-      Imagen: tx.image_url
-    }));
-  }, [transactions]);
 
   const categoryColors = {
     'RIEGO': '#3b82f6',
@@ -40,7 +26,7 @@ export default function Resumen() {
     categoriesToTrack.forEach(cat => latestDates[cat.id] = null);
 
     (events || []).forEach(ev => {
-      if (!ev.date || !latestDates.hasOwnProperty(ev.category)) return;
+      if (!ev.date || !Object.prototype.hasOwnProperty.call(latestDates, ev.category)) return;
       const evDate = new Date(ev.date.split('T')[0]);
       
       if (latestDates[ev.category] === null || evDate > latestDates[ev.category]) {
@@ -61,20 +47,6 @@ export default function Resumen() {
       Category: ev.category
     }));
   }, [events]);
-
-  const finances = useMemo(() => {
-    const financesTmp = (users || []).map(u => {
-      const userRecords = records.filter(r => r.User === u.name);
-      const balance = userRecords.reduce((acc, r) => acc + parseFloat(r.Amount || 0), 0);
-      return { user: u.name, balance };
-    });
-    const maxBalance = financesTmp.length > 0 ? Math.max(...financesTmp.map(f => f.balance)) : 0;
-    return financesTmp.map(f => ({
-      user: f.user,
-      balance: f.balance,
-      diferencia: f.balance - maxBalance
-    }));
-  }, [users, records]);
 
   const stats = useMemo(() => {
     return (users || []).filter(u => u.name !== 'Campito').map(u => {
@@ -110,7 +82,7 @@ export default function Resumen() {
         </div>
       </div>
 
-      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Eventos Calendario</h2>
+      <h2 className="section-title" style={{ marginTop: '5.5rem', marginBottom: '1.2rem' }}>Eventos Calendario</h2>
       <div style={{ width: '100%', height: 350, backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem 1rem 1rem 0', marginTop: '1rem' }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={stats} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
@@ -125,30 +97,6 @@ export default function Resumen() {
           </BarChart>
         </ResponsiveContainer>
       </div>
-
-      <h2 className="section-title" style={{ marginTop: '2.5rem' }}>Finanzas</h2>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Usuario</th>
-            <th>Diferencia</th>
-            <th>Balance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {finances.map((f, i) => (
-            <tr key={i}>
-              <td style={{ color: 'var(--text-primary)' }}>{f.user}</td>
-              <td style={{ color: f.diferencia < 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                {formatCurrency(f.diferencia)}
-              </td>
-              <td style={{ color: f.balance < 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                {formatCurrency(f.balance)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
