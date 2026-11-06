@@ -136,8 +136,7 @@ export default function GastoVenta() {
       type: type,
       amount: finalAmount,
       description: description.trim(),
-      image_url: imageUrl,
-      status: 'ACTIVE'
+      image_url: imageUrl
     }]);
 
     if (!error) {
@@ -172,13 +171,20 @@ export default function GastoVenta() {
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button type="button" onClick={() => setIsConfirmingDelete(false)} className="btn" style={{ flex: 1, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', margin: 0 }}>Cancelar</button>
               <button type="button" onClick={async () => {
-                await supabase
+                const { error: delError } = await supabase
                   .from('transactions')
                   .update({
                     status: 'DELETED',
                     deleted_at: new Date().toISOString()
                   })
                   .eq('id', selectedRecord.TransactionID);
+
+                // Si la columna status aún no se ha creado en Supabase, borrado de respaldo
+                if (delError) {
+                  console.warn('Soft delete no disponible, ejecutando borrado directo:', delError);
+                  await supabase.from('transactions').delete().eq('id', selectedRecord.TransactionID);
+                }
+
                 refetchTransactions();
                 setSelectedRecord(null);
                 setIsConfirmingDelete(false);
