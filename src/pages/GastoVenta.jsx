@@ -7,13 +7,15 @@ import { formatCurrency, highlightText } from '../utils/helpers';
 
 export default function GastoVenta() {
   const { users, transactions, refetchTransactions, searchQuery = '', isSearchOpen = false } = useOutletContext();
-  const [type, setType] = useState('Invertido');
+  const [type, setType] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [user, setUser] = useState('');
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const [formErrors, setFormErrors] = useState({});
+  const [editErrors, setEditErrors] = useState({});
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [editForm, setEditForm] = useState({ amount: '', desc: '', user: '', type: '', image: null, currentImage: null });
   const [expandedImage, setExpandedImage] = useState(null);
@@ -72,6 +74,33 @@ export default function GastoVenta() {
 
   const handleAdd = async (e) => {
     e.preventDefault();
+    
+    const errors = {};
+    if (!user) {
+      errors.user = 'Selecciona un usuario';
+    }
+    if (!type || (type !== 'Gasto' && type !== 'Retiro')) {
+      errors.type = 'Selecciona si es Gasto o Ingreso';
+    }
+    if (!amount || parseFloat(amount) <= 0) {
+      errors.amount = 'Ingresa una cantidad válida';
+    }
+    if (!description || !description.trim()) {
+      errors.description = 'Ingresa una descripción';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      const missing = [];
+      if (errors.user) missing.push('Usuario');
+      if (errors.type) missing.push('Gasto o Ingreso');
+      if (errors.amount) missing.push('Cantidad');
+      if (errors.description) missing.push('Descripción');
+      errors.general = `Falta información: Por favor selecciona ${missing.join(', ')}.`;
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
     setLoading(true);
     
     const respUser = users.find(u => u.name === user);
@@ -95,19 +124,21 @@ export default function GastoVenta() {
       user_id: userId,
       type: type,
       amount: finalAmount,
-      description: description || null,
+      description: description.trim(),
       image_url: imageUrl
     }]);
 
     if (!error) {
-      const msgType = type === 'Gasto' ? 'Invertido' : 'Ingreso';
+      const msgType = type === 'Gasto' ? 'Gasto' : 'Ingreso';
       setSuccessMsg(`${msgType} de ${amount}€ registrado exitosamente!`);
-      setTimeout(() => setSuccessMsg(null), 2000);
+      setTimeout(() => setSuccessMsg(null), 2500);
 
       setAmount('');
       setDescription('');
       setUser('');
+      setType('');
       setImage(null);
+      setFormErrors({});
       refetchTransactions();
     } else {
       alert('Error guardando transacción: ' + error.message);
@@ -160,17 +191,46 @@ export default function GastoVenta() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', marginBottom: '3.8rem' }}>
         <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Editar Transacción</h2>
-        <button type="button" onClick={() => setSelectedRecord(null)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
+        <button type="button" onClick={() => { setSelectedRecord(null); setEditErrors({}); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
       </div>
+
+      {editErrors.general && (
+        <div style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+          border: '1px solid var(--danger)',
+          borderRadius: '8px',
+          padding: '0.8rem 1rem',
+          marginBottom: '1.5rem',
+          color: '#fca5a5',
+          fontSize: '0.95rem',
+          fontWeight: '500',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <span>⚠️ {editErrors.general}</span>
+        </div>
+      )}
       
       <div style={{ color: 'var(--text-primary)' }}>
-        <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', paddingBottom: '0.5rem', width: '100%' }}>
+        <div className="form-group" style={{ padding: 0, marginBottom: '1.2rem' }}>
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            paddingBottom: '0.5rem',
+            width: '100%',
+            borderRadius: '14px',
+            border: editErrors.user ? '1.5px dashed var(--danger)' : '1.5px solid transparent',
+            padding: editErrors.user ? '4px' : '0'
+          }}>
             {users.map(u => (
               <button
                 key={u.id}
                 type="button"
-                onClick={() => setEditForm({...editForm, user: u.name})}
+                onClick={() => {
+                  setEditForm({...editForm, user: u.name});
+                  setEditErrors(prev => ({ ...prev, user: null, general: null }));
+                }}
                 style={{
                   flex: 1,
                   padding: '0.8rem 0',
@@ -191,9 +251,14 @@ export default function GastoVenta() {
               </button>
             ))}
           </div>
+          {editErrors.user && (
+            <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
+              * Selecciona un usuario
+            </span>
+          )}
         </div>
 
-        <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '2.2rem', marginBottom: '1.5rem', padding: 0, alignItems: 'stretch' }}>
+        <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '1.8rem', marginBottom: '0.5rem', padding: 0, alignItems: 'stretch' }}>
           <div style={{ flex: '1 1 33%', minWidth: 0, display: 'flex' }}>
             <div className="input-with-icon" style={{ marginBottom: 0, width: '100%' }}>
               <Euro className="input-icon" size={18} style={{ left: '0.6rem' }} />
@@ -202,21 +267,34 @@ export default function GastoVenta() {
                 step="0.01" 
                 className="form-input" 
                 value={editForm.amount} 
-                onChange={(e) => setEditForm({...editForm, amount: e.target.value})} 
+                onChange={(e) => {
+                  setEditForm({...editForm, amount: e.target.value});
+                  setEditErrors(prev => ({ ...prev, amount: null, general: null }));
+                }} 
                 placeholder="Cantidad"
-                style={{ padding: '0.75rem 0.4rem 0.75rem 2rem', width: '100%', height: '100%', minHeight: '44px', fontSize: '0.95rem' }} 
+                style={{
+                  padding: '0.75rem 0.4rem 0.75rem 2rem',
+                  width: '100%',
+                  height: '100%',
+                  minHeight: '44px',
+                  fontSize: '0.95rem',
+                  border: editErrors.amount ? '1.5px solid var(--danger)' : undefined
+                }} 
               />
             </div>
           </div>
           <button 
             type="button"
-            onClick={() => setEditForm({...editForm, type: 'Gasto'})}
+            onClick={() => {
+              setEditForm({...editForm, type: 'Gasto'});
+              setEditErrors(prev => ({ ...prev, type: null, general: null }));
+            }}
             style={{
               flex: '1 1 33%',
               minWidth: 0,
               padding: '0.6rem 0.2rem',
               borderRadius: '8px',
-              border: 'none',
+              border: (editErrors.type && !editForm.type) ? '1.5px dashed var(--danger)' : 'none',
               backgroundColor: editForm.type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
               color: editForm.type === 'Gasto' ? '#1a1a1a' : 'white',
               fontWeight: '600',
@@ -235,13 +313,16 @@ export default function GastoVenta() {
           </button>
           <button 
             type="button"
-            onClick={() => setEditForm({...editForm, type: 'Retiro'})}
+            onClick={() => {
+              setEditForm({...editForm, type: 'Retiro'});
+              setEditErrors(prev => ({ ...prev, type: null, general: null }));
+            }}
             style={{
               flex: '1 1 33%',
               minWidth: 0,
               padding: '0.6rem 0.2rem',
               borderRadius: '8px',
-              border: 'none',
+              border: (editErrors.type && !editForm.type) ? '1.5px dashed var(--danger)' : 'none',
               backgroundColor: editForm.type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
               color: editForm.type === 'Retiro' ? '#1a1a1a' : 'white',
               fontWeight: '600',
@@ -259,18 +340,39 @@ export default function GastoVenta() {
             <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
           </button>
         </div>
+        {(editErrors.amount || editErrors.type) && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+            {editErrors.amount ? (
+              <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {editErrors.amount}</span>
+            ) : <span />}
+            {editErrors.type && (
+              <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {editErrors.type}</span>
+            )}
+          </div>
+        )}
 
-        <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
+        <div className="form-group" style={{ padding: 0, marginTop: '1.2rem' }}>
           <div className="input-with-icon">
             <AlignLeft className="input-icon" size={20} />
             <input 
               type="text" 
               className="form-input" 
               value={editForm.desc} 
-              onChange={(e) => setEditForm({...editForm, desc: e.target.value})} 
+              onChange={(e) => {
+                setEditForm({...editForm, desc: e.target.value});
+                setEditErrors(prev => ({ ...prev, description: null, general: null }));
+              }} 
               placeholder="Descripción / Concepto" 
+              style={{
+                border: editErrors.description ? '1.5px solid var(--danger)' : undefined
+              }}
             />
           </div>
+          {editErrors.description && (
+            <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
+              * {editErrors.description}
+            </span>
+          )}
         </div>
 
         <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
@@ -334,6 +436,24 @@ export default function GastoVenta() {
 
         <div style={{ display: 'flex', gap: '1rem', marginTop: '3.2rem' }}>
           <button type="button" onClick={async () => {
+            const errs = {};
+            if (!editForm.user) errs.user = 'Selecciona un usuario';
+            if (!editForm.type || (editForm.type !== 'Gasto' && editForm.type !== 'Retiro')) errs.type = 'Selecciona Gasto o Ingreso';
+            if (!editForm.amount || parseFloat(editForm.amount) <= 0) errs.amount = 'Ingresa una cantidad';
+            if (!editForm.desc || !editForm.desc.trim()) errs.description = 'Ingresa una descripción';
+
+            if (Object.keys(errs).length > 0) {
+              const missing = [];
+              if (errs.user) missing.push('Usuario');
+              if (errs.type) missing.push('Gasto o Ingreso');
+              if (errs.amount) missing.push('Cantidad');
+              if (errs.description) missing.push('Descripción');
+              errs.general = `Falta información: Por favor completa ${missing.join(', ')}.`;
+              setEditErrors(errs);
+              return;
+            }
+            setEditErrors({});
+
             const finalAmount = editForm.type === 'Retiro' ? -Math.abs(parseFloat(editForm.amount)) : Math.abs(parseFloat(editForm.amount));
             
             let imageUrl = editForm.currentImage;
@@ -376,8 +496,9 @@ export default function GastoVenta() {
         style={{ cursor: 'pointer' }}
         onClick={() => {
           setSelectedRecord(r);
-          setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category || 'Invertido', image: null, currentImage: r.Imagen || null });
+          setEditForm({ amount: Math.abs(r.Amount), desc: r.Description || '', user: r.User || '', type: r.Category === 'Retiro' ? 'Retiro' : 'Gasto', image: null, currentImage: r.Imagen || null });
           setIsConfirmingDelete(false);
+          setEditErrors({});
         }}
       >
         <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>{r.Date ? r.Date.split(' ')[0] : ''}</td>
@@ -397,19 +518,44 @@ export default function GastoVenta() {
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
           <h2 style={{ marginTop: '2rem', marginBottom: '3.8rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
+
+          {formErrors.general && (
+            <div style={{
+              backgroundColor: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid var(--danger)',
+              borderRadius: '8px',
+              padding: '0.8rem 1rem',
+              marginBottom: '1.5rem',
+              color: '#fca5a5',
+              fontSize: '0.95rem',
+              fontWeight: '500',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <span>⚠️ {formErrors.general}</span>
+            </div>
+          )}
           
           <div style={{ marginBottom: '1.5rem' }}>
         <form onSubmit={handleAdd}>
-          <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
-            <div style={{ display: 'flex', gap: '1rem', paddingBottom: '0.5rem', width: '100%' }}>
+          <div className="form-group" style={{ padding: 0, marginBottom: '1.2rem' }}>
+            <div style={{
+              display: 'flex',
+              gap: '1rem',
+              paddingBottom: '0.5rem',
+              width: '100%',
+              borderRadius: '14px',
+              border: formErrors.user ? '1.5px dashed var(--danger)' : '1.5px solid transparent',
+              padding: formErrors.user ? '4px' : '0'
+            }}>
               {users.map(u => (
                 <button
                   key={u.id}
                   type="button"
                   onClick={() => {
-                    const fakeEvent = { target: { setCustomValidity: () => {} } };
-                    fakeEvent.target.setCustomValidity('');
                     setUser(u.name);
+                    setFormErrors(prev => ({ ...prev, user: null, general: null }));
                   }}
                   style={{
                     flex: 1,
@@ -431,9 +577,14 @@ export default function GastoVenta() {
                 </button>
               ))}
             </div>
+            {formErrors.user && (
+              <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
+                * Selecciona un usuario
+              </span>
+            )}
           </div>
 
-          <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '2.2rem', marginBottom: '1.5rem', padding: 0, alignItems: 'stretch' }}>
+          <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '1.8rem', marginBottom: '0.5rem', padding: 0, alignItems: 'stretch' }}>
             <div style={{ flex: '1 1 33%', minWidth: 0, display: 'flex' }}>
               <div className="input-with-icon" style={{ marginBottom: 0, width: '100%' }}>
                 <Euro className="input-icon" size={18} style={{ left: '0.6rem' }} />
@@ -441,24 +592,35 @@ export default function GastoVenta() {
                   type="number" 
                   step="0.01" 
                   className="form-input" 
-                  required 
                   value={amount} 
-                  onChange={(e) => { e.target.setCustomValidity(''); setAmount(e.target.value); }} 
-                  onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una cantidad')} 
+                  onChange={(e) => {
+                    setAmount(e.target.value);
+                    setFormErrors(prev => ({ ...prev, amount: null, general: null }));
+                  }} 
                   placeholder="Cantidad"
-                  style={{ padding: '0.75rem 0.4rem 0.75rem 2rem', width: '100%', height: '100%', minHeight: '44px', fontSize: '0.95rem' }} 
+                  style={{
+                    padding: '0.75rem 0.4rem 0.75rem 2rem',
+                    width: '100%',
+                    height: '100%',
+                    minHeight: '44px',
+                    fontSize: '0.95rem',
+                    border: formErrors.amount ? '1.5px solid var(--danger)' : undefined
+                  }} 
                 />
               </div>
             </div>
             <button 
               type="button"
-              onClick={() => setType('Gasto')}
+              onClick={() => {
+                setType('Gasto');
+                setFormErrors(prev => ({ ...prev, type: null, general: null }));
+              }}
               style={{
                 flex: '1 1 33%',
                 minWidth: 0,
                 padding: '0.6rem 0.2rem',
                 borderRadius: '8px',
-                border: 'none',
+                border: formErrors.type && !type ? '1.5px dashed var(--danger)' : 'none',
                 backgroundColor: type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
                 color: type === 'Gasto' ? '#1a1a1a' : 'white',
                 fontWeight: '600',
@@ -477,13 +639,16 @@ export default function GastoVenta() {
             </button>
             <button 
               type="button"
-              onClick={() => setType('Retiro')}
+              onClick={() => {
+                setType('Retiro');
+                setFormErrors(prev => ({ ...prev, type: null, general: null }));
+              }}
               style={{
                 flex: '1 1 33%',
                 minWidth: 0,
                 padding: '0.6rem 0.2rem',
                 borderRadius: '8px',
-                border: 'none',
+                border: formErrors.type && !type ? '1.5px dashed var(--danger)' : 'none',
                 backgroundColor: type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
                 color: type === 'Retiro' ? '#1a1a1a' : 'white',
                 fontWeight: '600',
@@ -501,12 +666,39 @@ export default function GastoVenta() {
               <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
             </button>
           </div>
+          {(formErrors.amount || formErrors.type) && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              {formErrors.amount ? (
+                <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {formErrors.amount}</span>
+              ) : <span />}
+              {formErrors.type && (
+                <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {formErrors.type}</span>
+              )}
+            </div>
+          )}
           
-          <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
+          <div className="form-group" style={{ padding: 0, marginTop: '1.2rem' }}>
             <div className="input-with-icon">
               <AlignLeft className="input-icon" size={20} />
-              <input type="text" className="form-input" required value={description} onChange={(e) => { e.target.setCustomValidity(''); setDescription(e.target.value); }} onInvalid={(e) => e.target.setCustomValidity('Por favor, ingresa una descripción')} placeholder="Descripción / Concepto" />
+              <input 
+                type="text" 
+                className="form-input" 
+                value={description} 
+                onChange={(e) => {
+                  setDescription(e.target.value);
+                  setFormErrors(prev => ({ ...prev, description: null, general: null }));
+                }} 
+                placeholder="Descripción / Concepto" 
+                style={{
+                  border: formErrors.description ? '1.5px solid var(--danger)' : undefined
+                }}
+              />
             </div>
+            {formErrors.description && (
+              <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
+                * {formErrors.description}
+              </span>
+            )}
           </div>
 
           <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
