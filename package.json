@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backup": "zip -r campito-app-respaldo.zip src public api scripts package.json index.html vite.config.js vercel.json README.md 'CAMPITO JOROX DATA.xlsx'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
