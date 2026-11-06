@@ -254,7 +254,7 @@ export default function GastoVenta() {
             }}
           >
             <span>Ingreso</span>
-            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(ventas, etc.)</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
           </button>
         </div>
 
@@ -496,7 +496,7 @@ export default function GastoVenta() {
               }}
             >
               <span>Ingreso</span>
-              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(ventas, etc.)</span>
+              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
             </button>
           </div>
           
