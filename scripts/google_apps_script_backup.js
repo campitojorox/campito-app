@@ -3,43 +3,37 @@
  * RESPALDO AUTOMÁTICO CAMPITO JOROX -> GOOGLE DRIVE / GOOGLE SHEETS
  * Cuenta: campitojorox@gmail.com
  * Ubicación: Mi unidad / APP CAMPITO JOROX
- *            └── Comprobantes/   ← imágenes de transacciones
+ *            ├── CAMPITO JOROX DATA (Sheets con Contabilidad y Calendario)
+ *            ├── Comprobantes/ (Fotos de tickets por mes)
+ *            └── Codigo Fuente/ (ZIP con el código fuente de GitHub)
  * ====================================================================
- *
- * INSTRUCCIONES:
- * 1. En Google Drive (con campitojorox@gmail.com), ve a "Mi unidad / APP CAMPITO JOROX".
- * 2. Abre tu archivo de datos "CAMPITO JOROX DATA" con "Hojas de cálculo de Google".
- * 3. En el menú superior ve a: Extensiones > Apps Script.
- * 4. Borra todo lo que haya y pega este código completo.
- * 5. Sustituye 'PEGAR_AQUI_SUPABASE_SERVICE_ROLE_KEY' por la key real.
- * 6. Haz clic en "Guardar".
- * 7. Selecciona la función "actualizarCampitoJorox" y pulsa "Ejecutar".
- *    (Google te pedirá autorizar los permisos una sola vez).
- *
- * Las imágenes se guardarán en:
- *   Mi unidad / APP CAMPITO JOROX / Comprobantes / [año-mes] /
- *     [fecha]-[ID]-comprobante.jpg
- *
- * ¡A partir de ese momento aparecerá el menú "🏕️ Campito Jorox" en tu hoja!
  */
 
-// ─── CREDENCIALES ────────────────────────────────────────────────────────────
+// ─── CREDENCIALES SUPABASE ───────────────────────────────────────────────────
 const SUPABASE_CONFIG = {
   url: 'https://byyqdtcuutfnjdlaewsu.supabase.co',
   serviceKey: 'PEGAR_AQUI_SUPABASE_SERVICE_ROLE_KEY'
 };
 
-// Nombre de la carpeta raíz en Drive (debe existir ya en tu Mi unidad)
+// ─── CREDENCIALES GITHUB (Para respaldo de código) ───────────────────────────
+const GITHUB_CONFIG = {
+  owner: 'campitojorox',
+  repo: 'campito-app',
+  branch: 'main',
+  token: 'PEGAR_AQUI_GITHUB_TOKEN'
+};
+
+// Carpeta raíz en Google Drive
 const DRIVE_FOLDER_NAME = 'APP CAMPITO JOROX';
-
-// Nombre de la subcarpeta donde se guardarán las imágenes
 const IMAGES_SUBFOLDER_NAME = 'Comprobantes';
+const CODE_SUBFOLDER_NAME = 'Codigo Fuente';
 
-// ─── MENÚ ─────────────────────────────────────────────────────────────────────
+// ─── MENÚ EN GOOGLE SHEETS ───────────────────────────────────────────────────
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🏕️ Campito Jorox')
     .addItem('🔄 Sincronizar datos + imágenes ahora', 'actualizarCampitoJorox')
+    .addItem('📦 Respaldar código de la app (ZIP) ahora', 'respaldarCodigoGitHubMenu')
     .addItem('🖼️ Respaldar imágenes solamente', 'respaldarImagenes')
     .addSeparator()
     .addItem('⏰ Activar Respaldo Automático Semanal (Lunes 04:00 AM)', 'activarRespaldoSemanal')
@@ -48,10 +42,84 @@ function onOpen() {
     .addToUi();
 }
 
-// ─── FUNCIÓN PRINCIPAL ────────────────────────────────────────────────────────
+// ─── WEBHOOK: SE EJECUTA AUTOMÁTICAMENTE EN CADA "GIT PUSH" ──────────────────
 /**
- * Sincroniza datos de Supabase → Sheets Y descarga imágenes → Drive
+ * Cada vez que haces "git push", GitHub llama a esta función vía Webhook.
+ * Descarga y guarda el ZIP con el código más reciente en Google Drive.
  */
+function doPost(e) {
+  try {
+    const res = respaldarCodigoGitHub();
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'ok', detail: res }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'error', message: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  return ContentService
+    .createTextOutput("✅ Webhook de Campito Jorox activo y listo para recibir eventos de GitHub.")
+    .setMimeType(ContentService.MimeType.TEXT);
+}
+
+// ─── RESPALDO DEL CÓDIGO FUENTE DESDE GITHUB ─────────────────────────────────
+function respaldarCodigoGitHubMenu() {
+  const res = respaldarCodigoGitHub();
+  SpreadsheetApp.getUi().alert('📦 Respaldo de Código Completado\n\n' + res);
+}
+
+function respaldarCodigoGitHub() {
+  Logger.log('Descargando código de GitHub...');
+  const url = `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/zipball/${GITHUB_CONFIG.branch}`;
+  
+  const response = UrlFetchApp.fetch(url, {
+    method: 'get',
+    headers: {
+      'Authorization': 'Bearer ' + GITHUB_CONFIG.token,
+      'User-Agent': 'CampitoJorox-Backup-Script'
+    },
+    followRedirects: true,
+    muteHttpExceptions: true
+  });
+
+  const statusCode = response.getResponseCode();
+  if (statusCode !== 200) {
+    throw new Error('Error al conectar con GitHub (' + statusCode + '): ' + response.getContentText());
+  }
+
+  const rootFolders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
+  if (!rootFolders.hasNext()) {
+    throw new Error('No se encontró la carpeta "' + DRIVE_FOLDER_NAME + '" en tu Google Drive.');
+  }
+  const rootFolder = rootFolders.next();
+
+  // Carpeta: APP CAMPITO JOROX / Codigo Fuente
+  const codeFolder = obtenerOCrearSubcarpeta(rootFolder, CODE_SUBFOLDER_NAME);
+
+  const fechaHoy = Utilities.formatDate(new Date(), 'GMT+1', 'yyyy-MM-dd_HHmm');
+  const blob = response.getBlob();
+
+  // 1. Guardar o reemplazar "campito-app-latest.zip" (siempre la versión más reciente)
+  const existingLatest = codeFolder.getFilesByName('campito-app-latest.zip');
+  while (existingLatest.hasNext()) {
+    existingLatest.next().setTrashed(true);
+  }
+  const latestFile = codeFolder.createFile(blob.setName('campito-app-latest.zip'));
+
+  // 2. Guardar en histórico de versiones
+  const historicoFolder = obtenerOCrearSubcarpeta(codeFolder, 'Versiones Anteriores');
+  historicoFolder.createFile(blob.setName(`campito-app-${fechaHoy}.zip`));
+
+  const msg = `Guardado en Drive:\n• ${latestFile.getName()} (Versión más reciente)\n• campito-app-${fechaHoy}.zip (Histórico)`;
+  Logger.log(msg);
+  return msg;
+}
+
+// ─── SINCRONIZACIÓN DE DATOS (SUPABASE -> SHEETS + DRIVE) ─────────────────────
 function actualizarCampitoJorox() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
@@ -110,7 +178,7 @@ function actualizarCampitoJorox() {
       tx.description || '',
       tx.user_id || '',
       tx.image_url || '',
-      ''  // columna "Archivo en Drive" se llena después
+      ''
     ]);
   }
 
@@ -154,11 +222,18 @@ function actualizarCampitoJorox() {
   Logger.log('Descargando imágenes a Google Drive...');
   const imagenesGuardadas = respaldarImagenesInterno(transactions, sheetCont);
 
-  // Resumen final
+  // 6. RESPALDAR CÓDIGO FUENTE DE GITHUB TAMBIÉN
+  try {
+    respaldarCodigoGitHub();
+  } catch (codeErr) {
+    Logger.log('Aviso al respaldar código: ' + codeErr.message);
+  }
+
   const msg = '✅ Sincronización completada:\n' +
     '• ' + transactions.length + ' transacciones\n' +
     '• ' + events.length + ' eventos\n' +
-    '• ' + imagenesGuardadas + ' imágenes guardadas en Drive';
+    '• ' + imagenesGuardadas + ' imágenes nuevas guardadas\n' +
+    '• Código fuente respaldado en "Codigo Fuente/"';
   Logger.log(msg);
 
   try {
@@ -166,13 +241,8 @@ function actualizarCampitoJorox() {
   } catch (e) {}
 }
 
-// ─── BACKUP DE IMÁGENES ───────────────────────────────────────────────────────
-/**
- * Descarga imágenes de transacciones desde Supabase Storage → Drive
- * También puede ejecutarse de forma independiente desde el menú.
- */
+// ─── RESPALDO INDEPENDIENTE DE IMÁGENES ──────────────────────────────────────
 function respaldarImagenes() {
-  // Obtener transacciones con imágenes
   const txUrl = SUPABASE_CONFIG.url + '/rest/v1/transactions?select=id,date,image_url&image_url=not.is.null&order=date.desc';
   const txRes = UrlFetchApp.fetch(txUrl, {
     method: 'get',
@@ -198,24 +268,13 @@ function respaldarImagenes() {
   );
 }
 
-/**
- * Función interna que hace la descarga real de imágenes.
- * Organiza las imágenes por subcarpeta año-mes.
- * Evita duplicados: si ya existe un archivo con ese nombre, lo salta.
- * @param {Array} transactions - Lista de transacciones
- * @param {Sheet|null} sheet - Hoja CONTABILIDAD para actualizar columna "Archivo en Drive"
- * @returns {number} Cantidad de imágenes nuevas guardadas
- */
 function respaldarImagenesInterno(transactions, sheet) {
-  // Obtener carpeta raíz en Drive
   const rootFolders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
   if (!rootFolders.hasNext()) {
     Logger.log('❌ No se encontró la carpeta "' + DRIVE_FOLDER_NAME + '" en Google Drive.');
     return 0;
   }
   const rootFolder = rootFolders.next();
-
-  // Obtener o crear subcarpeta "Comprobantes"
   const compFolder = obtenerOCrearSubcarpeta(rootFolder, IMAGES_SUBFOLDER_NAME);
 
   let count = 0;
@@ -224,26 +283,22 @@ function respaldarImagenesInterno(transactions, sheet) {
     const tx = transactions[i];
     if (!tx.image_url) continue;
 
-    try {
-      // Nombre del archivo: fecha-id-comprobante.jpg
-      const datePrefix = tx.date ? tx.date.split('T')[0] : 'sin-fecha';
-      const monthFolder = datePrefix.substring(0, 7); // "YYYY-MM"
-      // Filtrar URLs inválidas (solo procesar URLs de Supabase Storage)
-      if (!tx.image_url.startsWith('https://')) {
-        Logger.log('  ⚠️ URL inválida, saltando: ' + tx.image_url);
-        continue;
-      }
+    // Solo procesar URLs válidas de Supabase Storage
+    if (!tx.image_url.startsWith('https://')) {
+      Logger.log('  ⚠️ URL inválida, saltando: ' + tx.image_url);
+      continue;
+    }
 
+    try {
+      const datePrefix = tx.date ? tx.date.split('T')[0] : 'sin-fecha';
+      const monthFolder = datePrefix.substring(0, 7);
       const fileName = datePrefix + '-' + tx.id + '-comprobante.jpg';
 
-      // Subcarpeta por mes: Comprobantes / 2025-03 /
       const mesFolder = obtenerOCrearSubcarpeta(compFolder, monthFolder);
 
-      // Verificar si ya existe (evita duplicados en cada sync semanal)
+      // Verificar si ya existe en Drive para no duplicar
       const existing = mesFolder.getFilesByName(fileName);
       if (existing.hasNext()) {
-        Logger.log('  Saltando (ya existe): ' + fileName);
-        // Actualizar columna Drive en la hoja aunque ya exista
         if (sheet) {
           const driveUrl = existing.next().getUrl();
           actualizarCeldaDrive(sheet, tx.id, driveUrl);
@@ -251,29 +306,18 @@ function respaldarImagenesInterno(transactions, sheet) {
         continue;
       }
 
-      // Descargar imagen desde Supabase Storage (URL pública)
       const imgRes = UrlFetchApp.fetch(tx.image_url, { muteHttpExceptions: true });
-      if (imgRes.getResponseCode() !== 200) {
-        Logger.log('  ⚠️ No se pudo descargar: ' + tx.image_url);
-        continue;
-      }
+      if (imgRes.getResponseCode() !== 200) continue;
 
-      // Detectar tipo MIME desde cabeceras
       const contentType = imgRes.getHeaders()['Content-Type'] || 'image/jpeg';
-
-      // Guardar en Drive
       const blob = imgRes.getBlob().setName(fileName).setContentType(contentType);
       const file = mesFolder.createFile(blob);
 
-      Logger.log('  ✅ Guardada: ' + fileName);
-
-      // Actualizar columna "Archivo en Drive" en la hoja CONTABILIDAD
       if (sheet) {
         actualizarCeldaDrive(sheet, tx.id, file.getUrl());
       }
 
       count++;
-
     } catch (err) {
       Logger.log('  ❌ Error con transacción ' + tx.id + ': ' + err.message);
     }
@@ -282,18 +326,13 @@ function respaldarImagenesInterno(transactions, sheet) {
   return count;
 }
 
-/**
- * Busca o crea una subcarpeta dentro de una carpeta padre
- */
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function obtenerOCrearSubcarpeta(parentFolder, name) {
   const subs = parentFolder.getFoldersByName(name);
   if (subs.hasNext()) return subs.next();
   return parentFolder.createFolder(name);
 }
 
-/**
- * Actualiza la celda "Archivo en Drive" (columna 9) para la fila con el ID dado
- */
 function actualizarCeldaDrive(sheet, txId, driveUrl) {
   const data = sheet.getDataRange().getValues();
   for (let r = 1; r < data.length; r++) {
@@ -304,7 +343,6 @@ function actualizarCeldaDrive(sheet, txId, driveUrl) {
   }
 }
 
-// ─── UTILIDADES ───────────────────────────────────────────────────────────────
 function formatearEncabezado(sheet, numCols) {
   const headerRange = sheet.getRange(1, 1, 1, numCols);
   headerRange.setFontWeight('bold');
@@ -313,7 +351,7 @@ function formatearEncabezado(sheet, numCols) {
   sheet.setFrozenRows(1);
 }
 
-// ─── TRIGGERS ─────────────────────────────────────────────────────────────────
+// ─── TEMPORIZADORES ──────────────────────────────────────────────────────────
 function activarRespaldoSemanal() {
   desactivarRespaldoAutomatico();
   ScriptApp.newTrigger('actualizarCampitoJorox')
@@ -325,7 +363,7 @@ function activarRespaldoSemanal() {
   SpreadsheetApp.getUi().alert(
     '✅ Respaldo semanal activado.\n' +
     'Se ejecutará todos los lunes a las 04:00 AM.\n' +
-    'Incluye datos + imágenes.'
+    'Incluye datos, imágenes y código fuente.'
   );
 }
 
