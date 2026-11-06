@@ -33,10 +33,9 @@ function onOpen() {
   ui.createMenu('🏕️ Campito Jorox')
     .addItem('🔄 Sincronizar con Supabase ahora', 'actualizarCampitoJorox')
     .addSeparator()
-    .addItem('⏰ Activar Respaldo DIARIO (04:00 AM)', 'activarRespaldoDiario')
-    .addItem('⏰ Activar Respaldo SEMANAL (Lunes 04:00 AM)', 'activarRespaldoSemanal')
+    .addItem('⏰ Activar Respaldo Automático Semanal (Lunes 04:00 AM)', 'activarRespaldoSemanal')
     .addSeparator()
-    .addItem('❌ Desactivar Respaldos Automáticos', 'desactivarRespaldoAutomatico')
+    .addItem('❌ Desactivar Respaldo Automático', 'desactivarRespaldoAutomatico')
     .addToUi();
 }
 
