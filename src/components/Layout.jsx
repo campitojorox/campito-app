@@ -209,10 +209,14 @@ export default function Layout({ session }) {
               <p style={{
                 textAlign: 'center',
                 fontWeight: 'bold',
-                fontSize: '1.05rem',
-                color: '#fbbf24',
+                fontSize: '1.1rem',
+                color: '#ffffff',
                 margin: 0,
-                padding: '0.2rem 0'
+                padding: '0.4rem 0',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                width: '100%'
               }}>
                 ¡PRIMERO ABRE GOOGLE MAPS!
               </p>
