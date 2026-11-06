@@ -61,10 +61,21 @@ export default function Layout({ session }) {
             <MenuIcon size={24} />
             {needRefresh && (
               <span style={{
-                position: 'absolute', top: '-4px', right: '-4px',
-                width: '10px', height: '10px', borderRadius: '50%',
-                backgroundColor: '#f59e0b', border: '1.5px solid var(--bg-color)'
-              }} />
+                position: 'absolute',
+                top: '-6px',
+                right: '-8px',
+                backgroundColor: 'var(--primary)',
+                color: 'white',
+                borderRadius: '50%',
+                width: '18px',
+                height: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                fontWeight: 'bold',
+                border: '2px solid var(--bg-color)'
+              }}>!</span>
             )}
           </button>
           <Trees size={32} color="var(--primary)" />
@@ -149,34 +160,26 @@ export default function Layout({ session }) {
                 onClick={() => {
                   if (needRefresh) {
                     updateServiceWorker(true);
-                  } else {
-                    window.location.reload();
                   }
                 }} 
-                className="btn" 
-                title={needRefresh ? 'Hacer clic para actualizar a la última versión' : 'La app está al día. Clic para recargar'}
+                disabled={!needRefresh}
+                className={`btn ${needRefresh ? 'btn-primary' : 'btn-secondary'}`} 
                 style={{ 
-                  width: '100%', 
-                  margin: 0, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  gap: '0.5rem', 
-                  backgroundColor: needRefresh ? '#f59e0b' : 'var(--surface)', 
-                  color: needRefresh ? 'white' : 'var(--text-secondary)', 
-                  border: needRefresh ? 'none' : '1px solid var(--border)',
-                  fontWeight: needRefresh ? 'bold' : 'normal'
+                  width: '100%', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', 
+                  backgroundColor: needRefresh ? 'var(--primary)' : 'var(--surface)', 
+                  color: needRefresh ? 'white' : 'var(--text-primary)', 
+                  border: '1px solid var(--border)' 
                 }}
               >
                 {needRefresh ? (
-                  <>
-                    <RefreshCw size={18} />
-                    <span>¡Nueva versión! Actualizar</span>
-                  </>
+                  <div className="text-pulse">
+                    <RefreshCw size={20} />
+                    <span>Actualizar</span>
+                  </div>
                 ) : (
                   <>
-                    <CheckCircle size={18} color="var(--success, #10b981)" />
-                    <span>App Actualizada</span>
+                    <CheckCircle size={20} />
+                    <span>Actualizado</span>
                   </>
                 )}
               </button>

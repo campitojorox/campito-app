@@ -255,9 +255,9 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 @keyframes pulse-color {
-  0% { color: white; }
-  50% { color: var(--primary); }
-  100% { color: white; }
+  0% { color: white; transform: scale(1); }
+  50% { color: #a7f3d0; transform: scale(1.05); }
+  100% { color: white; transform: scale(1); }
 }
 
 .text-pulse {
