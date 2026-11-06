@@ -1,6 +1,6 @@
 import { useState, Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -145,16 +145,41 @@ export default function Layout({ session }) {
                   Instalar Aplicación
                 </button>
               )}
-              {needRefresh && (
-                <button
-                  onClick={() => updateServiceWorker(true)}
-                  className="btn"
-                  style={{ width: '100%', margin: 0, backgroundColor: '#f59e0b', color: 'white', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                >
-                  <RefreshCw size={18} />
-                  ¡Nueva versión disponible! Actualizar
-                </button>
-              )}
+              <button 
+                onClick={() => {
+                  if (needRefresh) {
+                    updateServiceWorker(true);
+                  } else {
+                    window.location.reload();
+                  }
+                }} 
+                className="btn" 
+                title={needRefresh ? 'Hacer clic para actualizar a la última versión' : 'La app está al día. Clic para recargar'}
+                style={{ 
+                  width: '100%', 
+                  margin: 0, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '0.5rem', 
+                  backgroundColor: needRefresh ? '#f59e0b' : 'var(--surface)', 
+                  color: needRefresh ? 'white' : 'var(--text-secondary)', 
+                  border: needRefresh ? 'none' : '1px solid var(--border)',
+                  fontWeight: needRefresh ? 'bold' : 'normal'
+                }}
+              >
+                {needRefresh ? (
+                  <>
+                    <RefreshCw size={18} />
+                    <span>¡Nueva versión! Actualizar</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={18} color="var(--success, #10b981)" />
+                    <span>App Actualizada</span>
+                  </>
+                )}
+              </button>
             </div>
             
             <div style={{ marginTop: 'auto' }}>
