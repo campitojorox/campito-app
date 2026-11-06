@@ -1,6 +1,6 @@
 import { useState, Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -59,6 +59,13 @@ export default function Layout({ session }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
             <MenuIcon size={24} />
+            {needRefresh && (
+              <span style={{
+                position: 'absolute', top: '-4px', right: '-4px',
+                width: '10px', height: '10px', borderRadius: '50%',
+                backgroundColor: '#f59e0b', border: '1.5px solid var(--bg-color)'
+              }} />
+            )}
           </button>
           <Trees size={32} color="var(--primary)" />
         </div>
@@ -136,6 +143,16 @@ export default function Layout({ session }) {
                 >
                   <Download size={18} />
                   Instalar Aplicación
+                </button>
+              )}
+              {needRefresh && (
+                <button
+                  onClick={() => updateServiceWorker(true)}
+                  className="btn"
+                  style={{ width: '100%', margin: 0, backgroundColor: '#f59e0b', color: 'white', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  <RefreshCw size={18} />
+                  ¡Nueva versión disponible! Actualizar
                 </button>
               )}
             </div>
