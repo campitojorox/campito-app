@@ -33,8 +33,10 @@ function onOpen() {
   ui.createMenu('🏕️ Campito Jorox')
     .addItem('🔄 Sincronizar con Supabase ahora', 'actualizarCampitoJorox')
     .addSeparator()
-    .addItem('⏰ Activar Respaldo Automático (Cada Lunes)', 'activarRespaldoAutomatico')
-    .addItem('❌ Desactivar Respaldo Automático', 'desactivarRespaldoAutomatico')
+    .addItem('⏰ Activar Respaldo DIARIO (04:00 AM)', 'activarRespaldoDiario')
+    .addItem('⏰ Activar Respaldo SEMANAL (Lunes 04:00 AM)', 'activarRespaldoSemanal')
+    .addSeparator()
+    .addItem('❌ Desactivar Respaldos Automáticos', 'desactivarRespaldoAutomatico')
     .addToUi();
 }
 
@@ -169,17 +171,31 @@ function formatearEncabezado(sheet, numCols) {
 }
 
 /**
+ * Configura un temporizador para respaldar automáticamente TODOS LOS DÍAS a las 04:00 AM
+ */
+function activarRespaldoDiario() {
+  desactivarRespaldoAutomatico();
+  ScriptApp.newTrigger('actualizarCampitoJorox')
+    .timeBased()
+    .everyDays(1)
+    .atHour(4)
+    .create();
+
+  SpreadsheetApp.getUi().alert('✅ Respaldo automático DIARIO activado. Se ejecutará todos los días a las 04:00 AM automáticamente.');
+}
+
+/**
  * Configura un temporizador para respaldar automáticamente todos los lunes a las 04:00 AM
  */
-function activarRespaldoAutomatico() {
-  desactivarRespaldoAutomatico(); // Limpia activadores anteriores
+function activarRespaldoSemanal() {
+  desactivarRespaldoAutomatico();
   ScriptApp.newTrigger('actualizarCampitoJorox')
     .timeBased()
     .onWeekDay(ScriptApp.WeekDay.MONDAY)
     .atHour(4)
     .create();
 
-  SpreadsheetApp.getUi().alert('✅ Respaldo automático activado. Se ejecutará todos los lunes a las 04:00 AM automáticamente.');
+  SpreadsheetApp.getUi().alert('✅ Respaldo automático SEMANAL activado. Se ejecutará todos los lunes a las 04:00 AM automáticamente.');
 }
 
 /**
