@@ -156,9 +156,9 @@ export default function GastoVenta() {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h3 style={{ margin: 0, color: 'var(--primary)' }}>Editar Transacción</h3>
-        <button type="button" onClick={() => setSelectedRecord(null)} style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1.5rem' }}>&times;</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', marginBottom: '3.8rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Editar Transacción</h2>
+        <button type="button" onClick={() => setSelectedRecord(null)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
       </div>
       
       <div style={{ color: 'var(--text-primary)' }}>
@@ -191,67 +191,146 @@ export default function GastoVenta() {
           </div>
         </div>
 
-        <div className="form-group" style={{ padding: 0, marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-            <button type="button" onClick={() => setEditForm({...editForm, type: 'Gasto'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Gasto' ? '#9edb9e' : 'var(--primary)', color: editForm.type === 'Gasto' ? '#1a1a1a' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-              Gasto
-            </button>
-            <button type="button" onClick={() => setEditForm({...editForm, type: 'Retiro'})} style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: editForm.type === 'Retiro' ? '#9edb9e' : 'var(--primary)', color: editForm.type === 'Retiro' ? '#1a1a1a' : 'white', cursor: 'pointer', fontSize: '1rem', fontWeight: '600', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-              Venta
-            </button>
+        <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '2.2rem', marginBottom: '1.5rem', padding: 0, alignItems: 'stretch' }}>
+          <div style={{ flex: '1 1 33%', minWidth: 0, display: 'flex' }}>
+            <div className="input-with-icon" style={{ marginBottom: 0, width: '100%' }}>
+              <Euro className="input-icon" size={18} style={{ left: '0.6rem' }} />
+              <input 
+                type="number" 
+                step="0.01" 
+                className="form-input" 
+                value={editForm.amount} 
+                onChange={(e) => setEditForm({...editForm, amount: e.target.value})} 
+                placeholder="Cantidad"
+                style={{ padding: '0.75rem 0.4rem 0.75rem 2rem', width: '100%', height: '100%', minHeight: '44px', fontSize: '0.95rem' }} 
+              />
+            </div>
           </div>
+          <button 
+            type="button"
+            onClick={() => setEditForm({...editForm, type: 'Gasto'})}
+            style={{
+              flex: '1 1 33%',
+              minWidth: 0,
+              padding: '0.6rem 0.2rem',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: editForm.type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
+              color: editForm.type === 'Gasto' ? '#1a1a1a' : 'white',
+              fontWeight: '600',
+              fontSize: '0.95rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1.15
+            }}
+          >
+            <span>Gasto</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(invertido)</span>
+          </button>
+          <button 
+            type="button"
+            onClick={() => setEditForm({...editForm, type: 'Retiro'})}
+            style={{
+              flex: '1 1 33%',
+              minWidth: 0,
+              padding: '0.6rem 0.2rem',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: editForm.type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
+              color: editForm.type === 'Retiro' ? '#1a1a1a' : 'white',
+              fontWeight: '600',
+              fontSize: '0.95rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1.15
+            }}
+          >
+            <span>Venta</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
+          </button>
         </div>
-        <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
-          <div className="input-with-icon">
-            <Euro className="input-icon" size={20} />
-            <input type="number" step="0.01" className="form-input" value={editForm.amount} onChange={(e) => setEditForm({...editForm, amount: e.target.value})} placeholder="Cantidad / Monto" />
-          </div>
-        </div>
-        <div className="form-group" style={{ padding: 0, marginTop: '1rem' }}>
+
+        <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
           <div className="input-with-icon">
             <AlignLeft className="input-icon" size={20} />
-            <input type="text" className="form-input" value={editForm.desc} onChange={(e) => setEditForm({...editForm, desc: e.target.value})} placeholder="Descripción / Concepto" />
+            <input 
+              type="text" 
+              className="form-input" 
+              value={editForm.desc} 
+              onChange={(e) => setEditForm({...editForm, desc: e.target.value})} 
+              placeholder="Descripción / Concepto" 
+            />
           </div>
         </div>
 
         <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-          <label>Comprobante / Foto</label>
-          
-          {editForm.currentImage || editForm.image ? (
-            <div style={{ position: 'relative', display: 'inline-block', width: '100%', textAlign: 'center' }}>
-              <img 
-                src={editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage} 
-                alt="Comprobante actual" 
-                onClick={() => setExpandedImage(editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage)}
-                style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border)', cursor: 'pointer' }} 
-              />
-              <button 
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setIsConfirmingImageDelete(true); }}
-                style={{
-                  position: 'absolute', top: '10px', right: '10px', width: '36px', height: '36px', borderRadius: '50%',
-                  backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
-                  paddingBottom: '3px'
-                }}
-              >
-                &times;
-              </button>
-            </div>
-          ) : (
-            <label style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              padding: '2rem', border: 'none', borderRadius: '8px',
-              backgroundColor: 'white', cursor: 'pointer', color: '#2b3d41', boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-            }}>
-              <Camera size={32} style={{ marginBottom: '0.5rem' }} />
-              <span>Subir comprobante</span>
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => setEditForm({...editForm, image: e.target.files[0]})} />
-            </label>
-          )}
+          <label style={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.6rem',
+            padding: (editForm.currentImage || editForm.image) ? '0' : '0.8rem 1rem',
+            border: 'none',
+            borderRadius: '8px',
+            backgroundColor: 'white',
+            cursor: 'pointer',
+            color: '#2b3d41',
+            overflow: 'hidden',
+            boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+          }}>
+            {(editForm.currentImage || editForm.image) ? (
+              <div style={{ position: 'relative', width: '100%' }}>
+                <img 
+                  src={editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage} 
+                  alt="Preview" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setExpandedImage(editForm.image ? URL.createObjectURL(editForm.image) : editForm.currentImage);
+                  }}
+                  style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block', borderRadius: '8px', cursor: 'pointer' }} 
+                />
+                <button 
+                  type="button"
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    e.stopPropagation(); 
+                    setIsConfirmingImageDelete(true); 
+                  }}
+                  style={{
+                    position: 'absolute', top: '10px', right: '10px', width: '32px', height: '32px', borderRadius: '50%',
+                    backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+                    paddingBottom: '3px', zIndex: 10
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+            ) : (
+              <>
+                <Camera size={22} />
+                <span style={{ fontSize: '0.95rem', fontWeight: '500' }}>Subir imagen</span>
+              </>
+            )}
+            <input 
+              type="file" 
+              accept="image/*" 
+              style={{ display: 'none' }} 
+              onChange={(e) => setEditForm({...editForm, image: e.target.files[0]})} 
+            />
+          </label>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '2rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '3.2rem' }}>
           <button type="button" onClick={async () => {
             const finalAmount = editForm.type === 'Retiro' ? -Math.abs(parseFloat(editForm.amount)) : Math.abs(parseFloat(editForm.amount));
             
