@@ -228,6 +228,12 @@ function respaldarImagenesInterno(transactions, sheet) {
       // Nombre del archivo: fecha-id-comprobante.jpg
       const datePrefix = tx.date ? tx.date.split('T')[0] : 'sin-fecha';
       const monthFolder = datePrefix.substring(0, 7); // "YYYY-MM"
+      // Filtrar URLs inválidas (solo procesar URLs de Supabase Storage)
+      if (!tx.image_url.startsWith('https://')) {
+        Logger.log('  ⚠️ URL inválida, saltando: ' + tx.image_url);
+        continue;
+      }
+
       const fileName = datePrefix + '-' + tx.id + '-comprobante.jpg';
 
       // Subcarpeta por mes: Comprobantes / 2025-03 /
