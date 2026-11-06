@@ -98,8 +98,8 @@ export default function GastoVenta() {
     }]);
 
     if (!error) {
-      const msgType = type === 'Gasto' ? 'Invertido' : 'Generado';
-      setSuccessMsg(`${msgType} de ${amount}€ generada exitosamente!`);
+      const msgType = type === 'Gasto' ? 'Invertido' : 'Ingreso';
+      setSuccessMsg(`${msgType} de ${amount}€ registrado exitosamente!`);
       setTimeout(() => setSuccessMsg(null), 2000);
 
       setAmount('');
@@ -253,8 +253,8 @@ export default function GastoVenta() {
               lineHeight: 1.15
             }}
           >
-            <span>Venta</span>
-            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
+            <span>Ingreso</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(ventas, etc.)</span>
           </button>
         </div>
 
@@ -495,8 +495,8 @@ export default function GastoVenta() {
                 lineHeight: 1.15
               }}
             >
-              <span>Venta</span>
-              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
+              <span>Ingreso</span>
+              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(ventas, etc.)</span>
             </button>
           </div>
           
