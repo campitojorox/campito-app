@@ -1,6 +1,6 @@
 import { useState, Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle, Globe, Copy, Download } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, RefreshCw, CheckCircle, Globe, Copy, Download, Database } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -140,6 +140,16 @@ export default function Layout({ session }) {
               <button onClick={() => { setIsMenuOpen(false); setIsUsersModalOpen(true); }} className="btn" style={{ width: '100%', margin: 0, backgroundColor: 'var(--primary)', color: 'white', border: 'none' }}>
                 Gestionar Usuarios
               </button>
+              <a 
+                href="/api/backup?format=csv&table=contabilidad" 
+                download 
+                onClick={() => setIsMenuOpen(false)}
+                className="btn" 
+                style={{ width: '100%', margin: 0, backgroundColor: 'var(--surface)', color: 'white', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', textDecoration: 'none' }}
+              >
+                <Database size={18} />
+                Descargar Respaldo CSV
+              </a>
               {deferredPrompt && (
                 <button 
                   onClick={async () => {
