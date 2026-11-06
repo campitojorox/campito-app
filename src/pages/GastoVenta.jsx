@@ -63,7 +63,9 @@ export default function GastoVenta() {
       ? sortedRecords.filter(r => 
           (r.User && r.User.toLowerCase().includes(searchQuery.toLowerCase())) ||
           (r.Description && r.Description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (r.Category && r.Category.toLowerCase().includes(searchQuery.toLowerCase()))
+          (r.Category && r.Category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (r.Category === 'Retiro' && ('ingreso'.includes(searchQuery.toLowerCase()) || 'venta'.includes(searchQuery.toLowerCase()))) ||
+          (r.Category === 'Gasto' && 'gasto'.includes(searchQuery.toLowerCase()))
         )
       : sortedRecords;
   }, [isSearchOpen, searchQuery, sortedRecords]);
@@ -384,7 +386,7 @@ export default function GastoVenta() {
           {formatCurrency(Math.abs(r.Amount))}
         </td>
         <td style={{ color: r.Category === 'Retiro' ? '#8ab98a' : 'var(--text-secondary)' }}>
-          {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'VENTA', isSearchOpen ? searchQuery : '')}
+          {highlightText(r.Category === 'Gasto' ? 'GASTO' : 'INGRESO', isSearchOpen ? searchQuery : '')}
         </td>
       </tr>
     );
@@ -569,8 +571,8 @@ export default function GastoVenta() {
             <thead>
               <tr>
                 <th>USUARIO</th>
-                <th>GASTO (Inv.)</th>
-                <th>VENTA (Gen.)</th>
+                <th>GASTO</th>
+                <th>INGRESO</th>
                 <th>BALANCE</th>
                 <th>DIFERENCIA</th>
               </tr>
