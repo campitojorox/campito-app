@@ -114,23 +114,38 @@ export default async function handler(req, res) {
     const lastMessage = messages[messages.length - 1];
     const userInput = lastMessage.content;
 
-    // Crear modelo Gemini
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3.8-flash',
-      systemInstruction: SYSTEM_PROMPT + (contextData ? contextData : ''),
-    });
+    // Modelos en orden de fallback
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite'];
+    let text = null;
+    let modelUsed = null;
+    let lastErr = null;
 
-    // Iniciar chat con historial
-    const chat = model.startChat({ history });
+    for (const mName of modelsToTry) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: mName,
+          systemInstruction: SYSTEM_PROMPT + (contextData ? contextData : ''),
+        });
+        const chat = model.startChat({ history });
+        const result = await chat.sendMessage(userInput);
+        const response = await result.response;
+        text = response.text();
+        modelUsed = mName;
+        break;
+      } catch (mErr) {
+        console.warn(`[api/chat] Falló ${mName}:`, mErr.message);
+        lastErr = mErr;
+      }
+    }
 
-    // Enviar mensaje y obtener respuesta
-    const result = await chat.sendMessage(userInput);
-    const response = await result.response;
-    const text = response.text();
+    if (!text) {
+      throw lastErr || new Error('No se pudo obtener respuesta de ningún modelo de Gemini');
+    }
 
     return res.status(200).json({
       message: text,
       role: 'assistant',
+      modelUsed,
     });
 
   } catch (error) {
