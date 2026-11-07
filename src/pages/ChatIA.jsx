@@ -497,8 +497,10 @@ function TypingIndicator({ currentServer }) {
 
 // ─── Componente Principal ChatIA ────────────────────────────────────────────────
 export default function ChatIA() {
-  const [selectedServerIndex, setSelectedServerIndex] = useState(0);
-  const [activeServer, setActiveServer] = useState(GEMINI_SERVERS[0]);
+  // Modelo inicial: Gemini 3.5 Flash (high) por ser el más potente con cuota gratuita activa
+  const initialIndex = GEMINI_SERVERS.findIndex((s) => s.id === 'gemini-3.5-flash');
+  const [selectedServerIndex, setSelectedServerIndex] = useState(initialIndex >= 0 ? initialIndex : 0);
+  const [activeServer, setActiveServer] = useState(GEMINI_SERVERS[initialIndex >= 0 ? initialIndex : 0]);
   const [fallbackNotice, setFallbackNotice] = useState(null);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [autoFallback, setAutoFallback] = useState(true);
@@ -509,7 +511,7 @@ export default function ChatIA() {
       role: 'assistant',
       content:
         '¡Hola! Soy el asistente IA de **Campito Jorox** 🌿\n\nPuedo ayudarte con:\n- Consultas sobre la finca y cultivos\n- Análisis de tus transacciones y gastos\n- Planificación de tareas y eventos\n- Fotos de plagas o documentos de la finca\n\n¿En qué te puedo ayudar hoy?',
-      serverUsed: GEMINI_SERVERS[0],
+      serverUsed: GEMINI_SERVERS[initialIndex >= 0 ? initialIndex : 0],
     },
   ]);
   const [input, setInput] = useState('');
@@ -868,23 +870,47 @@ export default function ChatIA() {
             </div>
 
             <div style={styles.modalBody}>
-              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>
-                Elige tu modelo preferido o deja el <b>Auto-Fallback</b> activo para saltar al siguiente si se agota el crédito:
+              {/* Estado de conexión actual */}
+              <div
+                style={{
+                  padding: '9px 12px',
+                  backgroundColor: '#f0fdfa',
+                  borderRadius: 8,
+                  border: '1px solid #99f6e4',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <span style={styles.statusDot(activeServer.badgeColor)} />
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 700, color: '#0f766e' }}>
+                    Conectado: {activeServer.name} ({activeServer.level})
+                  </p>
+                  <p style={{ margin: 0, fontSize: '0.68rem', color: '#115e59' }}>
+                    Cuota activa y respondiendo correctamente
+                  </p>
+                </div>
+                <CheckCircle2 size={16} color="#00979d" />
+              </div>
+
+              <p style={{ fontSize: '0.76rem', color: '#64748b', margin: '4px 0 0' }}>
+                Selecciona un modelo o deja activo el <b>Auto-Fallback</b> para usar el más potente disponible:
               </p>
 
               {GEMINI_SERVERS.map((srv, idx) => {
-                const isSelected = selectedServerIndex === idx;
+                const isConnectedNow = activeServer.id === srv.id;
 
                 return (
                   <div
                     key={srv.id}
                     style={{
-                      ...styles.serverCard(isSelected),
+                      ...styles.serverCard(isConnectedNow),
                       opacity: srv.comingSoon ? 0.6 : 1,
                       cursor: srv.comingSoon ? 'not-allowed' : 'pointer',
                       flexDirection: 'column',
                       alignItems: 'stretch',
-                      gap: 8,
+                      gap: 6,
                     }}
                     onClick={() => {
                       if (srv.comingSoon) return;
@@ -912,14 +938,19 @@ export default function ChatIA() {
                           >
                             ({srv.level})
                           </span>
-                          {srv.recommended && (
-                            <span style={{ fontSize: '0.65rem', color: '#00979d', fontWeight: 600 }}>
-                              Predeterminado
+                          {isConnectedNow && (
+                            <span style={{ fontSize: '0.65rem', color: '#00979d', fontWeight: 700, backgroundColor: '#ccfbf1', padding: '1px 6px', borderRadius: 8 }}>
+                              Conectado Ahora
                             </span>
                           )}
-                          {srv.hasCreditsLink && (
-                            <span style={{ fontSize: '0.65rem', color: '#2563eb', fontWeight: 600 }}>
-                              Máxima Potencia
+                          {!isConnectedNow && srv.available && !srv.hasCreditsLink && (
+                            <span style={{ fontSize: '0.65rem', color: '#10b981', fontWeight: 600 }}>
+                              Cuota Activa
+                            </span>
+                          )}
+                          {!isConnectedNow && srv.hasCreditsLink && (
+                            <span style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: 500 }}>
+                              Requiere Plan Pro
                             </span>
                           )}
                           {srv.comingSoon && (
@@ -932,46 +963,38 @@ export default function ChatIA() {
                           {srv.desc}
                         </p>
                       </div>
-                      {isSelected && <CheckCircle2 size={16} color="#00979d" />}
+                      {isConnectedNow && <CheckCircle2 size={16} color="#00979d" />}
                     </div>
 
-                    {/* Botón de activación / recarga si tiene link de créditos */}
-                    {srv.hasCreditsLink && (
+                    {/* Enlace discreto solo para Pro no conectado si el usuario quiere activarlo */}
+                    {srv.hasCreditsLink && !isConnectedNow && (
                       <div
                         style={{
+                          fontSize: '0.68rem',
+                          color: '#64748b',
+                          paddingTop: 4,
+                          borderTop: '1px solid #f1f5f9',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          padding: '6px 10px',
-                          backgroundColor: '#f0f9ff',
-                          borderRadius: 6,
-                          border: '1px solid #e0f2fe',
-                          marginTop: 2,
                         }}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <span style={{ fontSize: '0.7rem', color: '#0369a1', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <CreditCard size={12} />
-                          Requiere créditos en Google AI Studio
-                        </span>
+                        <span>Para usar Pro activa facturación en AI Studio</span>
                         <a
                           href={srv.actionUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            color: '#ffffff',
-                            backgroundColor: '#0284c7',
-                            padding: '4px 8px',
-                            borderRadius: 6,
+                            color: '#0284c7',
+                            fontWeight: 600,
                             textDecoration: 'none',
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
                             gap: 3,
                           }}
                         >
-                          Activar / Recargar
+                          Ver planes
                           <ExternalLink size={10} />
                         </a>
                       </div>
