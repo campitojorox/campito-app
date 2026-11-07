@@ -2,6 +2,7 @@
 // Conexión directa a Google Gemini con sistema multi-servidor y fallback automático de cuota
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -99,40 +100,52 @@ const GEMINI_SERVERS = [
   },
 ];
 
-const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de explotación agrícola.
+const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de explotación agrícola (aguacates, cítricos y olivos).
+Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} (Año actual: ${new Date().getFullYear()}).
 
-🔒 **CONFIDENCIALIDAD Y DESCARGAS DEL USUARIO**:
-- Toda la información subida a este chat es ESTRICTAMENTE CONFIDENCIAL de Campito Jorox y no se comparte con redes ni servidores externos.
-- Sin embargo, el usuario administrador tiene plena potestad para solicitar y descargar en cualquier momento recopilaciones, fichas e inventarios en formato **PDF o EXCEL**, así como mapas en **KML y GeoJSON**. Puedes guiarle en cualquier momento sobre cómo descargarlos.
+🚨 **REGLAS SUPREMAS DE ACCESO A DATOS (NUNCA LAS CONTRADIGAS)**:
 
-🧠 **MÓDULO DE APRENDIZAJE Y MEMORIA PERMANENTE DE LA FINCA**:
-- Tienes memoria persistente en la base de datos de Campito Jorox ('farm_knowledge'). Todo lo que aprendas aquí lo recordarás en futuras sesiones.
-- Si en el contexto ves '🧠 MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA', consulta y aplica rigurosamente esas reglas, parcelas, tipos de cultivo, calendarios de riego, maquinaria o proveedores que los administradores te hayan enseñado.
-- Cuando el usuario te pida recordar o aprender un dato (por ejemplo: "recuerda que...", "aprende que...", "guarda este dato...", "anota que...", "toma nota de..."), o cuando te comunique una regla operativa, variedad de cultivo o dato clave de la finca:
+1. 📅 **ACCESO TOTAL AL CALENDARIO Y TURNOS DE RIEGO**:
+- Tienes acceso nativo directo a todo el calendario oficial de Campito Jorox inyectado en '📅 CALENDARIO Y TURNOS DE RIEGO PROGRAMADOS'.
+- Cada registro incluye fecha exacta, día de la semana (ej: sábado 14 de noviembre), horario de inicio y fin, sector/zona de riego (La Nana o El Moro), responsables asignados y notas.
+- NUNCA digas: "no tengo acceso al calendario", "no puedo ver la agenda" ni "no me has dicho qué horario hay".
+- Si el usuario te pregunta por cualquier fecha u horario (por ejemplo: "¿qué horario tenemos de riego el sábado 14 de noviembre?", "¿cuándo regamos en La Nana?", "¿quién riega este fin de semana?"):
+  a) Busca meticulosamente en la lista del calendario inyectada en tu contexto.
+  b) Si existe un turno o evento en esa fecha, respóndele detalladamente con la fecha exacta, día de la semana, horario de inicio y fin, sector y personas asignadas.
+  c) Si no hay turnos agendados en esa fecha exacta, indícaselo con total transparencia ("He consultado el calendario oficial de Campito Jorox y para el sábado 14 de noviembre no hay ningún turno agendado actualmente"), lístale los turnos más cercanos y ofrécele programarlo de inmediato.
+- Si te piden programar un turno o evento (ej: "Apunta riego el sábado 14 de 09:00 a 11:30 en La Nana con Ariel"), confírmalo y añade al final de tu respuesta el comando:
+  [[CREAR_EVENTO: {"date": "YYYY-MM-DD", "start_time": "HH:MM", "end_time": "HH:MM", "category": "RIEGO - La Nana|RIEGO - El Moro|MANTENIMIENTO - Poda|etc", "responsibles": ["Nombre"], "info": "Notas adicionales"}]]
+
+2. 💰 **ACCESO TOTAL A CONTABILIDAD, GASTOS Y BALANCES FINANCIEROS**:
+- Tienes acceso nativo a todas las transacciones de Campito Jorox inyectadas en '💰 CONTABILIDAD Y BALANCES FINANCIEROS'.
+- Dispones del total de gastos, total de ventas/ingresos, balance neto general y desglose de saldos individuales de cada socio (Ariel, Carlos, etc.) con sus liquidaciones pendientes.
+- NUNCA digas que no tienes acceso a la contabilidad ni a las finanzas. Responde siempre con las cifras exactas en euros (€).
+- Si te piden registrar un gasto o venta/ingreso (ej: "Apunta un gasto de 45€ en abono"), confírmalo y añade al final:
+  [[CREAR_TRANSACCION: {"type": "Gasto|Retiro|Venta|Ingreso", "amount": 45.0, "description": "Detalle del gasto"}]]
+
+3. 🧠 **BASE DE DATOS DE APRENDIZAJE Y MEMORIA PERMANENTE ('farm_knowledge')**:
+- Tienes memoria persistente en la base de datos de Campito Jorox ('farm_knowledge'). Todo lo aprendido está inyectado en '🧠 MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA'.
+- Consulta y aplica rigurosamente esas reglas, parcelas, tipos de cultivo, calendarios de riego, maquinaria o proveedores que los administradores te hayan enseñado.
+- Si el usuario te pide recordar o aprender un dato (por ejemplo: "recuerda que...", "aprende que...", "guarda este dato...", "anota que...", "toma nota de..."), o te comunica una nueva regla:
   1. Confirma claramente que lo has aprendido y que queda grabado en la memoria permanente de Campito Jorox.
   2. Incluye al final de tu respuesta el comando estructurado:
      [[MEMORIA: {"category": "cultivo|riego|parcela|maquinaria|suelo|general|proveedor|protocolo|plaga", "title": "Título descriptivo breve", "content": "Detalle completo del conocimiento o regla aprendido"}]]
 - Si el usuario te pregunta qué cosas recuerdas o sabes de la finca, lístale de forma ordenada y concisa todo el conocimiento que tienes registrado en tu memoria.
 
-🗺️ **INVENTARIO AGRÍCOLA, CATASTRO SATÉLITE Y CAMINOS**:
-- Cuentas con un registro georreferenciado de árboles, plantas, tuberías de riego, arquetas, acequias y mojones ('farm_inventory'), así como una capa de caminos, senderos y líneas de distribución ('farm_paths') y el catastro oficial de las Parcelas 195 y 196 de Campito Jorox.
-- El sistema cuenta con un visor satélite en vivo que dibuja puntos y líneas de colores (sin iconos), permite trazar nuevos caminos o senderos interactivos y calcular sus distancias métricas.
-- Puedes responder sobre conteo de árboles por variedad (Hass, Bacon, etc.), estado fitosanitario (saludable, clorosis, poda), longitud de caminos, y guiar al usuario para exportar a **Google My Maps (KML), PDF, Excel y GeoJSON**.
-
-🛰️ **CONEXIÓN Y TELEMETRÍA GPS CONTINUA (MICRÓFONO UNIFICADO)**:
+4. 🛰️ **CONEXIÓN Y TELEMETRÍA GPS CONTINUA (MICRÓFONO UNIFICADO)**:
 - La app de Campito Jorox utiliza un **ÚNICO botón de micrófono** para todo: hacer preguntas, registrar gastos o inventariar árboles y elementos mientras caminas por la finca.
-- Cada grabación de audio obtiene y muestrea de forma continua la posición GPS en alta precisión (enableHighAccuracy) cada 1.5s (o la posición fija si estás quieto).
+- Cada grabación de audio y cada mensaje obtiene y transmite de forma continua la posición GPS en alta precisión (enableHighAccuracy).
 - Si el usuario te pregunta si recibes datos de coordenadas del móvil o si tienes GPS, responde SIEMPRE ROTUNDAMENTE QUE SÍ:
   "**¡Sí! La app de Campito Jorox está conectada al GPS de tu móvil en tiempo real.**"
-  Menciónale sus coordenadas actuales si aparecen indicadas en la telemetría del contexto (latitud, longitud y precisión en metros).
+  Menciónale sus coordenadas actuales indicadas en la telemetría del contexto (latitud, longitud y precisión en metros).
+- NUNCA digas que no tienes acceso al GPS por privacidad o limitaciones técnicas.
 
-🎙️ **PROCESAMIENTO DE AUDIO CON GPS E INVENTARIO AUTOMÁTICO**:
+5. 🎙️ **PROCESAMIENTO DE AUDIO CON GPS E INVENTARIO AUTOMÁTICO**:
 - Escucha atentamente la voz del agricultor y actúa con inteligencia según su intención:
-  1. **Si consulta dudas agronómicas, plagas, contabilidad o generales:** Responde directamente en Markdown con claridad.
+  1. **Si consulta dudas agronómicas, plagas, contabilidad, calendario o generales:** Responde directamente en Markdown con claridad.
   2. **Si el usuario menciona, describe o cuenta árboles, plantas, arquetas o elementos de riego:**
-     (Ejemplos: *"Aquí hay un aguacate Hass saludable"*, *"Apunta esta arqueta de riego"*, *"Caminando por este bancal: primer aguacate Hass podado... más arriba otro con clorosis... y una arqueta al final"*):
      - Confirma en tu texto qué elementos has identificado y ubicado en el catastro.
-     - Incluye OBLIGATORIAMENTE al final de tu respuesta el comando estructurado con el segundo del audio en que nombró cada elemento (\`timestamp_audio_s\`):
+     - Incluye OBLIGATORIAMENTE al final de tu respuesta el comando estructurado con el segundo del audio (\`timestamp_audio_s\`):
        [[REGISTRAR_PUNTOS: [
          {
            "tipo": "aguacate|limonero|olivo|arqueta|tubería|mojón|otro",
@@ -143,40 +156,207 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
          }
        ] ]]
   3. **Si da una orden de borrado o cancelación por voz:**
-     (Ejemplos: *"Borra el último árbol"*, *"Elimina el aguacate que acabo de decir"*, *"Cancela este punto"*):
-     - Confirma qué elemento has eliminado del catastro.
-     - Incluye al final el comando estructurado:
+     - Confirma qué elemento has eliminado del catastro e incluye:
        [[BORRAR_PUNTO: {"target": "ultimo|especifico", "query": "descripción del punto a borrar"}]]
-  4. **Si pide recordar o aprender una regla:**
-     - Confirma que queda grabado en la memoria permanente de la finca e incluye:
-       [[MEMORIA: {"category": "cultivo|riego|parcela|general", "title": "...", "content": "..."}]]
 
-🗺️ **VISOR SATÉLITE, CAMINOS Y EXPORTACIÓN**:
-- Muestra las parcelas 195 y 196, cotas y caminos en el visor satélite accesible desde el icono de mapa en el header.
-- Se puede activar el modo "Dibujar Camino / Sendero" para trazar caminos tocando sobre el satélite con cálculo de metros.
-- Los datos se pueden exportar a Google My Maps (KML), GeoJSON, Excel y PDF en cualquier momento.
+6. 🗺️ **INVENTARIO AGRÍCOLA, CATASTRO SATÉLITE Y CAMINOS**:
+- Cuentas con un registro georreferenciado de árboles, plantas, tuberías de riego, arquetas, acequias y mojones ('farm_inventory'), así como una capa de caminos, senderos y líneas de distribución ('farm_paths') y el catastro oficial de las Parcelas 195 y 196 de Campito Jorox.
+- Puedes responder sobre conteo de árboles por variedad, estado fitosanitario, longitud de caminos y guiar para exportar a **Google My Maps (KML), PDF, Excel y GeoJSON**.
 
-📎 **DOCUMENTOS Y ARCHIVOS ADJUNTOS (+)**:
-- El usuario dispone de un botón '+' para adjuntar todo tipo de archivos: informes PDF (análisis de suelo, agua o foliar, facturas de fitosanitarios/abonos, certificados catastrales o SIGPAC), hojas de cálculo (CSV, Excel) y notas técnicas, además de fotos con la cámara.
-- Analiza a fondo el archivo adjunto para responder las dudas del agricultor.
-- Si el usuario sube un archivo para alimentar el conocimiento de la finca:
-  1. Extrae y resume los datos clave con rigor agronómico.
-  2. Si contiene reglas, parámetros o pautas de cultivo, guárdalas en la memoria permanente con:
-     [[MEMORIA: {"category": "suelo|cultivo|riego|plaga|fertilizacion|general", "title": "Título descriptivo", "content": "Detalle técnico aprendido"}]]
-  3. Si contiene coordenadas o inventario de árboles, regístralos con [[REGISTRAR_PUNTOS: [...] ]].
+7. 📎 **DOCUMENTOS Y ARCHIVOS ADJUNTOS (+)**:
+- El usuario dispone de un botón '+' para adjuntar informes PDF (análisis de suelo, agua, foliares, facturas de abonos/fitosanitarios, certificados catastrales o SIGPAC), hojas de cálculo (CSV, Excel) y notas técnicas, además de fotos con la cámara.
+- Si contiene reglas o pautas agronómicas, guárdalas en la memoria permanente con [[MEMORIA: {...}]].
+- Si contiene coordenadas o inventario de árboles, regístralos con [[REGISTRAR_PUNTOS: [...] ]].
 
-Tu función es ayudar con:
-- 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
-- 💰 **Contabilidad y finanzas**: análisis de transacciones, gastos, ingresos, resúmenes económicos
-- 📅 **Planificación**: organización de tareas, eventos, temporadas
-- 📊 **Análisis de datos**: interpretar los datos de la app, tendencias, estadísticas
-- 📝 **Documentación**: ayudar a registrar información sobre la finca
-- 🗺️ **Gestión territorial**: orientación sobre mapas, parcelas, zonas de la finca
+🔒 **CONFIDENCIALIDAD**:
+- Toda la información de este chat es ESTRICTAMENTE CONFIDENCIAL de Campito Jorox. Responde siempre en **español**, con rigor y utilidad práctica para el campo.`;
 
-Cuando tengas datos de transacciones, eventos o memoria aprendida en el contexto, úsalos para dar respuestas precisas y basadas en datos reales.
-Responde siempre en **español**, de forma clara, concisa y útil. Puedes usar formato markdown.
-Si te muestran una imagen o documento, analízalo en detalle relacionándolo con el contexto de la finca.
-Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
+// ─── Funciones Formateadoras del Contexto Real de la Finca ───────────────────
+function formatEventsContext(events) {
+  if (!events || events.length === 0) {
+    return '\n\n📅 **CALENDARIO Y TURNOS DE RIEGO**: Actualmente no hay eventos o turnos registrados en la base de datos de la finca.';
+  }
+
+  // Ordenar cronológicamente
+  const sorted = [...events].sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : 0;
+    const db = b.date ? new Date(b.date).getTime() : 0;
+    return da - db;
+  });
+
+  const lines = sorted.map((ev) => {
+    const rawDate = ev.date ? ev.date.split('T')[0] : 'Fecha no especificada';
+    let diaSemana = '';
+    try {
+      if (ev.date) {
+        const d = new Date(rawDate + 'T12:00:00Z');
+        diaSemana = d.toLocaleDateString('es-ES', { weekday: 'long' });
+      }
+    } catch {
+      // ignore
+    }
+
+    const horario = (ev.start_time || ev.end_time)
+      ? `${(ev.start_time || '').substring(0, 5)} a ${(ev.end_time || '').substring(0, 5)}`
+      : 'Horario completo';
+
+    const resp = Array.isArray(ev.responsibles) && ev.responsibles.length > 0
+      ? ev.responsibles.join(', ')
+      : (ev.responsible || 'Sin asignar');
+
+    const notas = ev.info ? ` | Notas: ${ev.info}` : '';
+    const categoria = ev.category || 'General';
+
+    return `- [${rawDate} · ${diaSemana}] ${categoria} | Horario: ${horario} | Responsables: ${resp}${notas}`;
+  });
+
+  return `\n\n📅 **CALENDARIO Y TURNOS DE RIEGO PROGRAMADOS (${events.length} turnos/eventos en base de datos)**:
+${lines.join('\n')}
+*REGLA DEL CALENDARIO: Tienes acceso directo y en vivo a todo el calendario oficial de Campito Jorox arriba indicado.
+- Si el usuario te pregunta qué día, qué fecha o qué horario hay de riego, poda o cualquier tarea (por ejemplo: "¿qué horario tenemos de riego el sábado 14 de noviembre?"):
+  1. Busca en la lista superior.
+  2. Si encuentras turnos en esa fecha o sector (La Nana o El Moro), responde inmediatamente con el horario exacto, el sector y los responsables asignados.
+  3. Si no hay turnos exactamente en esa fecha, infórmaselo con total claridad ("He comprobado el calendario y para el sábado 14 de noviembre no hay turnos agendados"), menciona los turnos programados más cercanos y ofrécete a programarlo de inmediato.
+- NUNCA respondas que no tienes acceso al calendario ni que el usuario no te ha dicho qué horario hay.*`;
+}
+
+function formatFinancesContext(transactions, users = []) {
+  if (!transactions || transactions.length === 0) {
+    return '\n\n💰 **CONTABILIDAD Y BALANCES**: Actualmente no hay transacciones registradas.';
+  }
+
+  const activeTxs = transactions.filter((tx) => (tx.status || 'ACTIVE') !== 'DELETED');
+
+  let totalGastos = 0;
+  let totalVentas = 0;
+
+  activeTxs.forEach((tx) => {
+    const amt = parseFloat(tx.amount || 0);
+    const type = (tx.type || '').toLowerCase();
+    if (type === 'gasto' || amt > 0) {
+      totalGastos += Math.abs(amt);
+    } else if (type === 'retiro' || type === 'venta' || type === 'ingreso' || amt < 0) {
+      totalVentas += Math.abs(amt);
+    }
+  });
+
+  const balanceNeto = totalGastos - totalVentas;
+
+  // Desglose por usuario
+  const userStats = (users || []).map((u) => {
+    const uName = u.name;
+    const uTxs = activeTxs.filter((tx) => {
+      const txUser = tx.profiles?.name || tx.user_name || tx.user || '';
+      return txUser.toLowerCase() === uName.toLowerCase();
+    });
+    const gasto = uTxs
+      .filter((tx) => (tx.type || '').toLowerCase() === 'gasto' || parseFloat(tx.amount || 0) > 0)
+      .reduce((s, tx) => s + Math.abs(parseFloat(tx.amount || 0)), 0);
+    const venta = uTxs
+      .filter((tx) => ['retiro', 'venta', 'ingreso'].includes((tx.type || '').toLowerCase()) || parseFloat(tx.amount || 0) < 0)
+      .reduce((s, tx) => s + Math.abs(parseFloat(tx.amount || 0)), 0);
+    return {
+      name: uName,
+      gasto,
+      venta,
+      balance: gasto - venta,
+    };
+  });
+
+  const maxBal = userStats.length > 0 ? Math.max(...userStats.map((s) => s.balance)) : 0;
+  const userLines = userStats.map((s) => {
+    const diff = s.balance - maxBal;
+    return `  - **${s.name}**: Gastos pagados: €${s.gasto.toFixed(2)} | Ventas/Retiros cobrados: €${s.venta.toFixed(2)} | Saldo personal: €${s.balance.toFixed(2)}${diff < 0 ? ` (Diferencia a liquidar: €${Math.abs(diff).toFixed(2)})` : ' (Mayor aportante / Saldo positivo)'}`;
+  });
+
+  const recentTxs = activeTxs.slice(0, 35).map((tx) => {
+    const d = tx.date ? tx.date.split('T')[0] : '';
+    const u = tx.profiles?.name || tx.user_name || tx.user || 'Desconocido';
+    const t = tx.type || 'Transacción';
+    const a = Math.abs(parseFloat(tx.amount || 0)).toFixed(2);
+    const desc = tx.description ? ` — ${tx.description}` : '';
+    return `- [${d}] ${u} | ${t.toUpperCase()}: €${a}${desc}`;
+  });
+
+  return `\n\n💰 **CONTABILIDAD Y BALANCES FINANCIEROS DE LA FINCA (${activeTxs.length} transacciones activas)**:
+- **Total Gastos**: €${totalGastos.toFixed(2)}
+- **Total Ventas / Ingresos**: €${totalVentas.toFixed(2)}
+- **Balance General**: €${balanceNeto.toFixed(2)} (${balanceNeto >= 0 ? 'Gastos superan a ventas' : 'Superávit general'})
+
+👥 **Saldos individuales por socio / usuario**:
+${userLines.length > 0 ? userLines.join('\n') : '  (Sin desglose individual)'}
+
+📋 **Últimas transacciones registradas**:
+${recentTxs.join('\n')}
+*REGLA DE CONTABILIDAD: Tienes acceso directo y en vivo a todos los balances financieros, gastos, ventas y liquidaciones. Utiliza estas cifras exactas. NUNCA respondas que no tienes acceso a la contabilidad ni a los números de la finca.*`;
+}
+
+function formatKnowledgeContext(knowledge) {
+  if (!knowledge || knowledge.length === 0) {
+    return '\n\n🧠 **MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA**: Actualmente no hay reglas grabadas.';
+  }
+
+  const lines = knowledge.map((k) => {
+    const cat = (k.category || 'general').toUpperCase();
+    return `- [${cat}] **${k.title}**: ${k.content}`;
+  });
+
+  return `\n\n🧠 **MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA (${knowledge.length} hechos/reglas aprendidas)**:
+${lines.join('\n')}
+*REGLA DE APRENDIZAJE: Todo lo listado aquí es memoria permanente y doctrina operativa de Campito Jorox. Consulta y obedece rigurosamente todas estas reglas. Si te piden aprender o recordar algo nuevo, guárdalo con [[MEMORIA: {"category": "cultivo|riego|parcela|maquinaria|suelo|general|proveedor|protocolo|plaga", "title": "...", "content": "..."}]].*`;
+}
+
+function formatInventoryContext(inventory) {
+  if (!inventory || inventory.length === 0) {
+    return '\n\n🗺️ **INVENTARIO Y CATASTRO GPS**: 0 elementos registrados.';
+  }
+
+  const varieties = {};
+  inventory.forEach((i) => {
+    const key = `${i.category || 'arbol'} ${i.variety_type || ''}`.trim();
+    varieties[key] = (varieties[key] || 0) + 1;
+  });
+
+  const summary = Object.entries(varieties)
+    .map(([k, count]) => `${count}x ${k}`)
+    .join(', ');
+
+  const sample = inventory.slice(0, 30).map((inv) => {
+    const lat = typeof inv.latitude === 'number' ? inv.latitude.toFixed(6) : inv.latitude;
+    const lng = typeof inv.longitude === 'number' ? inv.longitude.toFixed(6) : inv.longitude;
+    return `- [${(inv.category || 'arbol').toUpperCase()}] ${inv.name} (${inv.variety_type || 'Sin variedad'}) | Estado: ${inv.status || 'saludable'} | [${lat}, ${lng}] | Obs: ${inv.notes || ''}`;
+  });
+
+  return `\n\n🗺️ **INVENTARIO Y CATASTRO GPS (${inventory.length} elementos georreferenciados)**:
+- Resumen: ${summary}
+- Muestra de puntos:
+${sample.join('\n')}`;
+}
+
+function buildComprehensiveFincaContext({
+  events = [],
+  transactions = [],
+  users = [],
+  knowledge = [],
+  inventory = [],
+  paths = [],
+}) {
+  let ctx = '';
+  ctx += formatEventsContext(events);
+  ctx += formatFinancesContext(transactions, users);
+  ctx += formatKnowledgeContext(knowledge);
+  ctx += formatInventoryContext(inventory);
+
+  if (paths && paths.length > 0) {
+    const pLines = paths.map((p) => {
+      const len = p.length_meters ? `${Number(p.length_meters).toFixed(0)}m` : 'longitud sin definir';
+      return `- [${(p.path_type || 'camino').toUpperCase()}] ${p.name} (${len}, color: ${p.color || '#3b82f6'})`;
+    });
+    ctx += `\n\n🛣️ **CAMINOS Y SENDEROS TRAZADOS (${paths.length} trazados activos)**:\n${pLines.join('\n')}`;
+  }
+
+  return ctx;
+}
 
 // ─── Función de llamada directa REST a Gemini con timeout ──────────────────────
 async function callGeminiDirect({ modelId, prompt, attachment, image, audio, history, systemInstruction, apiKey, timeoutMs = 25000 }) {
@@ -184,7 +364,7 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
     throw new Error('API_KEY_MISSING');
   }
 
-  const effectiveTimeout = (audio || attachment) ? Math.max(timeoutMs, 30000) : timeoutMs;
+  const effectiveTimeout = (audio || attachment) ? Math.max(timeoutMs, 35000) : timeoutMs;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
@@ -219,12 +399,13 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
     if (att.dataUrl) {
       const match = att.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
       if (match) {
-        const mime = match[1].toLowerCase();
+        const rawMime = match[1].toLowerCase();
+        const cleanMime = rawMime.split(';')[0].trim();
         // Imágenes y documentos PDF soportados nativamente por Gemini generateContent
-        if (mime.startsWith('image/') || mime === 'application/pdf') {
+        if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
           userParts.push({
-            inline_data: {
-              mime_type: mime,
+            inlineData: {
+              mimeType: cleanMime,
               data: match[2],
             },
           });
@@ -235,20 +416,22 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
 
   // Soporte nativo multimodal de Audio en Gemini
   if (audio && audio.dataUrl) {
-    const match = audio.dataUrl.match(/^data:(audio\/[a-zA-Z0-9.-]+);base64,(.+)$/);
+    const match = audio.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
     if (match) {
+      const rawMime = match[1].toLowerCase();
+      const cleanMime = rawMime.split(';')[0].trim();
       userParts.push({
-        inline_data: {
-          mime_type: match[1],
+        inlineData: {
+          mimeType: cleanMime,
           data: match[2],
         },
       });
     } else {
-      const mime = audio.mimeType || 'audio/webm';
+      const cleanMime = (audio.mimeType || 'audio/webm').split(';')[0].trim();
       const cleanBase64 = audio.dataUrl.replace(/^data:.*?;base64,/, '');
       userParts.push({
-        inline_data: {
-          mime_type: mime,
+        inlineData: {
+          mimeType: cleanMime,
           data: cleanBase64,
         },
       });
@@ -257,7 +440,7 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
 
   if (!prompt && audio) {
     userParts.push({
-      text: 'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla o dato clave de la finca, guárdala con [[MEMORIA: {...} ]]. Si hace una consulta agronómica o balance, responde detalladamente en español.',
+      text: 'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Transcribe o interpreta lo que dice y responde a su consulta o petición. Si consulta sobre el calendario o turnos de riego, revisa el calendario inyectado y responde con el horario exacto. Si consulta sobre la contabilidad, responde con los balances reales. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla de la finca, guárdala con [[MEMORIA: {...} ]]. Si pide borrar un punto, usa [[BORRAR_PUNTO: {...}]]. Responde detalladamente en español.',
     });
   } else if (!prompt && att) {
     userParts.push({
@@ -629,6 +812,19 @@ const WELCOME_MESSAGE = {
 
 // ─── Componente Principal ChatIA ────────────────────────────────────────────────
 export default function ChatIA() {
+  const outletContext = useOutletContext() || {};
+  const {
+    events: outletEvents = [],
+    transactions: outletTransactions = [],
+    users: outletUsers = [],
+    refetchEvents,
+    refetchTransactions,
+  } = outletContext;
+
+  const [fincaEvents, setFincaEvents] = useState(() => outletEvents);
+  const [fincaTransactions, setFincaTransactions] = useState(() => outletTransactions);
+  const [fincaUsers, setFincaUsers] = useState(() => outletUsers);
+
   // Modelo inicial: Gemini 3.5 Flash (high) por ser el más potente con cuota gratuita activa
   const initialIndex = GEMINI_SERVERS.findIndex((s) => s.id === 'gemini-3.5-flash');
   const [selectedServerIndex, setSelectedServerIndex] = useState(initialIndex >= 0 ? initialIndex : 0);
@@ -896,98 +1092,53 @@ export default function ChatIA() {
     }
   }, []);
 
-  // ── Cargar contexto de Supabase una sola vez al montar ────────────────────────
+  // ── Cargar contexto completo de Supabase al montar ────────────────────────────
   useEffect(() => {
+    let isMounted = true;
     const loadContext = async () => {
       try {
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        const [{ data: transactions }, { data: events }, { data: knowledge }, { data: inventory }, { data: paths }] = await Promise.all([
-          supabase
-            .from('transactions')
-            .select('date, type, amount, description, category')
-            .order('date', { ascending: false })
-            .limit(40),
-          supabase
-            .from('events')
-            .select('title, start_date, category')
-            .gte('start_date', thirtyDaysAgo.toISOString().split('T')[0])
-            .order('start_date', { ascending: true })
-            .limit(20),
-          supabase
-            .from('farm_knowledge')
-            .select('*')
-            .eq('is_active', true)
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('farm_inventory')
-            .select('*')
-            .eq('is_active', true)
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('farm_paths')
-            .select('*')
-            .eq('is_active', true)
-            .order('created_at', { ascending: false })
+        const [transRes, eventsRes, knwRes, invRes, pathRes, usersRes] = await Promise.allSettled([
+          supabase.from('transactions').select('*, profiles(name)').order('date', { ascending: false }).limit(60),
+          supabase.from('events').select('*').order('date', { ascending: true }),
+          supabase.from('farm_knowledge').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+          supabase.from('farm_inventory').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+          supabase.from('farm_paths').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+          supabase.from('profiles').select('*').order('name'),
         ]);
 
-        let ctx = '';
+        if (!isMounted) return;
 
-        // Inyectar memoria permanente aprendida de la finca
-        if (knowledge && knowledge.length > 0) {
-          setFarmKnowledge(knowledge);
-          ctx += `\n\n🧠 MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA (${knowledge.length} hechos/reglas grabadas):\n`;
-          knowledge.forEach((k) => {
-            ctx += `- [${(k.category || 'general').toUpperCase()}] ${k.title}: ${k.content}\n`;
-          });
-        }
+        const liveEvents = eventsRes.status === 'fulfilled' && eventsRes.value.data ? eventsRes.value.data : outletEvents;
+        const liveTransactions = transRes.status === 'fulfilled' && transRes.value.data ? transRes.value.data : outletTransactions;
+        const liveKnowledge = knwRes.status === 'fulfilled' && knwRes.value.data ? knwRes.value.data : [];
+        const liveInventory = invRes.status === 'fulfilled' && invRes.value.data ? invRes.value.data : [];
+        const livePaths = pathRes.status === 'fulfilled' && pathRes.value.data ? pathRes.value.data : [];
+        const liveUsers = usersRes.status === 'fulfilled' && usersRes.value.data ? usersRes.value.data : outletUsers;
 
-        // Inyectar inventario y catastro GPS de la finca
-        if (inventory && inventory.length > 0) {
-          setFarmInventory(inventory);
-          ctx += `\n\n🗺️ INVENTARIO Y CATASTRO GPS (${inventory.length} elementos georreferenciados):\n`;
-          inventory.slice(0, 30).forEach((inv) => {
-            ctx += `- [${(inv.category || 'arbol').toUpperCase()}] ${inv.name} (${inv.variety_type || ''}) | Estado: ${inv.status || 'saludable'} | Lat/Lng: ${inv.latitude}, ${inv.longitude} | Obs: ${inv.notes || ''}\n`;
-          });
-        }
+        setFincaEvents(liveEvents);
+        setFincaTransactions(liveTransactions);
+        setFarmKnowledge(liveKnowledge);
+        setFarmInventory(liveInventory);
+        setFarmPaths(livePaths);
+        setFincaUsers(liveUsers);
 
-        // Inyectar trazados de caminos y senderos
-        if (paths && paths.length > 0) {
-          setFarmPaths(paths);
-          ctx += `\n\n🛣️ CAMINOS Y SENDEROS TRAZADOS (${paths.length} trazados activos):\n`;
-          paths.forEach((p) => {
-            ctx += `- [${(p.path_type || 'camino').toUpperCase()}] ${p.name} (${p.length_meters ? `${Number(p.length_meters).toFixed(0)}m` : 'longitud sin definir'}, color: ${p.color})\n`;
-          });
-        }
-
-        if (transactions?.length > 0) {
-          const ingresos = transactions
-            .filter((t) => t.type === 'ingreso')
-            .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-          const gastos = transactions
-            .filter((t) => t.type === 'gasto')
-            .reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-          ctx += `\n\n📊 DATOS REALES (${transactions.length} transacciones):\n`;
-          ctx += `Ingresos: €${ingresos.toFixed(2)} | Gastos: €${gastos.toFixed(2)} | Balance: €${(ingresos - gastos).toFixed(2)}\n`;
-          ctx += `Últimas transacciones:\n`;
-          transactions.slice(0, 12).forEach((t) => {
-            ctx += `- [${t.date}] ${t.type?.toUpperCase()}: €${t.amount} — ${t.description || t.category || ''}\n`;
-          });
-        }
-        if (events?.length > 0) {
-          ctx += `\nEventos próximos:\n`;
-          events.forEach((e) => {
-            ctx += `- [${e.start_date}] ${e.title} ${e.category ? `(${e.category})` : ''}\n`;
-          });
-        }
-        contextDataRef.current = ctx;
+        contextDataRef.current = buildComprehensiveFincaContext({
+          events: liveEvents,
+          transactions: liveTransactions,
+          users: liveUsers,
+          knowledge: liveKnowledge,
+          inventory: liveInventory,
+          paths: livePaths,
+        });
       } catch (err) {
-        console.warn('No se pudo cargar contexto Supabase:', err.message);
+        console.warn('[ChatIA] Error cargando contexto inicial:', err);
       }
     };
     loadContext();
-  }, []);
+    return () => {
+      isMounted = false;
+    };
+  }, [outletEvents, outletTransactions, outletUsers]);
 
   // ── Guardar conocimiento manual en la memoria de la finca ─────────────────────
   const handleSaveManualKnowledge = async (e) => {
@@ -1167,7 +1318,59 @@ RESPONDE SIEMPRE ROTUNDAMENTE QUE SÍ:
 "¡Sí! La app de Campito Jorox obtiene continuamente tu posición GPS en tiempo real. Ahora mismo tu teléfono está transmitiendo las coordenadas [${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}] con precisión de ±${effectivePt.accuracy ? effectivePt.accuracy.toFixed(1) + 'm' : '3.5m'}."
 Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si te pide aprender una regla o dato de la finca, usa [[MEMORIA: {...}]].*`;
 
-      const systemInstruction = SYSTEM_PROMPT + contextDataRef.current + gpsContextSnippet;
+      // 1. Refrescar datos en vivo de Supabase para que el asistente tenga el calendario,
+      // la contabilidad y la memoria permanente 100% actualizados en cada respuesta
+      let currentEvents = fincaEvents.length > 0 ? fincaEvents : outletEvents;
+      let currentTransactions = fincaTransactions.length > 0 ? fincaTransactions : outletTransactions;
+      let currentUsers = fincaUsers.length > 0 ? fincaUsers : outletUsers;
+      let currentKnowledge = farmKnowledge;
+      let currentInventory = farmInventory;
+      let currentPaths = farmPaths;
+
+      try {
+        const [eRes, tRes, kRes, iRes, pRes] = await Promise.allSettled([
+          supabase.from('events').select('*').order('date', { ascending: true }),
+          supabase.from('transactions').select('*, profiles(name)').order('date', { ascending: false }).limit(60),
+          supabase.from('farm_knowledge').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+          supabase.from('farm_inventory').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+          supabase.from('farm_paths').select('*').eq('is_active', true).order('created_at', { ascending: false }),
+        ]);
+
+        if (eRes.status === 'fulfilled' && eRes.value.data && eRes.value.data.length > 0) {
+          currentEvents = eRes.value.data;
+          setFincaEvents(eRes.value.data);
+        }
+        if (tRes.status === 'fulfilled' && tRes.value.data && tRes.value.data.length > 0) {
+          currentTransactions = tRes.value.data;
+          setFincaTransactions(tRes.value.data);
+        }
+        if (kRes.status === 'fulfilled' && kRes.value.data) {
+          currentKnowledge = kRes.value.data;
+          setFarmKnowledge(kRes.value.data);
+        }
+        if (iRes.status === 'fulfilled' && iRes.value.data) {
+          currentInventory = iRes.value.data;
+          setFarmInventory(iRes.value.data);
+        }
+        if (pRes.status === 'fulfilled' && pRes.value.data) {
+          currentPaths = pRes.value.data;
+          setFarmPaths(pRes.value.data);
+        }
+      } catch (fErr) {
+        console.warn('[ChatIA] Contexto en memoria utilizado:', fErr);
+      }
+
+      const freshFincaContext = buildComprehensiveFincaContext({
+        events: currentEvents,
+        transactions: currentTransactions,
+        users: currentUsers,
+        knowledge: currentKnowledge,
+        inventory: currentInventory,
+        paths: currentPaths,
+      });
+      contextDataRef.current = freshFincaContext;
+
+      const systemInstruction = SYSTEM_PROMPT + '\n' + freshFincaContext + '\n' + gpsContextSnippet;
 
       let lastError = null;
       let successResult = null;
@@ -1371,6 +1574,83 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           }
         }
 
+        // 3. Detección y ejecución de orden de creación de evento en el calendario
+        const evMatch = successResult.match(/\[\[CREAR_EVENTO:\s*(\{.*?\})\s*\]\]/s);
+        if (evMatch) {
+          try {
+            const evData = JSON.parse(evMatch[1]);
+            displayedContent = displayedContent.replace(evMatch[0], '').trim();
+
+            const evDate = evData.date ? `${evData.date.split('T')[0]}T00:00:00Z` : new Date().toISOString();
+            const evEndDate = evData.end_date ? `${evData.end_date.split('T')[0]}T00:00:00Z` : evDate;
+            const evStartTime = evData.start_time ? (evData.start_time.substring(0, 5) + ':00') : '08:00:00';
+            const evEndTime = evData.end_time ? (evData.end_time.substring(0, 5) + ':00') : '10:00:00';
+            const evCat = evData.category || 'RIEGO - La Nana';
+            const evResp = Array.isArray(evData.responsibles)
+              ? evData.responsibles
+              : (evData.responsibles ? [evData.responsibles] : ['Ariel']);
+            const evInfo = evData.info || 'Programado desde Chat IA';
+
+            const { data: newEvRow, error: evInsErr } = await supabase
+              .from('events')
+              .insert({
+                date: evDate,
+                end_date: evEndDate,
+                start_time: evStartTime,
+                end_time: evEndTime,
+                category: evCat,
+                responsibles: evResp,
+                info: evInfo,
+              })
+              .select()
+              .single();
+
+            if (!evInsErr && newEvRow) {
+              setFincaEvents((prev) => [...prev, newEvRow]);
+              if (refetchEvents) refetchEvents();
+            }
+          } catch (e) {
+            console.warn('Error al procesar bloque CREAR_EVENTO:', e);
+          }
+        }
+
+        // 4. Detección y ejecución de creación de transacción / gasto / venta
+        const txMatch = successResult.match(/\[\[CREAR_TRANSACCION:\s*(\{.*?\})\s*\]\]/s);
+        if (txMatch) {
+          try {
+            const txData = JSON.parse(txMatch[1]);
+            displayedContent = displayedContent.replace(txMatch[0], '').trim();
+
+            const rawType = txData.type || 'Gasto';
+            const rawAmt = Math.abs(parseFloat(txData.amount || 0));
+            const isRetiro = ['retiro', 'venta', 'ingreso'].includes(rawType.toLowerCase());
+            const finalAmount = isRetiro ? -rawAmt : rawAmt;
+
+            const { data: authData } = await supabase.auth.getUser();
+            const currUser = authData?.user;
+
+            const { data: newTxRow, error: txInsErr } = await supabase
+              .from('transactions')
+              .insert({
+                date: new Date().toISOString(),
+                user_id: currUser?.id || null,
+                type: rawType,
+                amount: finalAmount,
+                description: txData.description || 'Registrado desde Chat IA',
+                status: 'ACTIVE',
+              })
+              .select()
+              .single();
+
+            if (!txInsErr && newTxRow) {
+              setFincaTransactions((prev) => [newTxRow, ...prev]);
+              if (refetchTransactions) refetchTransactions();
+            }
+          } catch (e) {
+            console.warn('Error al procesar bloque CREAR_TRANSACCION:', e);
+          }
+        }
+
         // Heurística de respaldo si el usuario pidió recordar algo y el modelo no generó la etiqueta
         if (!learnedMemory && text) {
           const lowerText = text.toLowerCase().trim();
@@ -1508,7 +1788,27 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
 
       setIsLoading(false);
     },
-    [input, messages, isLoading, pendingAttachment, pendingAudio, selectedServerIndex, autoFallback, currentUserId]
+    [
+      input,
+      messages,
+      isLoading,
+      pendingAttachment,
+      pendingAudio,
+      selectedServerIndex,
+      autoFallback,
+      currentUserId,
+      fincaEvents,
+      fincaTransactions,
+      fincaUsers,
+      farmKnowledge,
+      farmInventory,
+      farmPaths,
+      outletEvents,
+      outletTransactions,
+      outletUsers,
+      refetchEvents,
+      refetchTransactions,
+    ]
   );
 
   // Enter envía

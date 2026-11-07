@@ -168,8 +168,8 @@ export async function processVoiceGeoSession({
             text: `A continuación tienes la grabación de audio de la ruta de campo. Extrae los árboles descritos y cualquier orden de borrado por voz que el usuario haya pronunciado ("borra el último", "cancela el anterior", etc.). La sesión duró aproximadamente ${((Date.now() - t0) / 1000).toFixed(0)} segundos.`,
           },
           {
-            inline_data: {
-              mime_type: mimeType,
+            inlineData: {
+              mimeType: (mimeType || 'audio/webm').split(';')[0].trim(),
               data: audioBase64,
             },
           },
