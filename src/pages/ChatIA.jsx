@@ -63,7 +63,8 @@ const GEMINI_SERVERS = [
     level: 'pro',
     badgeColor: '#0ea5e9', // Celeste
     desc: 'Alta precisión para tablas financieras complejas y planificación',
-    available: true,
+    available: false,
+    deprecated: true,
   },
   {
     id: 'gemini-3.5-flash',
