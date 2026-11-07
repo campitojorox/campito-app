@@ -9,6 +9,7 @@ import './index.css';
 const Calendario = lazy(() => import('./pages/Calendario'));
 const Resumen = lazy(() => import('./pages/Resumen'));
 const GastoVenta = lazy(() => import('./pages/GastoVenta'));
+const ChatIA = lazy(() => import('./pages/ChatIA'));
 function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +72,7 @@ function App() {
           <Route path="calendario" element={<Calendario />} />
           <Route path="gasto-venta" element={<GastoVenta />} />
           <Route path="resumen" element={<Resumen />} />
+          <Route path="chat-ia" element={<ChatIA />} />
         </Route>
       </Routes>
       </BrowserRouter>

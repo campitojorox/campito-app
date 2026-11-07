@@ -1,6 +1,6 @@
 import { useState, Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle } from 'lucide-react';
+import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle, Bot } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -430,6 +430,9 @@ export default function Layout({ session }) {
         </NavLink>
         <NavLink to="/resumen" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <BarChart2 size={32} style={{ display: 'block', margin: '0 auto' }} />
+        </NavLink>
+        <NavLink to="/chat-ia" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <Bot size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
         <div className="nav-item" style={{ cursor: 'pointer' }} onClick={() => setIsMapasModalOpen(true)}>
           <Globe size={32} style={{ display: 'block', margin: '0 auto' }} />

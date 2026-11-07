@@ -11,13 +11,16 @@
     "backup": "zip -r campito-app-respaldo.zip src public api scripts package.json index.html vite.config.js vercel.json README.md 'CAMPITO JOROX DATA.xlsx'"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.108.2",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.21.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.0",
-    "recharts": "^3.9.0"
+    "recharts": "^3.9.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
