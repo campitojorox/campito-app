@@ -87,6 +87,11 @@ const GEMINI_SERVERS = [
 
 const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de explotación agrícola.
 
+🔒 **CONFIDENCIALIDAD ESTRICTA (ENTORNO PRIVADO Y CERRADO)**:
+- Toda la información subida a este chat (textos, documentos, imágenes, audios, fotos de plagas, facturas, transacciones y contabilidad) es ESTRICTAMENTE CONFIDENCIAL de Campito Jorox.
+- Se permite la importación y análisis interno de información para la gestión de la finca, pero NUNCA su exportación, divulgación o compartición con servidores o entidades externas.
+- Toda la información permanece bajo custodia exclusiva de los administradores de Campito Jorox.
+
 Tu función es ayudar con:
 - 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
 - 💰 **Contabilidad y finanzas**: análisis de transacciones, gastos, ingresos, resúmenes económicos
@@ -1031,22 +1036,29 @@ export default function ChatIA() {
                 />
               </div>
 
-              {/* Info de la cuenta */}
+              {/* Info de la cuenta y Privacidad Confidencial */}
               <div
                 style={{
                   fontSize: '0.68rem',
-                  color: '#64748b',
+                  color: '#475569',
                   backgroundColor: '#f1f5f9',
-                  padding: '8px 10px',
-                  borderRadius: 6,
+                  padding: '9px 12px',
+                  borderRadius: 8,
                   display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
+                  flexDirection: 'column',
+                  gap: 4,
+                  border: '1px solid #e2e8f0',
                 }}
               >
-                <ShieldCheck size={14} color="#00979d" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#0f172a' }}>
+                  <ShieldCheck size={14} color="#00979d" />
+                  <span>Entorno Confidencial y Privado</span>
+                </div>
                 <span>
-                  <b>Cuenta:</b> Google AI Studio (Key terminada en <b>...3w8BcQ</b>)
+                  Toda la información, documentos, audios e imágenes procesados en este chat son <b>estrictamente confidenciales</b> de Campito Jorox. Se permite la importación interna para análisis, pero <b>nunca la exportación a servidores externos</b>.
+                </span>
+                <span style={{ color: '#64748b', fontSize: '0.64rem', marginTop: 2 }}>
+                  Cuenta: Google AI Studio (Key ...3w8BcQ) · Sesión protegida
                 </span>
               </div>
             </div>
