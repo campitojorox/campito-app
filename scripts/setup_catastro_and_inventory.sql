@@ -115,3 +115,4 @@ CREATE POLICY "Permitir actualizacion publica de caminos"
 ON public.farm_paths FOR UPDATE TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Permitir eliminacion publica de caminos" 
 ON public.farm_paths FOR DELETE TO anon USING (true);
+

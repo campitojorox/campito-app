@@ -120,6 +120,11 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
 - El sistema cuenta con un visor satélite en vivo que dibuja puntos y líneas de colores (sin iconos), permite trazar nuevos caminos o senderos interactivos y calcular sus distancias métricas.
 - Puedes responder sobre conteo de árboles por variedad (Hass, Bacon, etc.), estado fitosanitario (saludable, clorosis, poda), longitud de caminos, y guiar al usuario para exportar a **Google My Maps (KML), PDF, Excel y GeoJSON**.
 
+🎙️ **MENSAJES DE VOZ DIRECTOS DEL AGRICULTOR**:
+- El usuario puede hablarte por notas de voz grabadas directamente desde su teléfono mientras trabaja en la finca.
+- Cuando recibas un audio en el mensaje, escucha con atención la voz del agricultor.
+- Si el mensaje incluye audio, transcribe o interpreta sus palabras con naturalidad y responde directamente a su duda o petición técnica, agrícola o contable.
+
 🗑️ **BORRADO Y CORRECCIÓN DE PUNTOS POR VOZ O TEXTO**:
 - Si el usuario te pide por voz o texto borrar, eliminar o corregir un árbol, arqueta o punto del catastro (ej: "borra el último árbol", "elimina el aguacate Bacon", "cancela el último punto registrado", "borra el árbol de aquí"):
   1. Confirma claramente qué elemento has eliminado del catastro.
@@ -140,13 +145,14 @@ Si te muestran una imagen, analízala en detalle relacionándola con el contexto
 Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
 
 // ─── Función de llamada directa REST a Gemini con timeout ──────────────────────
-async function callGeminiDirect({ modelId, prompt, image, history, systemInstruction, apiKey, timeoutMs = 15000 }) {
+async function callGeminiDirect({ modelId, prompt, image, audio, history, systemInstruction, apiKey, timeoutMs = 25000 }) {
   if (!apiKey) {
     throw new Error('API_KEY_MISSING');
   }
 
+  const effectiveTimeout = audio ? Math.max(timeoutMs, 30000) : timeoutMs;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   // Armar historial en formato REST Gemini
   const contents = [];
@@ -179,8 +185,36 @@ async function callGeminiDirect({ modelId, prompt, image, history, systemInstruc
     }
   }
 
+  // Soporte nativo multimodal de Audio en Gemini
+  if (audio && audio.dataUrl) {
+    const match = audio.dataUrl.match(/^data:(audio\/[a-zA-Z0-9.-]+);base64,(.+)$/);
+    if (match) {
+      userParts.push({
+        inline_data: {
+          mime_type: match[1],
+          data: match[2],
+        },
+      });
+    } else {
+      const mime = audio.mimeType || 'audio/webm';
+      const cleanBase64 = audio.dataUrl.replace(/^data:.*?;base64,/, '');
+      userParts.push({
+        inline_data: {
+          mime_type: mime,
+          data: cleanBase64,
+        },
+      });
+    }
+  }
+
   if (userParts.length === 0) {
-    userParts.push({ text: 'Hola' });
+    if (audio) {
+      userParts.push({
+        text: 'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Transcríbelo o interpreta su petición directamente y responde a su consulta o ejecuta la acción solicitada de forma clara y detallada.',
+      });
+    } else {
+      userParts.push({ text: 'Hola' });
+    }
   }
 
   contents.push({
@@ -219,7 +253,7 @@ async function callGeminiDirect({ modelId, prompt, image, history, systemInstruc
     }
 
     const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text;
+    const text = candidate?.content?.parts?.map((p) => p.text).filter(Boolean).join('\n');
 
     if (!text) {
       throw new Error('El modelo devolvió una respuesta vacía');
@@ -584,6 +618,8 @@ export default function ChatIA() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [pendingAudio, setPendingAudio] = useState(null); // { blob, dataUrl, mimeType, duration }
   const [error, setError] = useState(null);
   const [pendingImage, setPendingImage] = useState(null);
 
@@ -593,11 +629,23 @@ export default function ChatIA() {
   const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
+  const recordingStreamRef = useRef(null);
 
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  // Limpieza de grabación si el componente se desmonta
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (recordingStreamRef.current) {
+        recordingStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
 
   // CSS de animaciones
   useEffect(() => {
@@ -609,6 +657,11 @@ export default function ChatIA() {
         @keyframes chatBounce {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.6; }
           30% { transform: translateY(-5px); opacity: 1; }
+        }
+        @keyframes chatPulseRed {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.15); opacity: 0.6; }
+          100% { transform: scale(1); opacity: 1; }
         }
         .chatia-input:focus {
           border-color: #00979d !important;
@@ -946,11 +999,12 @@ export default function ChatIA() {
 
   // ── Enviar mensaje con cascada/fallback entre los 3 servidores ────────────────
   const sendMessage = useCallback(
-    async (textOverride = null, imageData = null) => {
+    async (textOverride = null, imageData = null, audioData = null) => {
       const text = textOverride ?? input.trim();
       const img = imageData ?? pendingImage;
+      const aud = audioData ?? pendingAudio;
 
-      if (!text && !img) return;
+      if (!text && !img && !aud) return;
       if (isLoading) return;
 
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -962,14 +1016,16 @@ export default function ChatIA() {
       const userMsg = {
         id: Date.now().toString(),
         role: 'user',
-        content: text,
+        content: text || (aud ? '🎙️ Mensaje de voz' : ''),
         image: img?.dataUrl || null,
+        audio: aud ? { dataUrl: aud.dataUrl, duration: aud.duration } : null,
       };
 
       const updatedMessages = [...messages, userMsg];
       setMessages(updatedMessages);
       setInput('');
       setPendingImage(null);
+      setPendingAudio(null);
       setIsLoading(true);
       setError(null);
       setFallbackNotice(null);
@@ -1000,10 +1056,11 @@ export default function ChatIA() {
             modelId: server.id,
             prompt: text,
             image: img,
+            audio: aud,
             history,
             systemInstruction,
             apiKey,
-            timeoutMs: 14000,
+            timeoutMs: aud ? 30000 : 15000,
           });
 
           successResult = aiResponse;
@@ -1129,7 +1186,7 @@ export default function ChatIA() {
             let uploadedFileUrl = null;
             let uploadedFileName = null;
 
-            // Subir imagen/archivo si se adjuntó alguno
+            // Subir imagen si se adjuntó alguna
             if (img && img.file) {
               const fileExt = img.file.name ? img.file.name.split('.').pop() : 'jpg';
               const cleanFileName = `chat-ia/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -1141,6 +1198,22 @@ export default function ChatIA() {
                 const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
                 uploadedFileUrl = pubUrl?.publicUrl || null;
                 uploadedFileName = cleanFileName;
+              }
+            } else if (aud && aud.blob) {
+              // Subir audio si se grabó nota de voz
+              const ext = aud.mimeType?.includes('mp4') ? 'm4a' : (aud.mimeType?.includes('ogg') ? 'ogg' : 'webm');
+              const cleanAudioName = `chat-ia/audio-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+              try {
+                const { error: uploadAudioErr } = await supabase.storage
+                  .from('comprobantes')
+                  .upload(cleanAudioName, aud.blob, { contentType: aud.mimeType || 'audio/webm' });
+                if (!uploadAudioErr) {
+                  const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanAudioName);
+                  uploadedFileUrl = pubUrl?.publicUrl || null;
+                  uploadedFileName = cleanAudioName;
+                }
+              } catch (audioUpErr) {
+                console.warn('No se pudo subir audio a storage:', audioUpErr);
               }
             }
 
@@ -1169,7 +1242,7 @@ export default function ChatIA() {
             // Guardar mensaje del usuario en chat_history
             await supabase.from('chat_history').insert({
               role: 'user',
-              content: text || (img ? '[Archivo adjunto]' : ''),
+              content: text || (img ? '[Archivo adjunto]' : (aud ? `[Audio grabado: ${aud.duration}s]` : '')),
               file_url: uploadedFileUrl,
               file_name: uploadedFileName,
               user_id: u?.id || null,
@@ -1202,7 +1275,7 @@ export default function ChatIA() {
 
       setIsLoading(false);
     },
-    [input, messages, isLoading, pendingImage, selectedServerIndex, autoFallback]
+    [input, messages, isLoading, pendingImage, pendingAudio, selectedServerIndex, autoFallback]
   );
 
   // Enter envía
@@ -1230,39 +1303,102 @@ export default function ChatIA() {
     e.target.value = '';
   };
 
-  // Grabación de audio
+  // Grabación de audio multimodal nativo con Gemini (iOS Safari / Android compatible)
   const handleMicClick = async () => {
+    if (isWalkingRecording) {
+      setError('Tienes activa una sesión de caminata y mapeo con Voz + GPS. Finalízala antes de grabar una nota de voz directa.');
+      return;
+    }
+
     if (isRecording) {
-      mediaRecorderRef.current?.stop();
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      try {
+        mediaRecorderRef.current?.stop();
+      } catch (err) {
+        console.warn('Error al detener MediaRecorder:', err);
+      }
       setIsRecording(false);
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      setPendingAudio(null);
+      setError(null);
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      recordingStreamRef.current = stream;
+
+      // Detección de códec compatible (iOS Safari soporta audio/mp4 o audio/webm)
+      let mimeType = 'audio/webm;codecs=opus';
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
+          else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+          else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
+          else mimeType = '';
+        }
+      }
+
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
       };
 
-      mediaRecorder.onstop = () => {
+      const startMs = Date.now();
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(Math.max(1, Math.round((Date.now() - startMs) / 1000)));
+      }, 1000);
+
+      recorder.onstop = () => {
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
         stream.getTracks().forEach((t) => t.stop());
-        const duration = Math.round(audioChunksRef.current.length * 0.1);
-        setInput((prev) => prev + (prev ? ' ' : '') + `[Audio grabado: ${duration}s — transcribir]`);
-        inputRef.current?.focus();
+        const totalDuration = Math.max(1, Math.round((Date.now() - startMs) / 1000));
+        const finalBlob = new Blob(audioChunksRef.current, {
+          type: mimeType || recorder.mimeType || 'audio/webm',
+        });
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPendingAudio({
+            blob: finalBlob,
+            dataUrl: reader.result,
+            mimeType: finalBlob.type || 'audio/webm',
+            duration: totalDuration,
+          });
+        };
+        reader.readAsDataURL(finalBlob);
       };
 
-      mediaRecorder.start(100);
+      recorder.start(250);
       setIsRecording(true);
     } catch (err) {
-      setError('No se pudo acceder al micrófono. Verifica los permisos.');
+      console.error('Error accediendo al micrófono:', err);
+      setError('No se pudo acceder al micrófono. Por favor verifica los permisos en tu navegador o móvil.');
+      setIsRecording(false);
     }
   };
 
-  const hasText = input.trim().length > 0 || pendingImage !== null;
+  const hasText = input.trim().length > 0 || pendingImage !== null || pendingAudio !== null;
   const currentBadgeServer = activeServer || GEMINI_SERVERS[selectedServerIndex];
 
   return (
@@ -1530,10 +1666,10 @@ export default function ChatIA() {
                   <span>Entorno Confidencial y Privado</span>
                 </div>
                 <span>
-                  Toda la información, documentos, audios e imágenes procesados en este chat son <b>estrictamente confidenciales</b> de Campito Jorox. Se permite la importación interna para análisis, pero <b>nunca la exportación a servidores externos</b>.
+                  Toda la información, audios y documentos de este chat son <b>estrictamente confidenciales</b>. Nunca se comparten con terceros externos ni redes públicas. Tú como administrador tienes total libertad para <b>exportar y descargar tus informes en PDF, Excel o KML/GeoJSON</b> cuando lo desees.
                 </span>
                 <span style={{ color: '#64748b', fontSize: '0.64rem', marginTop: 2 }}>
-                  Cuenta: Google AI Studio (Key ...3w8BcQ) · Sesión protegida
+                  Cuenta: Google AI Studio · Sesión protegida y privada
                 </span>
               </div>
             </div>
@@ -1581,7 +1717,7 @@ export default function ChatIA() {
                 </p>
               </div>
 
-              {/* Tarjeta 2: Aislamiento / Descargas seguras */}
+              {/* Tarjeta 2: Aislamiento Privado y Exportación para el Usuario */}
               <div
                 style={{
                   padding: '12px',
@@ -1595,10 +1731,13 @@ export default function ChatIA() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1e293b', fontWeight: 700, fontSize: '0.85rem' }}>
                   <ShieldCheck size={15} color="#00979d" />
-                  <span>2. Circuito Seguro y Privado (Descargas para el Usuario)</span>
+                  <span>2. Privacidad Blindada y Exportación Completa (PDF, Excel, KML)</span>
                 </div>
                 <p style={{ fontSize: '0.76rem', color: '#475569', margin: 0, lineHeight: 1.45 }}>
-                  El entorno es <b>completamente privado</b>: ningún dato se comparte, vende o sincroniza con redes públicas o terceros externos. Sin embargo, tú como usuario administrador tienes <b>pleno control para descargar tus recopilaciones, balances, inventarios e informes en formato PDF o EXCEL</b>, así como mapas en <b>KML y GeoJSON</b> en cualquier momento.
+                  <b>Privacidad absoluta hacia el exterior:</b> Ningún dato, balance, foto o grabación se comparte ni sincroniza con redes públicas o terceros externos; el asistente opera en un circuito cerrado y seguro exclusivamente para Campito Jorox.
+                </p>
+                <p style={{ fontSize: '0.76rem', color: '#0f766e', margin: 0, lineHeight: 1.45, fontWeight: 600 }}>
+                  📥 <b>Exportación total para ti:</b> Tienes plena libertad para solicitar a la IA y descargar en cualquier momento tus inventarios, recopilaciones y balances en <b>PDF, EXCEL, KML (Google My Maps) y GeoJSON</b> con un solo clic.
                 </p>
               </div>
 
@@ -1629,7 +1768,7 @@ export default function ChatIA() {
                     <b>📷 Fotos & Cámara:</b> Sube imágenes de hojas, facturas o mapas para que la IA las analice al instante.
                   </li>
                   <li>
-                    <b>🎙️ Dictado por Voz:</b> Pulsa el micrófono para dictar tus preguntas rápidamente mientras trabajas en el campo.
+                    <b>🎙️ Notas de Voz Nativas:</b> Pulsa el micrófono para enviar audios reales a Gemini. La IA escucha tu voz, transcribe y responde o ejecuta tus instrucciones (incluso mientras caminas por los bancales).
                   </li>
                   <li>
                     <b>⚡ Cascada de IA Inteligente:</b> El sistema conecta siempre con el modelo más potente disponible. Si se agota la cuota, desciende automáticamente al siguiente sin interrumpir tu consulta.
@@ -2728,6 +2867,32 @@ export default function ChatIA() {
                     style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, marginBottom: 6, display: 'block' }}
                   />
                 )}
+                {msg.audio && (
+                  <div style={{ marginBottom: msg.content ? 6 : 0, maxWidth: 260 }}>
+                    <audio
+                      src={msg.audio.dataUrl}
+                      controls
+                      style={{
+                        width: '100%',
+                        height: 36,
+                        borderRadius: 18,
+                        outline: 'none',
+                      }}
+                    />
+                    {msg.audio.duration && (
+                      <span
+                        style={{
+                          fontSize: '0.66rem',
+                          color: isUser ? 'rgba(255,255,255,0.85)' : '#64748b',
+                          display: 'block',
+                          marginTop: 2,
+                        }}
+                      >
+                        🎙️ Audio ({msg.audio.duration}s)
+                      </span>
+                    )}
+                  </div>
+                )}
                 {msg.content &&
                   (isUser ? (
                     <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
@@ -2870,6 +3035,140 @@ export default function ChatIA() {
             style={{ background: 'none', border: 'none', color: '#cc0000', cursor: 'pointer', padding: 2 }}
           >
             <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* ─── Grabando Audio en Directo ────────────────────────────────────────── */}
+      {isRecording && (
+        <div
+          style={{
+            padding: '8px 14px',
+            backgroundColor: '#fef2f2',
+            borderTop: '1px solid #fecaca',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#dc2626' }}>
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                backgroundColor: '#dc2626',
+                display: 'inline-block',
+                animation: 'chatPulseRed 1.2s infinite ease-in-out',
+              }}
+            />
+            <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>
+              Grabando mensaje de voz...
+            </span>
+            <span
+              style={{
+                fontSize: '0.78rem',
+                backgroundColor: '#fee2e2',
+                color: '#991b1b',
+                padding: '1px 8px',
+                borderRadius: 12,
+                fontWeight: 700,
+                fontFamily: 'monospace',
+              }}
+            >
+              {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleMicClick}
+            style={{
+              padding: '4px 12px',
+              backgroundColor: '#dc2626',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 16,
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <StopCircle size={14} />
+            Detener
+          </button>
+        </div>
+      )}
+
+      {/* ─── Preview de Audio Grabado Pendiente ───────────────────────────────── */}
+      {pendingAudio && !isRecording && (
+        <div
+          style={{
+            padding: '8px 14px',
+            borderTop: '1px solid #bae6fd',
+            backgroundColor: '#f0f9ff',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: '50%',
+              backgroundColor: '#0284c7',
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Mic size={16} />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369a1' }}>
+                Nota de voz ({pendingAudio.duration}s)
+              </span>
+              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                · Pulsa enviar para que Gemini la escuche
+              </span>
+            </div>
+            <audio
+              src={pendingAudio.dataUrl}
+              controls
+              style={{
+                width: '100%',
+                height: 30,
+                marginTop: 4,
+                outline: 'none',
+              }}
+            />
+          </div>
+
+          <button
+            onClick={() => setPendingAudio(null)}
+            title="Descartar grabación"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#64748b',
+              cursor: 'pointer',
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 4,
+            }}
+          >
+            <X size={18} />
           </button>
         </div>
       )}
@@ -3069,10 +3368,17 @@ export default function ChatIA() {
 
         {/* Botón Micrófono */}
         <button
+          type="button"
           className="chatia-iconbtn"
-          style={styles.iconBtn(isRecording)}
+          style={{
+            ...styles.iconBtn(isRecording),
+            backgroundColor: isRecording ? '#dc2626' : (pendingAudio ? '#0284c7' : '#f0f0f0'),
+            color: isRecording || pendingAudio ? '#ffffff' : '#555',
+            boxShadow: isRecording ? '0 0 10px rgba(220, 38, 38, 0.6)' : 'none',
+          }}
           onClick={handleMicClick}
           aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
+          title={isRecording ? 'Detener grabación' : (pendingAudio ? 'Grabación lista para enviar' : 'Grabar mensaje de voz')}
         >
           {isRecording ? <StopCircle size={18} /> : <Mic size={18} />}
         </button>
