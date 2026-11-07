@@ -23,19 +23,19 @@ import { supabase } from '../supabaseClient';
 // ─── Configuración de los 3 Servidores de Gemini ──────────────────────────────
 export const GEMINI_SERVERS = [
   {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    level: 'medium',
-    badgeColor: '#10b981', // Verde
-    desc: 'Equilibrado, 1M contexto, veloz y alta precisión',
-    recommended: true,
-  },
-  {
     id: 'gemini-3.5-flash',
     name: 'Gemini 3.5 Flash',
     level: 'high',
     badgeColor: '#8b5cf6', // Púrpura
     desc: 'Mayor razonamiento, análisis profundo de datos y cosechas',
+    recommended: true,
+  },
+  {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    level: 'medium',
+    badgeColor: '#10b981', // Verde
+    desc: 'Equilibrado, 1M contexto, veloz y alta precisión',
     recommended: false,
   },
   {
