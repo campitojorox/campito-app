@@ -34,9 +34,10 @@ import {
   exportInventoryToKML,
   exportInventoryToGeoJSON,
 } from '../utils/exportTools';
+import catastroJorox from '../data/catastroJorox.json';
 
-// Coordenadas por defecto: Jorox (Alozaina, Málaga)
-const DEFAULT_CENTER = [36.7344, -4.8883];
+// Coordenadas por defecto: Centroide exacto de las parcelas 195 y 196 de Campito Jorox
+const DEFAULT_CENTER = [36.72595, -4.89462];
 const DEFAULT_ZOOM = 18;
 
 // Paleta de colores para trazados y puntos
@@ -119,10 +120,12 @@ export default function FarmSatelliteMap({
   const markersLayerRef = useRef(null);
   const pathsLayerRef = useRef(null);
   const drawingLayerRef = useRef(null);
+  const catastroLayerRef = useRef(null);
 
   // Estados de capas visibles
   const [showPoints, setShowPoints] = useState(true);
   const [showPaths, setShowPaths] = useState(true);
+  const [showCatastro, setShowCatastro] = useState(true);
   const [satelliteType, setSatelliteType] = useState('esri'); // 'esri' | 'google'
 
   // Estados de dibujo interactivo de caminos
@@ -176,8 +179,9 @@ export default function FarmSatelliteMap({
     map._esriLayer = esriLayer;
 
     // Crear grupos de capas vectoriales
-    markersLayerRef.current = L.featureGroup().addTo(map);
+    catastroLayerRef.current = L.featureGroup().addTo(map);
     pathsLayerRef.current = L.featureGroup().addTo(map);
+    markersLayerRef.current = L.featureGroup().addTo(map);
     drawingLayerRef.current = L.featureGroup().addTo(map);
 
     mapInstanceRef.current = map;
@@ -339,6 +343,75 @@ export default function FarmSatelliteMap({
     });
   }, [paths, showPaths]);
 
+  // ─── 5b. Renderizado del Catastro Oficial Registrado (Parcelas 195 y 196) ───
+  useEffect(() => {
+    const layer = catastroLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    if (!showCatastro || !catastroJorox) return;
+
+    // 1. Polígonos de Superficie de Parcelas
+    (catastroJorox.parcels || []).forEach((parcel) => {
+      const latlngs = parcel.polygon.map((c) => [c.lat, c.lng]);
+      const is195 = parcel.number === '195';
+
+      const poly = L.polygon(latlngs, {
+        color: is195 ? '#00d1da' : '#38bdf8', // Cyan brillante para 195, Celeste para 196
+        weight: 3,
+        dashArray: '6, 6',
+        fillColor: '#00979d',
+        fillOpacity: 0.12, // Translúcido para ver la ortofoto satelital debajo
+      });
+
+      poly.bindTooltip(
+        `<b>🏛️ ${parcel.name}</b><br/><span style="font-size: 10px; color: #00979d">Superficie Catastral Oficial (${parcel.polygon.length} vértices)</span>`,
+        { sticky: true, className: 'campito-map-tooltip' }
+      );
+
+      poly.addTo(layer);
+    });
+
+    // 2. Cotas Catastrales (mojones y vértices oficiales)
+    (catastroJorox.cotas || []).forEach((cota) => {
+      const marker = L.circleMarker([cota.lat, cota.lng], {
+        radius: 3.5,
+        fillColor: '#ffffff',
+        fillOpacity: 0.95,
+        color: '#00979d',
+        weight: 1.5,
+      });
+
+      marker.bindTooltip(`<b>Cota Catastral ${cota.name}</b>`, {
+        direction: 'top',
+        offset: [0, -4],
+        className: 'campito-map-tooltip',
+      });
+
+      marker.addTo(layer);
+    });
+
+    // 3. Trazados y pistas catastrales registradas
+    (catastroJorox.tracks || []).forEach((track) => {
+      const latlngs = (track.coordinates || []).map((c) => [c.lat, c.lng]);
+      if (latlngs.length < 2) return;
+
+      const poly = L.polyline(latlngs, {
+        color: '#94a3b8',
+        weight: 2,
+        opacity: 0.7,
+        dashArray: '4, 4',
+      });
+
+      poly.bindTooltip(`<b>${track.name}</b> <span style="font-size:10px">(Catastro)</span>`, {
+        sticky: true,
+        className: 'campito-map-tooltip',
+      });
+
+      poly.addTo(layer);
+    });
+  }, [showCatastro]);
+
   // ─── 6. Auto-ajuste de vista a todos los elementos al cargar ────────────────
   const fitAllElements = () => {
     const map = mapInstanceRef.current;
@@ -346,6 +419,16 @@ export default function FarmSatelliteMap({
 
     const bounds = L.latLngBounds([]);
     let count = 0;
+
+    // Incluir límites de las parcelas catastrales oficiales
+    if (catastroJorox && catastroJorox.parcels) {
+      catastroJorox.parcels.forEach((p) => {
+        p.polygon.forEach((c) => {
+          bounds.extend([c.lat, c.lng]);
+          count++;
+        });
+      });
+    }
 
     inventory.forEach((i) => {
       const lat = i.latitude || (i.coordenadas && i.coordenadas.lat);
@@ -512,6 +595,31 @@ export default function FarmSatelliteMap({
               Mapa Satélite Campito Jorox
             </span>
           </div>
+
+          <button
+            onClick={() => setShowCatastro(!showCatastro)}
+            style={{
+              ...styles.toggleBtn,
+              backgroundColor: showCatastro ? '#f0fdfa' : '#f1f5f9',
+              color: showCatastro ? '#0f766e' : '#64748b',
+              borderColor: showCatastro ? '#99f6e4' : '#cbd5e1',
+            }}
+            title="Mostrar u ocultar Catastro Registrado (Parcelas 195 y 196 de Campito Jorox)"
+          >
+            <span
+              style={{
+                display: 'inline-block',
+                width: 9,
+                height: 9,
+                border: '1.5px dashed #00979d',
+                backgroundColor: 'rgba(0,151,157,0.25)',
+                marginRight: 4,
+                borderRadius: 2,
+              }}
+            />
+            {showCatastro ? <Eye size={12} /> : <EyeOff size={12} />}
+            <span>Catastro (195 y 196)</span>
+          </button>
 
           {/* Toggle de visibilidad de capas */}
           <button
@@ -684,6 +792,14 @@ export default function FarmSatelliteMap({
             <div style={styles.legendItem}>
               <span style={{ ...styles.colorLine, backgroundColor: '#0284c7', borderTop: '2px dashed #0284c7', height: 0 }} />
               <span>Línea Riego</span>
+            </div>
+            <div style={styles.legendItem}>
+              <span style={{ ...styles.colorLine, borderTop: '2px dashed #00d1da', height: 0 }} />
+              <span>Parcela 195/196</span>
+            </div>
+            <div style={styles.legendItem}>
+              <span style={{ ...styles.colorCircle, backgroundColor: '#ffffff', border: '1.5px solid #00979d' }} />
+              <span>Cota Catastro</span>
             </div>
           </div>
         </div>
@@ -1489,3 +1605,4 @@ const styles = {
     cursor: 'pointer',
   },
 };
+

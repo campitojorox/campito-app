@@ -116,9 +116,15 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
 - Si el usuario te pregunta qué cosas recuerdas o sabes de la finca, lístale de forma ordenada y concisa todo el conocimiento que tienes registrado en tu memoria.
 
 🗺️ **INVENTARIO AGRÍCOLA, CATASTRO SATÉLITE Y CAMINOS**:
-- Cuentas con un registro georreferenciado de árboles, plantas, tuberías de riego, arquetas, acequias y mojones ('farm_inventory'), así como una capa de caminos, senderos y líneas de distribución ('farm_paths').
+- Cuentas con un registro georreferenciado de árboles, plantas, tuberías de riego, arquetas, acequias y mojones ('farm_inventory'), así como una capa de caminos, senderos y líneas de distribución ('farm_paths') y el catastro oficial de las Parcelas 195 y 196 de Campito Jorox.
 - El sistema cuenta con un visor satélite en vivo que dibuja puntos y líneas de colores (sin iconos), permite trazar nuevos caminos o senderos interactivos y calcular sus distancias métricas.
 - Puedes responder sobre conteo de árboles por variedad (Hass, Bacon, etc.), estado fitosanitario (saludable, clorosis, poda), longitud de caminos, y guiar al usuario para exportar a **Google My Maps (KML), PDF, Excel y GeoJSON**.
+
+🗑️ **BORRADO Y CORRECCIÓN DE PUNTOS POR VOZ O TEXTO**:
+- Si el usuario te pide por voz o texto borrar, eliminar o corregir un árbol, arqueta o punto del catastro (ej: "borra el último árbol", "elimina el aguacate Bacon", "cancela el último punto registrado", "borra el árbol de aquí"):
+  1. Confirma claramente qué elemento has eliminado del catastro.
+  2. Incluye obligatoriamente al final de tu respuesta el comando estructurado:
+     [[BORRAR_PUNTO: {"target": "ultimo|nombre|categoria", "query": "nombre o descripción del elemento a borrar"}]]
 
 Tu función es ayudar con:
 - 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
@@ -860,29 +866,60 @@ export default function ChatIA() {
         gpsTrack: sessionResult.gpsTrack,
       });
 
-      if (extraction.trees && extraction.trees.length > 0) {
-        setFarmInventory((prev) => [...extraction.trees, ...prev]);
+      const addedTrees = extraction.trees || [];
+      const deletedEntities = extraction.deletedEntities || [];
+
+      // Si se borraron elementos que ya estaban en la base de datos
+      const deletedDbIds = deletedEntities
+        .map((d) => d.deletedDatabaseId)
+        .filter(Boolean);
+
+      if (deletedDbIds.length > 0) {
+        setFarmInventory((prev) => prev.filter((item) => !deletedDbIds.includes(item.id)));
+      }
+
+      if (addedTrees.length > 0) {
+        setFarmInventory((prev) => [...addedTrees, ...prev]);
 
         // Inyectar en contexto
-        extraction.trees.forEach((t) => {
+        addedTrees.forEach((t) => {
           contextDataRef.current += `\n- [${(t.tipo || 'arbol').toUpperCase()}] ${t.tipo} ${t.variedad || ''} | Estado: ${t.estado || 'saludable'} | Lat/Lng: ${t.coordenadas?.lat}, ${t.coordenadas?.lng}`;
         });
+      }
 
-        // Actualizar mensaje con el resumen y botones de exportación
+      // Preparar mensaje de respuesta detallado con adiciones y borrados
+      if (addedTrees.length > 0 || deletedEntities.length > 0) {
+        let msgContent = `### 🛰️ Recorrido de Mapeo y Voz Completado\n\n`;
+
+        if (addedTrees.length > 0) {
+          msgContent += `**🌳 Elementos agregados al catastro (${addedTrees.length}):**\n\n` +
+            addedTrees
+              .map(
+                (t, i) =>
+                  `${i + 1}. **${t.tipo} ${t.variedad || ''}**\n   - Estado: \`${t.estado || 'saludable'}\`\n   - Coordenadas: \`${t.coordenadas?.lat}, ${t.coordenadas?.lng}\` (Precisión: ±${t.accuracy_m}m)${t.advertencia_gps ? ' ⚠️ *Alerta dispersión*' : ''}\n   - Observaciones: *${t.observaciones || 'Sin notas'}*`
+              )
+              .join('\n\n') + '\n\n';
+        }
+
+        if (deletedEntities.length > 0) {
+          msgContent += `**🗑️ Acciones de borrado por voz ejecutadas (${deletedEntities.length}):**\n` +
+            deletedEntities
+              .map((d) => {
+                const targetText = d.item ? `${d.item.tipo} ${d.item.variedad || ''}` : (d.deletedDatabaseName || d.description || 'Último punto');
+                return `- Eliminado por orden de voz: **${targetText}** (*${d.description}*)`;
+              })
+              .join('\n') + '\n\n';
+        }
+
+        msgContent += `📌 *Actualizado en el mapa satélite y en la base de datos de Campito Jorox.*`;
+
         setMessages((prev) =>
           prev.map((m) =>
             m.id === processingMsgId
               ? {
                   ...m,
-                  content: `### 🌳 Recorrido de Mapeo Completado\n\nSe han geolocalizado **${extraction.trees.length} elementos** durante tu caminata:\n\n` +
-                    extraction.trees
-                      .map(
-                        (t, i) =>
-                          `${i + 1}. **${t.tipo} ${t.variedad || ''}**\n   - Estado: \`${t.estado || 'saludable'}\`\n   - Coordenadas: \`${t.coordenadas?.lat}, ${t.coordenadas?.lng}\` (Precisión: ±${t.accuracy_m}m)${t.advertencia_gps ? ' ⚠️ *Alerta dispersión*' : ''}\n   - Observaciones: *${t.observaciones || 'Sin notas'}*`
-                      )
-                      .join('\n\n') +
-                    `\n\n📌 *Guardados en la base de datos de Campito Jorox. Puedes visualizarlos en el mapa o descargarlos.*`,
-                  inventoryExportBatch: extraction.trees,
+                  content: msgContent,
+                  inventoryExportBatch: addedTrees.length > 0 ? addedTrees : null,
                 }
               : m
           )
@@ -893,7 +930,7 @@ export default function ChatIA() {
             m.id === processingMsgId
               ? {
                   ...m,
-                  content: `⚠️ No se detectaron menciones claras de árboles o infraestructura en el audio grabado. Comprueba que el micrófono haya capturado bien tu voz y vuelve a intentarlo.`,
+                  content: `⚠️ No se detectaron menciones de árboles ni órdenes de borrado en el audio grabado. Comprueba que el micrófono haya capturado bien tu voz y vuelve a intentarlo.`,
                 }
               : m
           )
@@ -1000,6 +1037,58 @@ export default function ChatIA() {
             displayedContent = successResult.replace(memMatch[0], '').trim();
           } catch (e) {
             console.warn('Error al parsear bloque de memoria:', e);
+          }
+        }
+
+        // Detección y ejecución de orden de borrado de puntos del inventario catastral
+        const delPointMatch = successResult.match(/\[\[BORRAR_PUNTO:\s*(\{.*?\})\s*\]\]/s);
+        if (delPointMatch) {
+          try {
+            const delData = JSON.parse(delPointMatch[1]);
+            displayedContent = displayedContent.replace(delPointMatch[0], '').trim();
+
+            if (delData.target === 'ultimo') {
+              const target = farmInventory[0];
+              if (target) {
+                await supabase.from('farm_inventory').update({ is_active: false }).eq('id', target.id);
+                setFarmInventory((prev) => prev.filter((p) => p.id !== target.id));
+              }
+            } else if (delData.query) {
+              const q = delData.query.toLowerCase().trim();
+              const target = farmInventory.find((p) =>
+                (p.name && p.name.toLowerCase().includes(q)) ||
+                (p.variety_type && p.variety_type.toLowerCase().includes(q)) ||
+                (p.category && p.category.toLowerCase().includes(q))
+              );
+              if (target) {
+                await supabase.from('farm_inventory').update({ is_active: false }).eq('id', target.id);
+                setFarmInventory((prev) => prev.filter((p) => p.id !== target.id));
+              }
+            }
+          } catch (e) {
+            console.warn('Error al procesar orden de borrado de punto:', e);
+          }
+        } else if (text) {
+          // Heurística de respaldo si el usuario pidió explícitamente borrar por voz o texto
+          const lower = text.toLowerCase().trim();
+          const isDeleteLast =
+            lower.includes('borra el último árbol') ||
+            lower.includes('borra el ultimo arbol') ||
+            lower.includes('elimina el último árbol') ||
+            lower.includes('elimina el ultimo arbol') ||
+            lower.includes('borra el último punto') ||
+            lower.includes('borra el ultimo punto') ||
+            lower.includes('elimina el último punto') ||
+            lower.includes('cancela el último');
+
+          if (isDeleteLast && farmInventory.length > 0) {
+            const target = farmInventory[0];
+            try {
+              supabase.from('farm_inventory').update({ is_active: false }).eq('id', target.id);
+              setFarmInventory((prev) => prev.filter((p) => p.id !== target.id));
+            } catch (err) {
+              console.warn('Error en heurística de borrado:', err);
+            }
           }
         }
 
@@ -2864,32 +2953,59 @@ export default function ChatIA() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-              Habla con naturalidad describiendo árboles, variedades y arquetas conforme caminas.
+              Habla para registrar o borrar: <i>"Aguacate Hass"</i>, <i>"Arqueta norte"</i>, <i>"Borra el último árbol"</i>.
             </span>
 
-            <button
-              onClick={handleToggleWalkingSession}
-              disabled={isProcessingVoiceGeo}
-              style={{
-                padding: '6px 14px',
-                backgroundColor: '#ef4444',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: 20,
-                fontSize: '0.76rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-              }}
-            >
-              <Radio size={13} />
-              Finalizar y Procesar
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setInventoryModalTab('map');
+                  setIsInventoryMapOpen(true);
+                }}
+                style={{
+                  padding: '5px 10px',
+                  backgroundColor: '#00979d',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 20,
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+                title="Abrir mapa satélite mientras caminas"
+              >
+                <Compass size={12} />
+                Ver Mapa
+              </button>
+
+              <button
+                onClick={handleToggleWalkingSession}
+                disabled={isProcessingVoiceGeo}
+                style={{
+                  padding: '6px 14px',
+                  backgroundColor: '#ef4444',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 20,
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                }}
+              >
+                <Radio size={13} />
+                Finalizar y Procesar
+              </button>
+            </div>
           </div>
         </div>
       )}

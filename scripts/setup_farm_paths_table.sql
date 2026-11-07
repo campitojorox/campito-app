@@ -66,3 +66,4 @@ CREATE POLICY "Permitir eliminacion publica de caminos"
 ON public.farm_paths FOR DELETE TO anon USING (true);
 
 COMMENT ON TABLE public.farm_paths IS 'Trazados de caminos, senderos, acequias y tuberías de riego en Campito Jorox.';
+
