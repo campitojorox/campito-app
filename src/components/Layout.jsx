@@ -304,10 +304,10 @@ export default function Layout({ session }) {
                 </div>
               </div>
             )}
-          <div className="card" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="card form-container" style={{ width: '100%', maxWidth: '420px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: 0, color: 'var(--primary)' }}>{editingUser ? (editingUser.id ? 'Editar Usuario' : 'Nuevo Usuario') : 'Gestionar Usuarios'}</h3>
-              <button onClick={() => { setIsUsersModalOpen(false); setEditingUser(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '1.5rem', paddingBottom: '3px' }}>&times;</button>
+              <h3 style={{ margin: 0, color: '#000000', fontWeight: 'bold' }}>{editingUser ? (editingUser.id ? 'Editar Usuario' : 'Nuevo Usuario') : 'Gestionar Usuarios'}</h3>
+              <button onClick={() => { setIsUsersModalOpen(false); setEditingUser(null); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', paddingBottom: '3px' }}>&times;</button>
             </div>
             
             {manageUserError && (
@@ -369,13 +369,13 @@ export default function Layout({ session }) {
                 </div>
                 
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
-                  <button type="button" className="btn btn-secondary" onClick={() => { setEditingUser(null); setManageUserError(''); }} style={{ flex: 1, margin: 0, backgroundColor: 'var(--surface)', color: 'white' }}>Cancelar</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => { setEditingUser(null); setManageUserError(''); }} style={{ flex: 1, margin: 0, backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' }}>Cancelar</button>
                   <button type="submit" disabled={isManagingUser} className="btn btn-primary" style={{ flex: 1, margin: 0 }}>
                     {isManagingUser ? 'Guardando...' : 'Guardar'}
                   </button>
                 </div>
                 {editingUser.id && (
-                  <button type="button" onClick={() => setIsConfirmingDeleteUser(true)} className="btn btn-secondary" style={{ width: '100%', margin: '2rem 0 0 0', backgroundColor: 'var(--surface)', color: 'var(--danger)', border: '1px solid var(--border)' }}>Borrar Usuario</button>
+                  <button type="button" onClick={() => setIsConfirmingDeleteUser(true)} className="btn btn-secondary" style={{ width: '100%', margin: '2rem 0 0 0', backgroundColor: '#fee2e2', color: 'var(--danger)', border: '1px solid #fecaca' }}>Borrar Usuario</button>
                 )}
               </form>
             ) : (
@@ -383,8 +383,8 @@ export default function Layout({ session }) {
                 <button className="btn btn-primary" onClick={() => { setEditingUser({}); setUserForm({ name: '', email: '', password: '' }); }} style={{ width: '100%', margin: '0 0 1.5rem 0' }}>Agregar Nuevo Usuario</button>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {users.map((u) => (
-                    <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: 'var(--surface)', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: '500' }}>{u.name}</span>
+                    <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#1e293b', fontWeight: '600' }}>{u.name}</span>
                       <button onClick={() => {
                         setEditingUser(u);
                         setUserForm({ name: u.name, email: u.email || '', password: u.password || '' });

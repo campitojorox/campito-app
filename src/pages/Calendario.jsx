@@ -194,11 +194,11 @@ export default function Calendario() {
   }, [isSearchOpen, searchQuery, searchResults, selectedDayEvents]);
 
   const renderForm = () => (
-    <div id="event-form" style={{ margin: '3rem 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: editingEvent ? '1rem' : '2rem', marginBottom: '3.8rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
+    <div id="event-form" className="form-container" style={{ margin: '3rem 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: '2.5rem' }}>
+            <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#000000', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
             {editingEvent && (
-              <button type="button" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
+              <button type="button" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
             )}
           </div>
           <div style={{ marginBottom: '1.5rem' }}>

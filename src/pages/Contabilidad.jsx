@@ -78,8 +78,8 @@ export default function Contabilidad() {
 
       {isModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <h3 style={{ marginBottom: '1rem' }}>Nuevo Registro</h3>
+          <div className="modal-content form-container" style={{ width: '100%', maxWidth: '450px' }}>
+            <h3 style={{ marginBottom: '1.5rem', color: '#000000', fontWeight: 'bold' }}>Nuevo Registro</h3>
             <form onSubmit={handleAdd}>
               <div className="form-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

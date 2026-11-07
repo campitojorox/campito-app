@@ -12,3 +12,4 @@ ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
 UPDATE transactions 
 SET status = 'ACTIVE' 
 WHERE status IS NULL;
+

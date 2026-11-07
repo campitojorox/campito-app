@@ -158,7 +158,7 @@ export default function GastoVenta() {
   };
 
   const renderEditForm = () => (
-    <div style={{ position: 'relative', width: '100%', padding: '1rem 0', backgroundColor: 'transparent', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+    <div className="form-container" style={{ position: 'relative', width: '100%', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
       
       {/* Custom Confirm Delete Overlay */}
       {isConfirmingDelete && (
@@ -213,11 +213,11 @@ export default function GastoVenta() {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', marginBottom: '3.8rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.5rem', color: selectedRecord?.status === 'DELETED' ? '#ef4444' : 'white', fontWeight: 'bold' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: '2.5rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1.5rem', color: selectedRecord?.status === 'DELETED' ? '#ef4444' : '#000000', fontWeight: 'bold' }}>
           {selectedRecord?.status === 'DELETED' ? 'Transacción Eliminada' : 'Editar Transacción'}
         </h2>
-        <button type="button" onClick={() => { setSelectedRecord(null); setEditErrors({}); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
+        <button type="button" onClick={() => { setSelectedRecord(null); setEditErrors({}); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
       </div>
 
       {editErrors.general && (
@@ -409,13 +409,13 @@ export default function GastoVenta() {
             justifyContent: 'center',
             gap: '0.6rem',
             padding: (editForm.currentImage || editForm.image) ? '0' : '0.8rem 1rem',
-            border: 'none',
+            border: '1.5px solid #e2e8f0',
             borderRadius: '8px',
-            backgroundColor: 'white',
+            backgroundColor: '#f8fafc',
             cursor: 'pointer',
-            color: '#2b3d41',
+            color: '#1e293b',
             overflow: 'hidden',
-            boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+            boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
           }}>
             {(editForm.currentImage || editForm.image) ? (
               <div style={{ position: 'relative', width: '100%' }}>
@@ -571,28 +571,29 @@ export default function GastoVenta() {
     <div className="container" style={{ padding: '1rem', paddingBottom: '5rem' }}>
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
-          <h2 style={{ marginTop: '2rem', marginBottom: '3.8rem', fontSize: '1.5rem', color: 'white', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
+          <div className="form-container">
+            <h2 style={{ marginTop: 0, marginBottom: '2.5rem', fontSize: '1.5rem', color: '#000000', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
 
-          {formErrors.general && (
-            <div style={{
-              backgroundColor: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid var(--danger)',
-              borderRadius: '8px',
-              padding: '0.8rem 1rem',
-              marginBottom: '1.5rem',
-              color: '#fca5a5',
-              fontSize: '0.95rem',
-              fontWeight: '500',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}>
-              <span>⚠️ {formErrors.general}</span>
-            </div>
-          )}
-          
-          <div style={{ marginBottom: '1.5rem' }}>
-        <form onSubmit={handleAdd}>
+            {formErrors.general && (
+              <div style={{
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid var(--danger)',
+                borderRadius: '8px',
+                padding: '0.8rem 1rem',
+                marginBottom: '1.5rem',
+                color: '#dc2626',
+                fontSize: '0.95rem',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <span>⚠️ {formErrors.general}</span>
+              </div>
+            )}
+            
+            <div>
+              <form onSubmit={handleAdd}>
           <div className="form-group" style={{ padding: 0, marginBottom: '1.2rem' }}>
             <div style={{
               display: 'flex',
@@ -763,13 +764,13 @@ export default function GastoVenta() {
               justifyContent: 'center',
               gap: '0.6rem',
               padding: image ? '0' : '0.8rem 1rem',
-              border: 'none',
+              border: '1.5px solid #e2e8f0',
               borderRadius: '8px',
-              backgroundColor: 'white',
+              backgroundColor: '#f8fafc',
               cursor: 'pointer',
-              color: '#2b3d41',
+              color: '#1e293b',
               overflow: 'hidden',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+              boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
             }}>
               {image ? (
                 <div style={{ position: 'relative', width: '100%' }}>
@@ -809,6 +810,7 @@ export default function GastoVenta() {
           </div>
         </form>
       </div>
+    </div>
 
       <div style={{ marginTop: '5rem', marginBottom: '5.5rem' }}>
         <h2 className="section-title" style={{ marginTop: 0, marginBottom: '1.2rem', color: 'white' }}>Contabilidad</h2>
