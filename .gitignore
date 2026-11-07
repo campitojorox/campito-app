@@ -25,3 +25,12 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+
+# Assets, media and local documents
+CAMPITO JOROX DATA.xlsx
+MAPAS-CAMPITOJOROX.kml
+CLAVES USUARIOS.png
+MEDIA/
+REFERENCES/
+public/CONTABILIDAD_Images/
+

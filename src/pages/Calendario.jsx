@@ -234,8 +234,7 @@ export default function Calendario() {
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                        justifyContent: 'center'
                       }}
                     >
                       {u.name}
@@ -248,34 +247,34 @@ export default function Calendario() {
             <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <div className="input-with-icon" style={{ flex: '1.1 1 0', marginBottom: 0, position: 'relative' }}>
                 <Calendar className="input-icon" size={18} style={{ left: '0.75rem' }} />
-                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
-                  (Inicio)
-                </span>
-                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.4rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
               </div>
               <div className="input-with-icon" style={{ flex: '0.9 1 0', marginBottom: 0, position: 'relative' }}>
                 <Clock className="input-icon" size={18} style={{ left: '0.75rem' }} />
-                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
-                  (Inicio)
-                </span>
-                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.4rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
+                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.85rem' }}>
               <div className="input-with-icon" style={{ flex: '1.1 1 0', marginBottom: 0, position: 'relative' }}>
-                <Calendar className="input-icon" size={18} style={{ left: '0.75rem' }} />
-                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
-                  (Término)
-                </span>
-                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.8rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
+                <div className="input-icon" style={{ left: '0.75rem', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', pointerEvents: 'none', overflow: 'visible' }}>
+                  <Calendar size={18} color="var(--primary)" />
+                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ position: 'absolute' }}>
+                    <line x1="3" y1="19" x2="19" y2="3" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
+                    <line x1="3" y1="19" x2="19" y2="3" stroke="var(--primary)" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
               </div>
               <div className="input-with-icon" style={{ flex: '0.9 1 0', marginBottom: 0, position: 'relative' }}>
-                <Clock className="input-icon" size={18} style={{ left: '0.75rem' }} />
-                <span style={{ position: 'absolute', left: '2.2rem', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', pointerEvents: 'none', zIndex: 10 }}>
-                  (Término)
-                </span>
-                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '5.8rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
+                <div className="input-icon" style={{ left: '0.75rem', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', pointerEvents: 'none', overflow: 'visible' }}>
+                  <Clock size={18} color="var(--primary)" />
+                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ position: 'absolute' }}>
+                    <line x1="3" y1="19" x2="19" y2="3" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
+                    <line x1="3" y1="19" x2="19" y2="3" stroke="var(--primary)" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
               </div>
             </div>
 
@@ -293,14 +292,13 @@ export default function Calendario() {
                   fontWeight: '600',
                   fontSize: '1rem',
                   cursor: 'pointer',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   position: 'relative'
                 }}
               >
-                <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['RIEGO'], border: '1px solid var(--bg-color)', marginRight: '0.4rem', flexShrink: 0 }} />
+                <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: categoryColors['RIEGO'], border: '2px solid #ffffff', marginRight: '0.5rem', flexShrink: 0 }} />
                 Riego
               </button>
               <button 
@@ -316,14 +314,13 @@ export default function Calendario() {
                   fontWeight: '600',
                   fontSize: '1rem',
                   cursor: 'pointer',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   position: 'relative'
                 }}
               >
-                <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['MANTENIMIENTO'], border: '1px solid var(--bg-color)', marginRight: '0.4rem', flexShrink: 0 }} />
+                <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: categoryColors['MANTENIMIENTO'], border: '2px solid #ffffff', marginRight: '0.5rem', flexShrink: 0 }} />
                 Mant.
               </button>
               <button 
@@ -339,14 +336,13 @@ export default function Calendario() {
                   fontWeight: '600',
                   fontSize: '1rem',
                   cursor: 'pointer',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   position: 'relative'
                 }}
               >
-                <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['OTRO'], border: '1px solid var(--bg-color)', marginRight: '0.4rem', flexShrink: 0 }} />
+                <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: categoryColors['OTRO'], border: '2px solid #ffffff', marginRight: '0.5rem', flexShrink: 0 }} />
                 Otro
               </button>
             </div>
@@ -366,7 +362,6 @@ export default function Calendario() {
                     fontWeight: '600',
                     fontSize: '1rem',
                     cursor: 'pointer',
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -388,7 +383,6 @@ export default function Calendario() {
                     fontWeight: '600',
                     fontSize: '1rem',
                     cursor: 'pointer',
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -418,7 +412,6 @@ export default function Calendario() {
                       fontWeight: '600',
                       fontSize: '1rem',
                       cursor: 'pointer',
-                      boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -563,20 +556,23 @@ export default function Calendario() {
                 {(editingEvent && editingEvent.EventID === ev.EventID && isFormOpen) ? (
                   renderForm()
                 ) : (
-                  <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: 'none', borderRadius: '8px', backgroundColor: evColor, color: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
+                  <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: 'none', borderRadius: '8px', backgroundColor: '#ffffff', color: '#000000', boxShadow: 'none' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <strong style={{ fontSize: '1.1rem', color: 'white' }}>{ev.Category}</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: evColor, border: '2px solid #000000', flexShrink: 0 }} />
+                        <strong style={{ fontSize: '1.1rem', color: '#000000' }}>{ev.Category}</strong>
+                      </div>
                     </div>
-                    <p style={{ margin: '0.5rem 0', color: 'white', fontWeight: '500' }}>{ev.Info || 'Sin detalles adicionales'}</p>
-                    <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.3)', margin: '0.75rem -1rem' }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '0.5rem' }}>
+                    <p style={{ margin: '1.25rem 0 0.75rem 0', color: '#666', fontWeight: '500' }}>{ev.Info || 'Sin detalles adicionales'}</p>
+                    <hr style={{ border: 'none', borderTop: '1px solid #999', margin: '0.75rem -1rem' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '0.5rem', color: '#999' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem' }}>
-                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Desde: <span style={{ color: 'white', fontWeight: '500' }}>{formatDateToDDMMYY(ev.Date)}</span> / <span style={{ color: 'white', fontWeight: '500' }}>{ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''}</span></small>
-                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Hasta: <span style={{ color: 'white', fontWeight: '500' }}>{formatDateToDDMMYY(ev["End Date"] || ev.Date)}</span> / <span style={{ color: 'white', fontWeight: '500' }}>{ev["End Time"] ? ev["End Time"].substring(0,5) : ''}</span></small>
+                        <small style={{ color: '#999', fontWeight: '600' }}>Desde: <span style={{ color: '#999', fontWeight: '500' }}>{formatDateToDDMMYY(ev.Date)}</span> / <span style={{ color: '#999', fontWeight: '500' }}>{ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''}</span></small>
+                        <small style={{ color: '#999', fontWeight: '600' }}>Hasta: <span style={{ color: '#999', fontWeight: '500' }}>{formatDateToDDMMYY(ev["End Date"] || ev.Date)}</span> / <span style={{ color: '#999', fontWeight: '500' }}>{ev["End Time"] ? ev["End Time"].substring(0,5) : ''}</span></small>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem', textAlign: 'right' }}>
-                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>Usuario: <span style={{ color: 'white', fontWeight: '500' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
-                        <small style={{ color: 'rgba(255,255,255,0.8)', fontWeight: '600' }}>por: <span style={{ color: 'white', fontWeight: '500' }}>{currentUser}</span></small>
+                        <small style={{ color: '#999', fontWeight: '600' }}>Usuario: <span style={{ color: '#999', fontWeight: '500' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
+                        <small style={{ color: '#999', fontWeight: '600' }}>Por: <span style={{ color: '#999', fontWeight: '500' }}>{currentUser}</span></small>
                       </div>
                     </div>
                   </div>

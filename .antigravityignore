@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-ssr/
+dev-dist/
+.vite/
+*.zip
+*.xlsx
+*.kml
+*.psd
+campito-app-respaldo.zip
+MEDIA/
+REFERENCES/
+public/CONTABILIDAD_Images/
+

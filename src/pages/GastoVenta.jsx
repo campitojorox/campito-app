@@ -269,8 +269,7 @@ export default function GastoVenta() {
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                  justifyContent: 'center'
                 }}
               >
                 {u.name}
@@ -326,7 +325,6 @@ export default function GastoVenta() {
               fontWeight: '600',
               fontSize: '0.95rem',
               cursor: 'pointer',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -354,7 +352,6 @@ export default function GastoVenta() {
               fontWeight: '600',
               fontSize: '0.95rem',
               cursor: 'pointer',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -414,8 +411,7 @@ export default function GastoVenta() {
             backgroundColor: '#f8fafc',
             cursor: 'pointer',
             color: '#1e293b',
-            overflow: 'hidden',
-            boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+            overflow: 'hidden'
           }}>
             {(editForm.currentImage || editForm.image) ? (
               <div style={{ position: 'relative', width: '100%' }}>
@@ -438,7 +434,7 @@ export default function GastoVenta() {
                   style={{
                     position: 'absolute', top: '10px', right: '10px', width: '32px', height: '32px', borderRadius: '50%',
                     backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem',
                     paddingBottom: '3px', zIndex: 10
                   }}
                 >
@@ -572,7 +568,7 @@ export default function GastoVenta() {
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
           <div className="form-container">
-            <h2 style={{ marginTop: 0, marginBottom: '2.5rem', fontSize: '1.5rem', color: '#000000', fontWeight: 'bold' }}>Agregar Gasto / Venta</h2>
+            <h2 style={{ marginTop: 0, marginBottom: '2.5rem', fontSize: '1.5rem', color: '#000000', fontWeight: 'bold' }}>Agregar Movimiento</h2>
 
             {formErrors.general && (
               <div style={{
@@ -624,8 +620,7 @@ export default function GastoVenta() {
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+                    justifyContent: 'center'
                   }}
                 >
                   {u.name}
@@ -681,7 +676,6 @@ export default function GastoVenta() {
                 fontWeight: '600',
                 fontSize: '0.95rem',
                 cursor: 'pointer',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -709,7 +703,6 @@ export default function GastoVenta() {
                 fontWeight: '600',
                 fontSize: '0.95rem',
                 cursor: 'pointer',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -769,8 +762,7 @@ export default function GastoVenta() {
               backgroundColor: '#f8fafc',
               cursor: 'pointer',
               color: '#1e293b',
-              overflow: 'hidden',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+              overflow: 'hidden'
             }}>
               {image ? (
                 <div style={{ position: 'relative', width: '100%' }}>
@@ -781,7 +773,7 @@ export default function GastoVenta() {
                     style={{
                       position: 'absolute', top: '10px', right: '10px', width: '32px', height: '32px', borderRadius: '50%',
                       backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem', boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem',
                       paddingBottom: '3px', zIndex: 10
                     }}
                   >

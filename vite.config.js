@@ -45,13 +45,19 @@ const vercelApiMock = () => {
 };
 
 export default defineConfig({
+  css: {
+    modules: {
+      localsConvention: 'camelCase',
+      generateScopedName: '[name]__[local]___[hash:base64:5]'
+    }
+  },
   plugins: [
     react(),
     vercelApiMock(),
     VitePWA({
       registerType: 'prompt',
       devOptions: {
-        enabled: true
+        enabled: false
       },
       includeAssets: ['icon-192x192.png', 'icon-512x512.png'],
       manifest: {
