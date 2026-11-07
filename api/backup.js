@@ -21,8 +21,8 @@ export default async function handler(req, res) {
     const [txRes, evRes, chatRes, knowledgeRes] = await Promise.all([
       supabase.from('transactions').select('*, profiles(name)').order('date', { ascending: false }),
       supabase.from('events').select('*, profiles:responsible_id(name)').order('date', { ascending: false }),
-      supabase.from('chat_history').select('*').order('created_at', { ascending: false }).limit(2000).catch(() => ({ data: [] })),
-      supabase.from('farm_knowledge').select('*').order('created_at', { ascending: false }).catch(() => ({ data: [] }))
+      supabase.from('chat_history').select('*').order('created_at', { ascending: false }).limit(2000),
+      supabase.from('farm_knowledge').select('*').order('created_at', { ascending: false })
     ]);
 
     if (txRes.error) throw txRes.error;

@@ -90,7 +90,6 @@ export default async function handler(req, res) {
             .select('*')
             .eq('is_active', true)
             .order('created_at', { ascending: false })
-            .catch(() => ({ data: [] }))
         ]);
 
         if (knowledge && knowledge.length > 0) {
