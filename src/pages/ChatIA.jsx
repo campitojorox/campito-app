@@ -16,19 +16,22 @@ import {
   ChevronDown,
   Zap,
   ShieldCheck,
-  X
+  X,
+  ExternalLink,
+  CreditCard
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-// ─── Configuración de los 3 Servidores de Gemini ──────────────────────────────
+// ─── Configuración de Modelos de Gemini ───────────────────────────────────────
 const GEMINI_SERVERS = [
   {
     id: 'gemini-3.5-flash',
     name: 'Gemini 3.5 Flash',
     level: 'high',
     badgeColor: '#8b5cf6', // Púrpura
-    desc: 'Mayor razonamiento, análisis profundo de datos y cosechas',
+    desc: 'Razonamiento avanzado, análisis profundo de cosechas y balances',
     recommended: true,
+    available: true,
   },
   {
     id: 'gemini-2.5-flash',
@@ -37,14 +40,48 @@ const GEMINI_SERVERS = [
     badgeColor: '#10b981', // Verde
     desc: 'Equilibrado, 1M contexto, veloz y alta precisión',
     recommended: false,
+    available: true,
   },
   {
     id: 'gemini-3.1-flash-lite',
     name: 'Gemini 3.1 Flash-Lite',
     level: 'eco',
     badgeColor: '#f59e0b', // Ámbar
-    desc: 'Ultra ligero, mínima latencia, respaldo seguro si se agota cuota',
+    desc: 'Ultra ligero, mínima latencia, respaldo seguro de cuota',
     recommended: false,
+    available: true,
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro',
+    level: 'pro',
+    badgeColor: '#3b82f6', // Azul
+    desc: 'El modelo más potente. Máxima capacidad analítica y lógica',
+    recommended: false,
+    available: false, // Requiere plan con facturación / créditos
+    requiresBilling: true,
+    actionUrl: 'https://aistudio.google.com/plan_information',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    level: 'pro',
+    badgeColor: '#0ea5e9', // Celeste
+    desc: 'Capacidad superior para tablas complejas y previsiones financieras',
+    recommended: false,
+    available: false,
+    requiresBilling: true,
+    actionUrl: 'https://aistudio.google.com/plan_information',
+  },
+  {
+    id: 'gemini-4-argon',
+    name: 'Gemini 4 Argon',
+    level: 'next-gen',
+    badgeColor: '#ec4899', // Rosa
+    desc: 'Próxima generación de arquitectura neuronal (Preview)',
+    recommended: false,
+    available: false,
+    comingSoon: true,
   },
 ];
 
@@ -381,7 +418,10 @@ const styles = {
     backgroundColor: '#ffffff',
     borderRadius: 16,
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 410,
+    maxHeight: '85vh',
+    display: 'flex',
+    flexDirection: 'column',
     boxShadow: '0 10px 25px rgba(0,0,0,0.18)',
     overflow: 'hidden',
     border: '1px solid #e2e8f0',
@@ -392,6 +432,7 @@ const styles = {
     justifyContent: 'space-between',
     padding: '14px 16px',
     borderBottom: '1px solid #f1f5f9',
+    flexShrink: 0,
   },
   modalTitle: {
     fontSize: '0.95rem',
@@ -404,6 +445,8 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
+    overflowY: 'auto',
+    flex: 1,
   },
   serverCard: (isActive) => ({
     display: 'flex',
@@ -601,10 +644,10 @@ export default function ChatIA() {
       setError(null);
       setFallbackNotice(null);
 
-      // Determinar orden de servidores a intentar
+      // Determinar orden de servidores a intentar (solo disponibles)
       const primaryIndex = selectedServerIndex;
       const orderToTry = autoFallback
-        ? [primaryIndex, ...GEMINI_SERVERS.map((_, i) => i).filter((i) => i !== primaryIndex)]
+        ? [primaryIndex, ...GEMINI_SERVERS.map((_, i) => i).filter((i) => i !== primaryIndex && GEMINI_SERVERS[i].available)]
         : [primaryIndex];
 
       const history = updatedMessages
@@ -814,42 +857,104 @@ export default function ChatIA() {
                 return (
                   <div
                     key={srv.id}
-                    style={styles.serverCard(isSelected)}
+                    style={{
+                      ...styles.serverCard(isSelected),
+                      opacity: srv.comingSoon ? 0.6 : 1,
+                      cursor: srv.comingSoon ? 'not-allowed' : 'pointer',
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
+                      gap: 8,
+                    }}
                     onClick={() => {
+                      if (srv.comingSoon) return;
                       setSelectedServerIndex(idx);
                       setActiveServer(srv);
                       setIsServerModalOpen(false);
                     }}
                   >
-                    <span style={styles.statusDot(srv.badgeColor)} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>
-                          {srv.name}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={styles.statusDot(srv.badgeColor)} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>
+                            {srv.name}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: 10,
+                              backgroundColor: `${srv.badgeColor}20`,
+                              color: srv.badgeColor,
+                            }}
+                          >
+                            ({srv.level})
+                          </span>
+                          {srv.recommended && (
+                            <span style={{ fontSize: '0.65rem', color: '#00979d', fontWeight: 600 }}>
+                              Predeterminado
+                            </span>
+                          )}
+                          {!srv.available && srv.requiresBilling && (
+                            <span style={{ fontSize: '0.65rem', color: '#d97706', fontWeight: 600 }}>
+                              Plan Pago / Créditos
+                            </span>
+                          )}
+                          {srv.comingSoon && (
+                            <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 600 }}>
+                              Próximamente
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '2px 0 0' }}>
+                          {srv.desc}
+                        </p>
+                      </div>
+                      {isSelected && <CheckCircle2 size={16} color="#00979d" />}
+                    </div>
+
+                    {/* Botón de activación / recarga si requiere créditos */}
+                    {!srv.available && srv.requiresBilling && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '6px 10px',
+                          backgroundColor: '#fffbeb',
+                          borderRadius: 6,
+                          border: '1px solid #fef3c7',
+                          marginTop: 2,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span style={{ fontSize: '0.7rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <CreditCard size={12} />
+                          Requiere créditos en Google AI Studio
                         </span>
-                        <span
+                        <a
+                          href={srv.actionUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
                           style={{
                             fontSize: '0.7rem',
                             fontWeight: 700,
-                            padding: '1px 6px',
-                            borderRadius: 10,
-                            backgroundColor: `${srv.badgeColor}20`,
-                            color: srv.badgeColor,
+                            color: '#ffffff',
+                            backgroundColor: '#d97706',
+                            padding: '4px 8px',
+                            borderRadius: 6,
+                            textDecoration: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3,
                           }}
                         >
-                          ({srv.level})
-                        </span>
-                        {srv.recommended && (
-                          <span style={{ fontSize: '0.65rem', color: '#00979d', fontWeight: 600 }}>
-                            Recomendado
-                          </span>
-                        )}
+                          Activar / Recargar
+                          <ExternalLink size={10} />
+                        </a>
                       </div>
-                      <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '2px 0 0' }}>
-                        {srv.desc}
-                      </p>
-                    </div>
-                    {isSelected && <CheckCircle2 size={16} color="#00979d" />}
+                    )}
                   </div>
                 );
               })}
@@ -932,16 +1037,6 @@ export default function ChatIA() {
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     </div>
                   ))}
-
-                {/* Pie de burbuja con modelo que respondió */}
-                {!isUser && srv && (
-                  <div style={styles.bubbleMeta(isUser)}>
-                    <span style={styles.statusDot(srv.badgeColor)} />
-                    <span>
-                      {srv.name} ({srv.level})
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           );
