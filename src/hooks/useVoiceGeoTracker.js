@@ -109,7 +109,8 @@ export function useVoiceGeoTracker({
   }, []);
 
   // ── Iniciar grabación sincronizada de audio + GPS ───────────────────────────
-  const startTracking = useCallback(async () => {
+  const startTracking = useCallback(async (options = {}) => {
+    const { initialGps = null } = options;
     setError(null);
     audioChunksRef.current = [];
     gpsTrackRef.current = [];
@@ -168,6 +169,23 @@ export function useVoiceGeoTracker({
       const t0 = Date.now();
       t0Ref.current = t0;
       lastSampleTimeRef.current = 0;
+
+      // Sembrar inmediatamente la posición GPS inicial si ya se dispone de ella
+      if (initialGps && typeof initialGps.lat === 'number' && typeof initialGps.lng === 'number') {
+        const seedReading = {
+          timestamp: t0,
+          relativeTimeMs: 0,
+          lat: initialGps.lat,
+          lng: initialGps.lng,
+          accuracy: initialGps.accuracy || 3.0,
+          altitude: initialGps.altitude || null,
+          speed: initialGps.speed || null,
+          heading: initialGps.heading || null,
+        };
+        gpsTrackRef.current.push(seedReading);
+        setCurrentGps(seedReading);
+        setGpsPointsCount(1);
+      }
 
       // 5. Iniciar MediaRecorder en intervalos de 500ms
       mediaRecorder.start(500);
