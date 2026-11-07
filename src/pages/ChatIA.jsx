@@ -22,7 +22,6 @@ import {
   Info,
   Lock,
   Brain,
-  BookOpen,
   Plus,
   Trash2,
   MapPin,
@@ -833,12 +832,19 @@ export default function ChatIA() {
   const [fallbackNotice, setFallbackNotice] = useState(null);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
-  const [isKnowledgeModalOpen, setIsKnowledgeModalOpen] = useState(false);
   const [isInventoryMapOpen, setIsInventoryMapOpen] = useState(false);
-  const [farmKnowledge, setFarmKnowledge] = useState([]);
-  const [knowledgeSearch, setKnowledgeSearch] = useState('');
-  const [newKnowledge, setNewKnowledge] = useState({ category: 'cultivo', title: '', content: '' });
-  const [isSavingKnowledge, setIsSavingKnowledge] = useState(false);
+  const [farmKnowledge, setFarmKnowledge] = useState(() => {
+    try {
+      const raw = localStorage.getItem('campito_farm_knowledge_all');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('[ChatIA] Error leyendo memoria local:', e);
+    }
+    return [];
+  });
   
   // ─── Estado del Inventario, Caminos y Catastro Satélite ────────────────────
   const [farmInventory, setFarmInventory] = useState([]);
@@ -1093,7 +1099,7 @@ export default function ChatIA() {
     }
   }, []);
 
-  // ── Cargar contexto completo de Supabase al montar ────────────────────────────
+  // ── Cargar contexto completo de Supabase y caché local al montar ──────────
   useEffect(() => {
     let isMounted = true;
     const loadContext = async () => {
@@ -1111,14 +1117,75 @@ export default function ChatIA() {
 
         const liveEvents = eventsRes.status === 'fulfilled' && eventsRes.value.data ? eventsRes.value.data : outletEvents;
         const liveTransactions = transRes.status === 'fulfilled' && transRes.value.data ? transRes.value.data : outletTransactions;
-        const liveKnowledge = knwRes.status === 'fulfilled' && knwRes.value.data ? knwRes.value.data : [];
         const liveInventory = invRes.status === 'fulfilled' && invRes.value.data ? invRes.value.data : [];
         const livePaths = pathRes.status === 'fulfilled' && pathRes.value.data ? pathRes.value.data : [];
         const liveUsers = usersRes.status === 'fulfilled' && usersRes.value.data ? usersRes.value.data : outletUsers;
 
+        // Recuperar y consolidar la memoria permanente (local + nube + mensajes)
+        let combinedKnowledge = [];
+        try {
+          const localRaw = localStorage.getItem('campito_farm_knowledge_all');
+          if (localRaw) {
+            const parsed = JSON.parse(localRaw);
+            if (Array.isArray(parsed)) combinedKnowledge = [...parsed];
+          }
+        } catch (e) {
+          console.warn('[ChatIA] Error leyendo memoria local:', e);
+        }
+
+        // Si Supabase devuelve datos de farm_knowledge, fusionarlos
+        if (knwRes.status === 'fulfilled' && Array.isArray(knwRes.value.data) && knwRes.value.data.length > 0) {
+          knwRes.value.data.forEach((remoteItem) => {
+            const alreadyIn = combinedKnowledge.some((k) => k.id === remoteItem.id || (k.title === remoteItem.title && k.content === remoteItem.content));
+            if (!alreadyIn) {
+              combinedKnowledge.push(remoteItem);
+            }
+          });
+        }
+
+        // Escanear mensajes locales por si hay conocimientos creados en el chat
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('campito_chat_messages_')) {
+              const msgsRaw = localStorage.getItem(key);
+              if (msgsRaw) {
+                const parsedMsgs = JSON.parse(msgsRaw);
+                if (Array.isArray(parsedMsgs)) {
+                  parsedMsgs.forEach((m) => {
+                    if (m.learnedMemory && m.learnedMemory.content) {
+                      const exists = combinedKnowledge.some((k) => k.title === m.learnedMemory.title || k.content === m.learnedMemory.content);
+                      if (!exists) {
+                        combinedKnowledge.push({
+                          id: 'recovered-' + Math.random().toString(36).substring(7),
+                          category: m.learnedMemory.category || 'general',
+                          title: m.learnedMemory.title || 'Dato aprendido',
+                          content: m.learnedMemory.content,
+                          source: 'chat',
+                          created_at: m.timestamp || new Date().toISOString(),
+                          is_active: true,
+                        });
+                      }
+                    }
+                  });
+                }
+              }
+            }
+          }
+        } catch (scanErr) {
+          console.warn('[ChatIA] Error escaneando mensajes locales:', scanErr);
+        }
+
+        // Guardar la memoria consolidada en localStorage para persistencia segura
+        try {
+          localStorage.setItem('campito_farm_knowledge_all', JSON.stringify(combinedKnowledge));
+        } catch {
+          // ignore
+        }
+
         setFincaEvents(liveEvents);
         setFincaTransactions(liveTransactions);
-        setFarmKnowledge(liveKnowledge);
+        setFarmKnowledge(combinedKnowledge);
         setFarmInventory(liveInventory);
         setFarmPaths(livePaths);
         setFincaUsers(liveUsers);
@@ -1127,7 +1194,7 @@ export default function ChatIA() {
           events: liveEvents,
           transactions: liveTransactions,
           users: liveUsers,
-          knowledge: liveKnowledge,
+          knowledge: combinedKnowledge,
           inventory: liveInventory,
           paths: livePaths,
         });
@@ -1140,56 +1207,6 @@ export default function ChatIA() {
       isMounted = false;
     };
   }, [outletEvents, outletTransactions, outletUsers]);
-
-  // ── Guardar conocimiento manual en la memoria de la finca ─────────────────────
-  const handleSaveManualKnowledge = async (e) => {
-    e?.preventDefault();
-    if (!newKnowledge.title.trim() || !newKnowledge.content.trim()) return;
-
-    setIsSavingKnowledge(true);
-    try {
-      const { data: authData } = await supabase.auth.getUser();
-      const u = authData?.user;
-      const currentUserName = u?.user_metadata?.name || u?.email?.split('@')[0] || 'Admin';
-
-      const { data: inserted, error: insertErr } = await supabase
-        .from('farm_knowledge')
-        .insert({
-          category: newKnowledge.category,
-          title: newKnowledge.title.trim(),
-          content: newKnowledge.content.trim(),
-          source: 'manual',
-          user_id: u?.id || null,
-          user_name: currentUserName,
-          is_active: true,
-        })
-        .select()
-        .single();
-
-      if (insertErr) throw insertErr;
-
-      if (inserted) {
-        setFarmKnowledge((prev) => [inserted, ...prev]);
-        contextDataRef.current += `\n- [${(inserted.category || 'general').toUpperCase()}] ${inserted.title}: ${inserted.content}`;
-        setNewKnowledge({ category: 'cultivo', title: '', content: '' });
-      }
-    } catch (err) {
-      console.warn('Error al guardar conocimiento:', err);
-      alert('No se pudo guardar el conocimiento: ' + (err.message || 'Verifica la conexión.'));
-    } finally {
-      setIsSavingKnowledge(false);
-    }
-  };
-
-  // ── Desactivar o eliminar conocimiento de la memoria ──────────────────────────
-  const handleDeleteKnowledge = async (id) => {
-    try {
-      await supabase.from('farm_knowledge').update({ is_active: false }).eq('id', id);
-      setFarmKnowledge((prev) => prev.filter((k) => k.id !== id));
-    } catch (err) {
-      console.warn('Error al desactivar conocimiento:', err);
-    }
-  };
 
   // ── Recargar inventario y caminos desde Supabase ─────────────────────────────
   const reloadInventory = async () => {
@@ -1729,26 +1746,51 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             const u = authData?.user;
             const currentUserName = u?.user_metadata?.name || u?.email?.split('@')[0] || 'Admin';
 
-            // Si se detectó conocimiento nuevo, guardarlo en farm_knowledge con coordenadas GPS
+            // Si se detectó conocimiento nuevo, guardarlo de inmediato en memoria local y Supabase
             if (learnedMemory && learnedMemory.content) {
               const geoTag = effectivePt ? ` [📍 GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
               const enrichedContent = learnedMemory.content.includes('[📍')
                 ? learnedMemory.content
                 : `${learnedMemory.content}${geoTag}`;
 
-              const { data: savedMem, error: memErr } = await supabase.from('farm_knowledge').insert({
+              const memoryEntry = {
+                id: 'mem-' + Date.now(),
                 category: learnedMemory.category || 'general',
                 title: learnedMemory.title || 'Dato aprendido',
                 content: enrichedContent,
                 source: 'chat',
                 user_id: u?.id || null,
                 user_name: currentUserName,
-                is_active: true
-              }).select().single();
+                created_at: new Date().toISOString(),
+                is_active: true,
+              };
 
-              if (!memErr && savedMem) {
-                setFarmKnowledge((prev) => [savedMem, ...prev]);
-                contextDataRef.current += `\n- [${(savedMem.category || 'general').toUpperCase()}] ${savedMem.title}: ${savedMem.content}`;
+              // Guardar siempre en estado y en localStorage (nunca se pierde)
+              setFarmKnowledge((prev) => {
+                const updated = [memoryEntry, ...prev.filter((p) => p.title !== memoryEntry.title || p.content !== memoryEntry.content)];
+                try {
+                  localStorage.setItem('campito_farm_knowledge_all', JSON.stringify(updated));
+                } catch {
+                  // ignore
+                }
+                return updated;
+              });
+
+              contextDataRef.current += `\n- [${(memoryEntry.category || 'general').toUpperCase()}] ${memoryEntry.title}: ${memoryEntry.content}`;
+
+              // Intentar sincronizar en Supabase si la tabla existe
+              try {
+                await supabase.from('farm_knowledge').insert({
+                  category: memoryEntry.category,
+                  title: memoryEntry.title,
+                  content: memoryEntry.content,
+                  source: 'chat',
+                  user_id: u?.id || null,
+                  user_name: currentUserName,
+                  is_active: true,
+                });
+              } catch (memErr) {
+                console.warn('[ChatIA] Aviso sincronizando memoria con Supabase:', memErr?.message);
               }
             }
 
@@ -1991,24 +2033,6 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 aria-label="Información de confidencialidad y modo de operación"
               >
                 <Info size={15} />
-              </button>
-              <button
-                onClick={() => setIsKnowledgeModalOpen(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  color: farmKnowledge.length > 0 ? '#00979d' : '#94a3b8',
-                  borderRadius: '50%',
-                  transition: 'color 0.15s',
-                }}
-                title={`Memoria de la finca (${farmKnowledge.length} conocimientos aprendidos)`}
-                aria-label="Memoria de la finca"
-              >
-                <Brain size={15} />
               </button>
               <button
                 onClick={() => setIsInventoryMapOpen(true)}
@@ -2407,33 +2431,8 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                   💡 <i>"Recuerda que la electroválvula del sector 2 riega 40 min los martes"</i>
                 </div>
                 <p style={{ fontSize: '0.73rem', color: '#15803d', margin: 0, lineHeight: 1.4 }}>
-                  El asistente retendrá esa regla permanentemente y la aplicará en todas las sesiones y usuarios. Todo se respalda semanalmente en la hoja <b>MEMORIA_FINCA</b> de Google Drive.
+                  El asistente retendrá esa regla permanentemente y la aplicará en todas las sesiones. Puedes preguntarle en cualquier momento qué cosas recuerda de la finca.
                 </p>
-
-                <button
-                  onClick={() => {
-                    setIsInfoModalOpen(false);
-                    setIsKnowledgeModalOpen(true);
-                  }}
-                  style={{
-                    marginTop: 4,
-                    padding: '8px 12px',
-                    backgroundColor: '#16a34a',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: 8,
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <BookOpen size={14} />
-                  Ver y Administrar Memoria de la Finca ({farmKnowledge.length})
-                </button>
               </div>
 
               {/* Tarjeta 5: Catastro Agrícola GPS y Descargas PDF / EXCEL */}
@@ -2602,269 +2601,6 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 >
                   Entendido
                 </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Modal de Gestión de Memoria y Conocimientos Aprendidos ─────────── */}
-      {isKnowledgeModalOpen && (
-        <div style={styles.modalOverlay} onClick={() => setIsKnowledgeModalOpen(false)}>
-          <div
-            style={{
-              ...styles.modalContent,
-              maxWidth: 500,
-              maxHeight: '90vh',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={styles.modalHeader}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Brain size={18} color="#00979d" />
-                <div>
-                  <p style={styles.modalTitle}>Memoria de Campito Jorox</p>
-                  <p style={{ margin: 0, fontSize: '0.68rem', color: '#64748b' }}>
-                    {farmKnowledge.length} conocimientos aprendidos y activos
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsKnowledgeModalOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-                aria-label="Cerrar modal de memoria"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={styles.modalBody}>
-              {/* Formulario rápido para enseñar un nuevo conocimiento manual */}
-              <form
-                onSubmit={handleSaveManualKnowledge}
-                style={{
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: '10px 12px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>
-                    ➕ Enseñar algo nuevo a la Finca
-                  </span>
-                  <select
-                    value={newKnowledge.category}
-                    onChange={(e) => setNewKnowledge((prev) => ({ ...prev, category: e.target.value }))}
-                    style={{
-                      fontSize: '0.72rem',
-                      padding: '3px 6px',
-                      borderRadius: 6,
-                      border: '1px solid #cbd5e1',
-                      backgroundColor: '#ffffff',
-                      color: '#0f172a',
-                    }}
-                  >
-                    <option value="cultivo">🌱 Cultivo</option>
-                    <option value="riego">💧 Riego</option>
-                    <option value="parcela">📍 Parcela</option>
-                    <option value="maquinaria">🚜 Maquinaria</option>
-                    <option value="suelo">🧪 Suelo</option>
-                    <option value="plaga">🐛 Plagas</option>
-                    <option value="proveedor">🤝 Proveedor</option>
-                    <option value="protocolo">📋 Protocolo</option>
-                    <option value="general">📌 General</option>
-                  </select>
-                </div>
-
-                <input
-                  type="text"
-                  placeholder="Título breve (ej: Variedad Aguacates Bancal Sur)"
-                  value={newKnowledge.title}
-                  onChange={(e) => setNewKnowledge((prev) => ({ ...prev, title: e.target.value }))}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 6,
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.78rem',
-                    outline: 'none',
-                    backgroundColor: '#ffffff',
-                  }}
-                />
-
-                <textarea
-                  placeholder="Regla o hecho que debe recordar la IA (ej: Se abona en mayo con sulfato de potasio, 150g por árbol)..."
-                  value={newKnowledge.content}
-                  onChange={(e) => setNewKnowledge((prev) => ({ ...prev, content: e.target.value }))}
-                  rows={2}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 6,
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.76rem',
-                    outline: 'none',
-                    backgroundColor: '#ffffff',
-                    resize: 'none',
-                    lineHeight: 1.4,
-                  }}
-                />
-
-                <button
-                  type="submit"
-                  disabled={isSavingKnowledge || !newKnowledge.title.trim() || !newKnowledge.content.trim()}
-                  style={{
-                    padding: '7px 12px',
-                    backgroundColor: '#00979d',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: isSavingKnowledge ? 'not-allowed' : 'pointer',
-                    opacity: isSavingKnowledge || !newKnowledge.title.trim() || !newKnowledge.content.trim() ? 0.6 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <Plus size={14} />
-                  {isSavingKnowledge ? 'Guardando...' : 'Grabar en Memoria Permanente'}
-                </button>
-              </form>
-
-              {/* Filtro de búsqueda */}
-              {farmKnowledge.length > 3 && (
-                <input
-                  type="text"
-                  placeholder="Buscar en la memoria de la finca..."
-                  value={knowledgeSearch}
-                  onChange={(e) => setKnowledgeSearch(e.target.value)}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: 6,
-                    border: '1px solid #e2e8f0',
-                    fontSize: '0.74rem',
-                    outline: 'none',
-                    backgroundColor: '#fafafa',
-                  }}
-                />
-              )}
-
-              {/* Lista de hechos memorizados */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-                {farmKnowledge.length === 0 ? (
-                  <div
-                    style={{
-                      textAlign: 'center',
-                      padding: '24px 16px',
-                      color: '#94a3b8',
-                      fontSize: '0.78rem',
-                      backgroundColor: '#f8fafc',
-                      borderRadius: 8,
-                      border: '1px dashed #cbd5e1',
-                    }}
-                  >
-                    <Brain size={24} color="#94a3b8" style={{ margin: '0 auto 8px', display: 'block' }} />
-                    <p style={{ margin: 0, fontWeight: 600, color: '#64748b' }}>
-                      Aún no hay conocimientos grabados
-                    </p>
-                    <p style={{ margin: '4px 0 0', fontSize: '0.72rem' }}>
-                      Enseña a la IA diciendo en el chat <i>"Recuerda que..."</i> o agrega un hecho en el formulario superior.
-                    </p>
-                  </div>
-                ) : (
-                  farmKnowledge
-                    .filter((k) => {
-                      if (!knowledgeSearch.trim()) return true;
-                      const q = knowledgeSearch.toLowerCase();
-                      return (
-                        (k.title && k.title.toLowerCase().includes(q)) ||
-                        (k.content && k.content.toLowerCase().includes(q)) ||
-                        (k.category && k.category.toLowerCase().includes(q))
-                      );
-                    })
-                    .map((item) => {
-                      const categoryColors = {
-                        cultivo: { bg: '#dcfce7', text: '#15803d', label: '🌱 Cultivo' },
-                        riego: { bg: '#e0f2fe', text: '#0369a1', label: '💧 Riego' },
-                        parcela: { bg: '#fef3c7', text: '#b45309', label: '📍 Parcela' },
-                        maquinaria: { bg: '#f1f5f9', text: '#475569', label: '🚜 Maquinaria' },
-                        suelo: { bg: '#fae8ff', text: '#86198f', label: '🧪 Suelo' },
-                        plaga: { bg: '#fee2e2', text: '#b91c1c', label: '🐛 Plaga' },
-                        proveedor: { bg: '#ede9fe', text: '#6d28d9', label: '🤝 Proveedor' },
-                        protocolo: { bg: '#ffedd5', text: '#c2410c', label: '📋 Protocolo' },
-                        general: { bg: '#f3f4f6', text: '#374151', label: '📌 General' },
-                      };
-                      const catInfo = categoryColors[item.category] || categoryColors.general;
-
-                      return (
-                        <div
-                          key={item.id}
-                          style={{
-                            padding: '10px 12px',
-                            backgroundColor: '#ffffff',
-                            borderRadius: 8,
-                            border: '1px solid #e2e8f0',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 4,
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <span
-                                style={{
-                                  fontSize: '0.65rem',
-                                  fontWeight: 700,
-                                  padding: '1px 6px',
-                                  borderRadius: 8,
-                                  backgroundColor: catInfo.bg,
-                                  color: catInfo.text,
-                                }}
-                              >
-                                {catInfo.label}
-                              </span>
-                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
-                                {item.title}
-                              </span>
-                            </div>
-                            <button
-                              onClick={() => handleDeleteKnowledge(item.id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: '#94a3b8',
-                                padding: '2px',
-                                borderRadius: 4,
-                                display: 'flex',
-                                alignItems: 'center',
-                                transition: 'color 0.15s',
-                              }}
-                              title="Eliminar de la memoria"
-                              aria-label="Eliminar de la memoria"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-
-                          <p style={{ margin: 0, fontSize: '0.74rem', color: '#475569', lineHeight: 1.45 }}>
-                            {item.content}
-                          </p>
-
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2, fontSize: '0.64rem', color: '#94a3b8' }}>
-                            <span>Origen: {item.source === 'chat' ? '💬 Chat IA' : '✍️ Manual'} ({item.user_name || 'Admin'})</span>
-                            <span>{item.created_at ? item.created_at.split('T')[0] : ''}</span>
-                          </div>
-                        </div>
-                      );
-                    })
-                )}
               </div>
             </div>
           </div>
