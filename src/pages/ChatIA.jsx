@@ -31,7 +31,9 @@ import {
   Map,
   Layers,
   RotateCcw,
-  Compass
+  Compass,
+  FileText,
+  Paperclip
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
@@ -154,6 +156,15 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
 - Se puede activar el modo "Dibujar Camino / Sendero" para trazar caminos tocando sobre el satélite con cálculo de metros.
 - Los datos se pueden exportar a Google My Maps (KML), GeoJSON, Excel y PDF en cualquier momento.
 
+📎 **DOCUMENTOS Y ARCHIVOS ADJUNTOS (+)**:
+- El usuario dispone de un botón '+' para adjuntar todo tipo de archivos: informes PDF (análisis de suelo, agua o foliar, facturas de fitosanitarios/abonos, certificados catastrales o SIGPAC), hojas de cálculo (CSV, Excel) y notas técnicas, además de fotos con la cámara.
+- Analiza a fondo el archivo adjunto para responder las dudas del agricultor.
+- Si el usuario sube un archivo para alimentar el conocimiento de la finca:
+  1. Extrae y resume los datos clave con rigor agronómico.
+  2. Si contiene reglas, parámetros o pautas de cultivo, guárdalas en la memoria permanente con:
+     [[MEMORIA: {"category": "suelo|cultivo|riego|plaga|fertilizacion|general", "title": "Título descriptivo", "content": "Detalle técnico aprendido"}]]
+  3. Si contiene coordenadas o inventario de árboles, regístralos con [[REGISTRAR_PUNTOS: [...] ]].
+
 Tu función es ayudar con:
 - 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
 - 💰 **Contabilidad y finanzas**: análisis de transacciones, gastos, ingresos, resúmenes económicos
@@ -164,16 +175,16 @@ Tu función es ayudar con:
 
 Cuando tengas datos de transacciones, eventos o memoria aprendida en el contexto, úsalos para dar respuestas precisas y basadas en datos reales.
 Responde siempre en **español**, de forma clara, concisa y útil. Puedes usar formato markdown.
-Si te muestran una imagen, analízala en detalle relacionándola con el contexto de la finca.
+Si te muestran una imagen o documento, analízalo en detalle relacionándolo con el contexto de la finca.
 Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
 
 // ─── Función de llamada directa REST a Gemini con timeout ──────────────────────
-async function callGeminiDirect({ modelId, prompt, image, audio, history, systemInstruction, apiKey, timeoutMs = 25000 }) {
+async function callGeminiDirect({ modelId, prompt, attachment, image, audio, history, systemInstruction, apiKey, timeoutMs = 25000 }) {
   if (!apiKey) {
     throw new Error('API_KEY_MISSING');
   }
 
-  const effectiveTimeout = audio ? Math.max(timeoutMs, 30000) : timeoutMs;
+  const effectiveTimeout = (audio || attachment) ? Math.max(timeoutMs, 30000) : timeoutMs;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
@@ -196,15 +207,29 @@ async function callGeminiDirect({ modelId, prompt, image, audio, history, system
     userParts.push({ text: prompt });
   }
 
-  if (image && image.dataUrl) {
-    const match = image.dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-    if (match) {
+  // Archivo adjunto (+ o cámara)
+  const att = attachment || (image ? { dataUrl: image.dataUrl, name: 'imagen.jpg' } : null);
+  if (att) {
+    if (att.textContent) {
       userParts.push({
-        inline_data: {
-          mime_type: match[1],
-          data: match[2],
-        },
+        text: `\n\n📄 **CONTENIDO DEL ARCHIVO ADJUNTO ("${att.name || 'documento'}")**:\n\`\`\`\n${att.textContent}\n\`\`\`\n`,
       });
+    }
+
+    if (att.dataUrl) {
+      const match = att.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+      if (match) {
+        const mime = match[1].toLowerCase();
+        // Imágenes y documentos PDF soportados nativamente por Gemini generateContent
+        if (mime.startsWith('image/') || mime === 'application/pdf') {
+          userParts.push({
+            inline_data: {
+              mime_type: mime,
+              data: match[2],
+            },
+          });
+        }
+      }
     }
   }
 
@@ -233,6 +258,10 @@ async function callGeminiDirect({ modelId, prompt, image, audio, history, system
   if (!prompt && audio) {
     userParts.push({
       text: 'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla o dato clave de la finca, guárdala con [[MEMORIA: {...} ]]. Si hace una consulta agronómica o balance, responde detalladamente en español.',
+    });
+  } else if (!prompt && att) {
+    userParts.push({
+      text: `Por favor analiza detalladamente el archivo adjunto ("${att.name || 'documento'}") para Campito Jorox. Sintetiza la información relevante y, si contiene pautas o reglas para alimentar el conocimiento de la finca, guárdalas con [[MEMORIA: {"category": "suelo|cultivo|riego|fertilizacion|general", "title": "...", "content": "..."}]]. Si contiene árboles o parcelas, regístralos con [[REGISTRAR_PUNTOS: [...] ]].`,
     });
   } else if (userParts.length === 0) {
     userParts.push({ text: 'Hola' });
@@ -678,7 +707,7 @@ export default function ChatIA() {
   const [isLoading, setIsLoading] = useState(false);
   const [pendingAudio, setPendingAudio] = useState(null); // { blob, dataUrl, mimeType, duration, t0, gpsTrack }
   const [error, setError] = useState(null);
-  const [pendingImage, setPendingImage] = useState(null);
+  const [pendingAttachment, setPendingAttachment] = useState(null); // { file, name, size, type, dataUrl, textContent, isImage, isPdf, isSpreadsheet, isText }
 
   // Telemetría GPS en tiempo real del teléfono para el Chat
   const [deviceGps, setDeviceGps] = useState(null); // { lat, lng, accuracy, altitude }
@@ -688,6 +717,7 @@ export default function ChatIA() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const docInputRef = useRef(null);
 
   // Auto-scroll
   useEffect(() => {
@@ -769,7 +799,7 @@ export default function ChatIA() {
     setMessages([WELCOME_MESSAGE]);
     setInput('');
     setPendingAudio(null);
-    setPendingImage(null);
+    setPendingAttachment(null);
     if (currentUserId) {
       try {
         localStorage.removeItem(`campito_chat_messages_${currentUserId}`);
@@ -1058,12 +1088,12 @@ export default function ChatIA() {
 
   // ── Enviar mensaje con cascada/fallback entre los 3 servidores ────────────────
   const sendMessage = useCallback(
-    async (textOverride = null, imageData = null, audioData = null) => {
+    async (textOverride = null, attachmentData = null, audioData = null) => {
       const text = textOverride ?? input.trim();
-      const img = imageData ?? pendingImage;
+      const att = attachmentData ?? pendingAttachment;
       const aud = audioData ?? pendingAudio;
 
-      if (!text && !img && !aud) return;
+      if (!text && !att && !aud) return;
       if (isLoading) return;
 
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -1075,8 +1105,9 @@ export default function ChatIA() {
       const userMsg = {
         id: Date.now().toString(),
         role: 'user',
-        content: text || (aud ? '🎙️ Mensaje de voz' : ''),
-        image: img?.dataUrl || null,
+        content: text || (att ? `📎 ${att.name}` : (aud ? '🎙️ Mensaje de voz' : '')),
+        image: att?.isImage ? att.dataUrl : null,
+        file: att ? { name: att.name, size: att.size, type: att.type, isPdf: att.isPdf, isSpreadsheet: att.isSpreadsheet, dataUrl: att.dataUrl } : null,
         audio: aud ? { dataUrl: aud.dataUrl, duration: aud.duration } : null,
       };
 
@@ -1090,7 +1121,7 @@ export default function ChatIA() {
           // ignore
         }
       }
-      setPendingImage(null);
+      setPendingAttachment(null);
       setPendingAudio(null);
       setIsLoading(true);
       setError(null);
@@ -1150,12 +1181,13 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           const aiResponse = await callGeminiDirect({
             modelId: server.id,
             prompt: text,
-            image: img,
+            attachment: att,
+            image: att?.isImage ? att : null,
             audio: aud,
             history,
             systemInstruction,
             apiKey,
-            timeoutMs: aud ? 30000 : 15000,
+            timeoutMs: (aud || att) ? 35000 : 18000,
           });
 
           successResult = aiResponse;
@@ -1377,18 +1409,22 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             let uploadedFileUrl = null;
             let uploadedFileName = null;
 
-            // Subir imagen si se adjuntó alguna
-            if (img && img.file) {
-              const fileExt = img.file.name ? img.file.name.split('.').pop() : 'jpg';
+            // Subir archivo adjunto (documento, foto o PDF) si se adjuntó alguno
+            if (att && att.file) {
+              const fileExt = att.name ? att.name.split('.').pop() : (att.isPdf ? 'pdf' : 'jpg');
               const cleanFileName = `chat-ia/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-              const { error: uploadErr } = await supabase.storage
-                .from('comprobantes')
-                .upload(cleanFileName, img.file, { contentType: img.file.type });
+              try {
+                const { error: uploadErr } = await supabase.storage
+                  .from('comprobantes')
+                  .upload(cleanFileName, att.file, { contentType: att.type || 'application/octet-stream' });
 
-              if (!uploadErr) {
-                const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
-                uploadedFileUrl = pubUrl?.publicUrl || null;
-                uploadedFileName = cleanFileName;
+                if (!uploadErr) {
+                  const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
+                  uploadedFileUrl = pubUrl?.publicUrl || null;
+                  uploadedFileName = cleanFileName;
+                }
+              } catch (fileErr) {
+                console.warn('[ChatIA] No se pudo subir archivo a storage:', fileErr);
               }
             } else if (aud && aud.blob) {
               // Subir audio si se grabó nota de voz
@@ -1439,7 +1475,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             const gpsLabel = effectivePt ? ` [GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
             await supabase.from('chat_history').insert({
               role: 'user',
-              content: (text || (img ? '[Archivo adjunto]' : (aud ? `[Audio grabado: ${aud.duration}s]` : ''))) + gpsLabel,
+              content: (text || (att ? `[Archivo adjunto: ${att.name}]` : (aud ? `[Audio grabado: ${aud.duration}s]` : ''))) + gpsLabel,
               file_url: uploadedFileUrl,
               file_name: uploadedFileName,
               user_id: u?.id || null,
@@ -1472,7 +1508,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
 
       setIsLoading(false);
     },
-    [input, messages, isLoading, pendingImage, pendingAudio, selectedServerIndex, autoFallback, currentUserId]
+    [input, messages, isLoading, pendingAttachment, pendingAudio, selectedServerIndex, autoFallback, currentUserId]
   );
 
   // Enter envía
@@ -1483,20 +1519,95 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
     }
   };
 
-  // Cámara / archivo
+  // Cámara directa para foto de campo
   const handleCameraClick = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e) => {
+  const handleCameraChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setPendingImage({ dataUrl: ev.target.result, file });
+      setPendingAttachment({
+        file,
+        name: file.name || `foto-${Date.now()}.jpg`,
+        size: file.size,
+        type: file.type || 'image/jpeg',
+        dataUrl: ev.target.result,
+        textContent: null,
+        isImage: true,
+        isPdf: false,
+        isSpreadsheet: false,
+        isText: false,
+      });
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Botón (+) para adjuntar todo tipo de archivos y alimentar el conocimiento
+  const handleAttachClick = () => {
+    docInputRef.current?.click();
+  };
+
+  const handleDocumentChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const nameLower = file.name.toLowerCase();
+    const isImg = file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf' || nameLower.endsWith('.pdf');
+    const isSpreadsheet =
+      nameLower.endsWith('.xlsx') ||
+      nameLower.endsWith('.xls') ||
+      nameLower.endsWith('.csv');
+    const isText =
+      file.type.startsWith('text/') ||
+      nameLower.endsWith('.txt') ||
+      nameLower.endsWith('.csv') ||
+      nameLower.endsWith('.json') ||
+      nameLower.endsWith('.geojson') ||
+      nameLower.endsWith('.kml') ||
+      nameLower.endsWith('.md');
+
+    if (isText) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setPendingAttachment({
+          file,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'text/plain',
+          textContent: ev.target.result,
+          dataUrl: null,
+          isImage: false,
+          isPdf: false,
+          isSpreadsheet,
+          isText: true,
+        });
+      };
+      reader.readAsText(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setPendingAttachment({
+          file,
+          name: file.name,
+          size: file.size,
+          type: file.type || (isPdf ? 'application/pdf' : 'application/octet-stream'),
+          textContent: null,
+          dataUrl: ev.target.result,
+          isImage: isImg,
+          isPdf,
+          isSpreadsheet,
+          isText: false,
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+
     e.target.value = '';
   };
 
@@ -1548,7 +1659,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
     }
   };
 
-  const hasText = input.trim().length > 0 || pendingImage !== null || pendingAudio !== null;
+  const hasText = input.trim().length > 0 || pendingAttachment !== null || pendingAudio !== null;
   const currentBadgeServer = activeServer || GEMINI_SERVERS[selectedServerIndex];
 
   return (
@@ -3057,6 +3168,39 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                     style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, marginBottom: 6, display: 'block' }}
                   />
                 )}
+                {msg.file && !msg.image && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '7px 10px',
+                      backgroundColor: isUser ? 'rgba(255,255,255,0.18)' : '#f1f5f9',
+                      borderRadius: 8,
+                      marginBottom: msg.content ? 6 : 0,
+                      maxWidth: 260,
+                      border: isUser ? '1px solid rgba(255,255,255,0.25)' : '1px solid #e2e8f0',
+                    }}
+                  >
+                    {msg.file.isPdf ? (
+                      <FileText size={18} color={isUser ? '#ffffff' : '#dc2626'} />
+                    ) : msg.file.isSpreadsheet ? (
+                      <FileSpreadsheet size={18} color={isUser ? '#ffffff' : '#16a34a'} />
+                    ) : (
+                      <Paperclip size={18} color={isUser ? '#ffffff' : '#0284c7'} />
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {msg.file.name}
+                      </p>
+                      {msg.file.size && (
+                        <p style={{ margin: 0, fontSize: '0.64rem', opacity: 0.85 }}>
+                          {(msg.file.size / 1024).toFixed(1)} KB
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {msg.audio && (
                   <div style={{ marginBottom: msg.content ? 6 : 0, maxWidth: 260 }}>
                     <audio
@@ -3389,50 +3533,105 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         </div>
       )}
 
-      {/* ─── Preview de Imagen Pendiente ─────────────────────────────────────── */}
-      {pendingImage && (
+      {/* ─── Preview de Archivo, Documento o Foto Pendiente ────────────────────── */}
+      {pendingAttachment && (
         <div
           style={{
-            padding: '6px 14px',
-            borderTop: '1px solid #eee',
-            backgroundColor: '#fafafa',
+            padding: '8px 14px',
+            backgroundColor: '#f8fafc',
+            borderTop: '1px solid #e2e8f0',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 10,
+            flexShrink: 0,
           }}
         >
-          <img
-            src={pendingImage.dataUrl}
-            alt="Vista previa"
-            style={{ height: 46, borderRadius: 6, objectFit: 'cover' }}
-          />
-          <span style={{ fontSize: '0.78rem', color: '#666', flex: 1 }}>Foto lista para enviar</span>
+          {pendingAttachment.isImage && pendingAttachment.dataUrl ? (
+            <img
+              src={pendingAttachment.dataUrl}
+              alt="Vista previa"
+              style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover' }}
+            />
+          ) : pendingAttachment.isPdf ? (
+            <div style={{ width: 38, height: 38, borderRadius: 8, backgroundColor: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <FileText size={20} color="#dc2626" />
+            </div>
+          ) : pendingAttachment.isSpreadsheet ? (
+            <div style={{ width: 38, height: 38, borderRadius: 8, backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <FileSpreadsheet size={20} color="#16a34a" />
+            </div>
+          ) : (
+            <div style={{ width: 38, height: 38, borderRadius: 8, backgroundColor: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <FileText size={20} color="#0284c7" />
+            </div>
+          )}
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {pendingAttachment.name}
+            </p>
+            <p style={{ fontSize: '0.68rem', color: '#64748b', margin: 0 }}>
+              {(pendingAttachment.size / 1024).toFixed(1)} KB · {pendingAttachment.isPdf ? 'Documento PDF (listo para analizar)' : (pendingAttachment.isSpreadsheet ? 'Hoja de Cálculo' : (pendingAttachment.isImage ? 'Foto de campo' : 'Documento de texto'))}
+            </p>
+          </div>
+
           <button
-            onClick={() => setPendingImage(null)}
-            style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '1rem' }}
+            onClick={() => setPendingAttachment(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            title="Quitar archivo"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
       )}
 
       {/* ─── Barra de Input Inferior ─────────────────────────────────────────── */}
       <div style={styles.inputBar}>
+        {/* Selector de archivos general (+) */}
+        <input
+          ref={docInputRef}
+          type="file"
+          accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,.json,.geojson,.kml,.kmz,image/*,application/pdf"
+          onChange={handleDocumentChange}
+          style={{ display: 'none' }}
+        />
+
+        {/* Captura de cámara directa */}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={handleFileChange}
+          onChange={handleCameraChange}
           style={{ display: 'none' }}
         />
+
+        {/* Botón Adjuntar Archivo o Documento (+) */}
+        <button
+          className="chatia-iconbtn"
+          style={styles.iconBtn(!!pendingAttachment && !pendingAttachment.isImage)}
+          onClick={handleAttachClick}
+          aria-label="Adjuntar archivo o documento (+)"
+          title="Adjuntar archivo o documento (+)"
+        >
+          <Plus size={20} />
+        </button>
 
         {/* Botón Cámara */}
         <button
           className="chatia-iconbtn"
-          style={styles.iconBtn(!!pendingImage)}
+          style={styles.iconBtn(!!pendingAttachment?.isImage)}
           onClick={handleCameraClick}
-          aria-label="Adjuntar foto"
+          aria-label="Tomar foto con la cámara"
+          title="Tomar foto con la cámara"
         >
           <Camera size={18} />
         </button>
