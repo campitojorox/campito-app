@@ -30,6 +30,7 @@ import {
   Download,
   Map,
   Layers,
+  RotateCcw,
   Compass
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -588,6 +589,15 @@ function TypingIndicator({ currentServer }) {
   );
 }
 
+// ─── Mensaje de bienvenida inicial ───────────────────────────────────────────
+const WELCOME_MESSAGE = {
+  id: 'welcome',
+  role: 'assistant',
+  content:
+    '¡Hola! Soy el asistente IA de **Campito Jorox** 🌿\n\nPuedo ayudarte con:\n- Consultas sobre la finca y cultivos\n- Análisis de tus transacciones y gastos\n- Planificación de tareas y eventos\n- Fotos de plagas o documentos de la finca\n\n¿En qué te puedo ayudar hoy?',
+  serverUsed: GEMINI_SERVERS[2] || GEMINI_SERVERS[0],
+};
+
 // ─── Componente Principal ChatIA ────────────────────────────────────────────────
 export default function ChatIA() {
   // Modelo inicial: Gemini 3.5 Flash (high) por ser el más potente con cuota gratuita activa
@@ -630,16 +640,41 @@ export default function ChatIA() {
 
   const [autoFallback, setAutoFallback] = useState(true);
 
-  const [messages, setMessages] = useState([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content:
-        '¡Hola! Soy el asistente IA de **Campito Jorox** 🌿\n\nPuedo ayudarte con:\n- Consultas sobre la finca y cultivos\n- Análisis de tus transacciones y gastos\n- Planificación de tareas y eventos\n- Fotos de plagas o documentos de la finca\n\n¿En qué te puedo ayudar hoy?',
-      serverUsed: GEMINI_SERVERS[initialIndex >= 0 ? initialIndex : 0],
-    },
-  ]);
-  const [input, setInput] = useState('');
+  const [currentUserId, setCurrentUserId] = useState(() => {
+    try {
+      return localStorage.getItem('campito_last_user_id') || 'default';
+    } catch {
+      return 'default';
+    }
+  });
+
+  // Carga instantánea desde caché local para que nunca se borre al cambiar de sección
+  const [messages, setMessages] = useState(() => {
+    try {
+      const lastUid = localStorage.getItem('campito_last_user_id') || 'default';
+      const cached = localStorage.getItem(`campito_chat_messages_${lastUid}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('[ChatIA] Error leyendo caché local de mensajes:', e);
+    }
+    return [WELCOME_MESSAGE];
+  });
+
+  // Mantener borrador en curso si el usuario estaba escribiendo y fue a otra sección
+  const [input, setInput] = useState(() => {
+    try {
+      const lastUid = localStorage.getItem('campito_last_user_id') || 'default';
+      return localStorage.getItem(`campito_chat_draft_${lastUid}`) || '';
+    } catch {
+      return '';
+    }
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [pendingAudio, setPendingAudio] = useState(null); // { blob, dataUrl, mimeType, duration, t0, gpsTrack }
   const [error, setError] = useState(null);
@@ -658,6 +693,92 @@ export default function ChatIA() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  // Persistir mensajes en caché local cada vez que cambien
+  useEffect(() => {
+    if (!currentUserId) return;
+    try {
+      localStorage.setItem(`campito_chat_messages_${currentUserId}`, JSON.stringify(messages.slice(-60)));
+    } catch (e) {
+      console.warn('[ChatIA] Error guardando mensajes en caché:', e);
+    }
+  }, [messages, currentUserId]);
+
+  // Sincronizar usuario activo y recuperar historial desde Supabase si la caché local está vacía
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id || 'default';
+        if (!isMounted) return;
+        setCurrentUserId(uid);
+        localStorage.setItem('campito_last_user_id', uid);
+
+        // Si la caché local está vacía o solo tiene bienvenida, recuperar historial de Supabase
+        const cachedRaw = localStorage.getItem(`campito_chat_messages_${uid}`);
+        let cachedArr = [];
+        try {
+          cachedArr = cachedRaw ? JSON.parse(cachedRaw) : [];
+        } catch {
+          cachedArr = [];
+        }
+
+        if (!cachedArr || cachedArr.length <= 1) {
+          const { data: dbHistory, error: dbErr } = await supabase
+            .from('chat_history')
+            .select('*')
+            .eq('user_id', uid)
+            .order('created_at', { ascending: true })
+            .limit(40);
+
+          if (!dbErr && dbHistory && dbHistory.length > 0 && isMounted) {
+            const restored = dbHistory.map((row) => ({
+              id: String(row.id),
+              role: row.role,
+              content: row.content || '',
+              image: row.file_url && /\.(jpg|jpeg|png|webp|gif)/i.test(row.file_url) ? row.file_url : null,
+              audio: row.file_url && /\.(webm|mp4|m4a|ogg|wav|mp3)/i.test(row.file_url) ? { dataUrl: row.file_url } : null,
+              serverUsed: row.model_used ? { name: row.model_used } : null,
+              timestamp: row.created_at,
+            }));
+
+            const merged = [WELCOME_MESSAGE, ...restored];
+            setMessages(merged);
+            localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify(merged));
+          }
+        }
+      } catch (err) {
+        console.warn('[ChatIA] Error sincronizando historial con base de datos:', err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Reiniciar a una nueva conversación limpia (preserva la BD para respaldo y memoria)
+  const handleResetChat = useCallback(() => {
+    if (messages.length <= 1 && !input) return;
+    const ok = window.confirm(
+      '¿Deseas iniciar una nueva conversación limpia?\n\nEl historial anterior permanece guardado y seguro en la base de datos de Campito Jorox.'
+    );
+    if (!ok) return;
+
+    setMessages([WELCOME_MESSAGE]);
+    setInput('');
+    setPendingAudio(null);
+    setPendingImage(null);
+    if (currentUserId) {
+      try {
+        localStorage.removeItem(`campito_chat_messages_${currentUserId}`);
+        localStorage.removeItem(`campito_chat_draft_${currentUserId}`);
+      } catch {
+        // ignore
+      }
+    }
+  }, [messages.length, input, currentUserId]);
 
   // Captura y seguimiento continuo de GPS del móvil para el Chat
   useEffect(() => {
@@ -962,6 +1083,13 @@ export default function ChatIA() {
       const updatedMessages = [...messages, userMsg];
       setMessages(updatedMessages);
       setInput('');
+      if (currentUserId) {
+        try {
+          localStorage.removeItem(`campito_chat_draft_${currentUserId}`);
+        } catch {
+          // ignore
+        }
+      }
       setPendingImage(null);
       setPendingAudio(null);
       setIsLoading(true);
@@ -975,7 +1103,7 @@ export default function ChatIA() {
         : [primaryIndex];
 
       const history = updatedMessages
-        .slice(0, -1)
+        .slice(-20, -1)
         .filter((m) => m.id !== 'welcome')
         .map((m) => ({ role: m.role, content: m.content || '' }));
 
@@ -1344,7 +1472,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
 
       setIsLoading(false);
     },
-    [input, messages, isLoading, pendingImage, pendingAudio, selectedServerIndex, autoFallback]
+    [input, messages, isLoading, pendingImage, pendingAudio, selectedServerIndex, autoFallback, currentUserId]
   );
 
   // Enter envía
@@ -1487,6 +1615,24 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 aria-label="Catastro e Inventario GPS"
               >
                 <MapPin size={15} />
+              </button>
+              <button
+                onClick={handleResetChat}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  borderRadius: '50%',
+                  transition: 'color 0.15s, transform 0.15s',
+                }}
+                title="Nueva conversación limpia (el historial se mantiene respaldado)"
+                aria-label="Nueva conversación"
+              >
+                <RotateCcw size={14} />
               </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -3299,7 +3445,15 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           placeholder={`Escribe a ${currentBadgeServer.name}...`}
           value={input}
           onChange={(e) => {
-            setInput(e.target.value);
+            const val = e.target.value;
+            setInput(val);
+            if (currentUserId) {
+              try {
+                localStorage.setItem(`campito_chat_draft_${currentUserId}`, val);
+              } catch {
+                // ignore
+              }
+            }
             e.target.style.height = 'auto';
             e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
           }}
