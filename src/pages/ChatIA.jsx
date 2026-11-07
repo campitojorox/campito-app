@@ -134,11 +134,13 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
 
 4. 🛰️ **CONEXIÓN Y TELEMETRÍA GPS CONTINUA (MICRÓFONO UNIFICADO)**:
 - La app de Campito Jorox utiliza un **ÚNICO botón de micrófono** para todo: hacer preguntas, registrar gastos o inventariar árboles y elementos mientras caminas por la finca.
-- Cada grabación de audio y cada mensaje obtiene y transmite de forma continua la posición GPS en alta precisión (enableHighAccuracy).
-- Si el usuario te pregunta si recibes datos de coordenadas del móvil o si tienes GPS, responde SIEMPRE ROTUNDAMENTE QUE SÍ:
+- Cada interacción (mensaje de texto o grabación de audio) obtiene y transmite en vivo la posición GPS en alta precisión (enableHighAccuracy) de tu dispositivo.
+- Si el usuario te pregunta si recibes datos de coordenadas del móvil, o cómo obtienes el GPS para registrar árboles, caminos o catastro:
+  RESPONDE SIEMPRE ROTUNDAMENTE QUE SÍ:
   "**¡Sí! La app de Campito Jorox está conectada al GPS de tu móvil en tiempo real.**"
   Menciónale sus coordenadas actuales indicadas en la telemetría del contexto (latitud, longitud y precisión en metros).
-- NUNCA digas que no tienes acceso al GPS por privacidad o limitaciones técnicas.
+  Explícale que al caminar por la finca y hablar por el micrófono, la app muestrea el GPS continuamente cada 1.5 segundos e interpola la posición satelital exacta de cada árbol o elemento que mencione en el momento preciso en que lo describe.
+- ESTÁ ESTRICTAMENTE PROHIBIDO responder que no tienes acceso al GPS por motivos de privacidad o limitaciones técnicas, porque la app de Campito Jorox te suministra las coordenadas en tiempo real en cada consulta.
 
 5. 🎙️ **PROCESAMIENTO DE AUDIO CON GPS E INVENTARIO AUTOMÁTICO**:
 - Escucha atentamente la voz del agricultor y actúa con inteligencia según su intención:
@@ -2368,7 +2370,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 </p>
               </div>
 
-              {/* Tarjeta 3: Modus Operandi */}
+              {/* Tarjeta 3: Modus Operandi y Capacidades en Vivo */}
               <div
                 style={{
                   padding: '12px',
@@ -2382,28 +2384,31 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1e293b', fontWeight: 700, fontSize: '0.85rem' }}>
                   <Zap size={15} color="#f59e0b" />
-                  <span>3. Modo de Operación (Modus Operandi)</span>
+                  <span>3. Modo de Operación y Capacidades en Vivo</span>
                 </div>
                 <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.75rem', color: '#475569', lineHeight: 1.5 }}>
                   <li>
-                    <b>🌿 Asesoría Agrícola:</b> Pregunta sobre poda, riego, abonado, control de plagas y labores de la finca.
+                    <b>📅 Calendario y Riego en Vivo:</b> Consulta turnos de riego (La Nana, El Moro), horarios, fechas y responsables con sincronización directa a la base de datos.
                   </li>
                   <li>
-                    <b>💰 Contabilidad Integrada:</b> Consulta balances, gastos o ingresos; el chat lee directamente las transacciones reales de la app sin inventar datos.
+                    <b>💰 Contabilidad y Balances Reales:</b> Consulta gastos, ventas, balance neto y liquidaciones individuales de socios (Ariel, Carlos) sin inventar cifras.
                   </li>
                   <li>
-                    <b>📷 Fotos & Cámara:</b> Sube imágenes de hojas, facturas o mapas para que la IA las analice al instante.
+                    <b>✍️ Acciones Directas en la DB:</b> Crea eventos en el calendario o apunta transacciones contables desde el chat con lenguaje natural.
                   </li>
                   <li>
-                    <b>🎙️ Notas de Voz Nativas:</b> Pulsa el micrófono para enviar audios reales a Gemini. La IA escucha tu voz, transcribe y responde o ejecuta tus instrucciones (incluso mientras caminas por los bancales).
+                    <b>🎙️ Micrófono Unificado con GPS:</b> Un solo botón para todo: dictar consultas, registrar transacciones o inventariar árboles y arquetas caminando por los bancales con telemetría GPS continua.
                   </li>
                   <li>
-                    <b>⚡ Cascada de IA Inteligente:</b> El sistema conecta siempre con el modelo más potente disponible. Si se agota la cuota, desciende automáticamente al siguiente sin interrumpir tu consulta.
+                    <b>📎 Botón '+' Multiformato:</b> Adjunta análisis foliares y de suelo en PDF, albaranes, fotos de plagas o archivos Excel/CSV para nutrir el conocimiento del chat.
+                  </li>
+                  <li>
+                    <b>⚡ Cascada de IA Inteligente:</b> Conexión multinivel con modelos Pro y Flash que desciende automáticamente si se agota la cuota para garantizar disponibilidad 24/7.
                   </li>
                 </ul>
               </div>
 
-              {/* Tarjeta 4: Módulo de Aprendizaje Continuo (Memoria de Finca) */}
+              {/* Tarjeta 4: Módulo de Aprendizaje Continuo (Memoria Nativa de Finca) */}
               <div
                 style={{
                   padding: '12px',
@@ -2418,24 +2423,25 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#166534', fontWeight: 700, fontSize: '0.85rem' }}>
                     <Brain size={16} color="#16a34a" />
-                    <span>4. Módulo de Aprendizaje Permanente</span>
+                    <span>4. Memoria y Aprendizaje Permanente (Nativo)</span>
                   </div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 8px', borderRadius: 10 }}>
                     {farmKnowledge.length} hechos grabados
                   </span>
                 </div>
                 <p style={{ fontSize: '0.76rem', color: '#14532d', margin: 0, lineHeight: 1.45 }}>
-                  La IA no empieza de cero: cuenta con <b>memoria viva en la base de datos</b>. Puedes enseñarle datos sobre parcelas, riegos, variedades o proveedores simplemente diciéndoselo en el chat:
+                  La IA no requiere botones adicionales: aprende de forma completamente natural en el chat. Almacena cada regla en <b>memoria híbrida (local y base de datos permanente)</b>:
                 </p>
                 <div style={{ backgroundColor: '#ffffff', padding: '8px 10px', borderRadius: 6, border: '1px solid #dcfce7', fontSize: '0.72rem', color: '#166534', fontFamily: 'monospace' }}>
-                  💡 <i>"Recuerda que la electroválvula del sector 2 riega 40 min los martes"</i>
+                  💡 <i>"Recuerda que la electroválvula del sector 2 riega 40 min los martes"</i><br />
+                  💡 <i>"Aprende que la dosis de quelato de hierro es 50g por árbol en primavera"</i>
                 </div>
                 <p style={{ fontSize: '0.73rem', color: '#15803d', margin: 0, lineHeight: 1.4 }}>
-                  El asistente retendrá esa regla permanentemente y la aplicará en todas las sesiones. Puedes preguntarle en cualquier momento qué cosas recuerda de la finca.
+                  El asistente retendrá esa regla permanentemente y la aplicará en todas las sesiones. Puedes preguntarle en cualquier momento: <i>"¿Qué cosas recuerdas de la finca?"</i>.
                 </p>
               </div>
 
-              {/* Tarjeta 5: Catastro Agrícola GPS y Descargas PDF / EXCEL */}
+              {/* Tarjeta 5: Catastro Agrícola GPS y Descargas PDF / EXCEL / KML / GeoJSON */}
               <div
                 style={{
                   padding: '12px',
@@ -2450,14 +2456,14 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0369a1', fontWeight: 700, fontSize: '0.85rem' }}>
                     <MapPin size={16} color="#0284c7" />
-                    <span>5. Catastro GPS y Descargas (PDF / Excel / KML)</span>
+                    <span>5. Catastro Satélite GPS y Descargas (PDF / Excel / KML / GeoJSON)</span>
                   </div>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, backgroundColor: '#e0f2fe', color: '#0284c7', padding: '1px 8px', borderRadius: 10 }}>
                     {farmInventory.length} puntos mapeados
                   </span>
                 </div>
                 <p style={{ fontSize: '0.76rem', color: '#075985', margin: 0, lineHeight: 1.45 }}>
-                  Puedes mapear árboles, arquetas y acequias caminando por la finca con el botón <b>🧭 (Navegación)</b> o pedirle al chat recopilaciones y descargarlas al instante:
+                  Mapea árboles, arquetas y tuberías caminando por la finca con el micrófono unificado, o visualiza y traza caminos interactivos con cálculo métrico en el mapa satélite:
                 </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 2 }}>
@@ -2566,7 +2572,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                       {
                         id: Date.now().toString(),
                         role: 'assistant',
-                        content: `### 🔒 Política de Privacidad, Control de Datos y Catastro Satélite\n\n**1. Confidencialidad y Privacidad:** Toda la información procesada en este chat (contabilidad, imágenes, audios, parcelas e inventario) es estrictamente privada de **Campito Jorox** y no se comparte con redes ni terceros externos.\n\n**2. Control y Descargas para el Administrador:** Tienes plena potestad para **descargar tus balances, informes de catastro en PDF o Excel, y mapas en KML (Google My Maps) o GeoJSON** en cualquier momento.\n\n**3. Módulo de Aprendizaje (Memoria de Finca):** La IA aprende de forma continua. Puedes decirle *"Recuerda que..."* o *"Guarda este dato..."* y lo almacenará en la base de datos permanente para futuras consultas.\n\n**4. Respaldo Automático:** Conversaciones, fotos, memoria y catastro se respaldan todas las semanas en tu Google Drive (*CAMPITO JOROX DATA* y carpeta *Chat IA Files*).\n\n**5. Catastro y Mapa Satélite EN VIVO:** Visualiza árboles con puntos de colores, traza caminos y senderos interactivos, y mapea caminando con dictado por voz y GPS continuo.\n\n**6. Capacidades:**\n- 🌿 Diagnóstico y manejo agronómico de cultivos\n- 💰 Análisis financiero y contable en tiempo real\n- 🗺️ Catastro satélite con trazador de caminos y senderos\n- 📷 Reconocimiento visual de facturas y plagas\n- 🎙️ Mapeo por voz geolocalizado sobre el terreno\n- ⚡ Conexión multinivel con respaldo automático`,
+                        content: `### 🌿 Guía Operativa, Privacidad y Capacidades del Asistente IA · Campito Jorox\n\n**1. 🔒 Privacidad y Confidencialidad Blindada:**\n- Todos los datos (contabilidad, calendario, facturas, audios, análisis de suelo y catastro) son estrictamente privados de los administradores de Campito Jorox.\n- No se comparten ni sincronizan con terceros ni redes externas.\n\n**2. 📅 Calendario y Riego en Vivo:**\n- Consulta en tiempo real turnos de riego (*La Nana*, *El Moro*), horas de inicio y fin, fechas y asignados.\n- Puedes pedirle directamente: *"¿Qué riego tenemos el sábado?"* o programar turnos: *"Crea un turno de riego para mañana de 8 a 10 con Carlos"*.\n\n**3. 💰 Contabilidad y Balances Reales:**\n- Consulta en vivo gastos, ventas, saldo neto y cuentas individuales de cada socio (*Ariel*, *Carlos*).\n- Apunta movimientos al vuelo: *"Apunta un gasto de 45€ en abono foliar"* y la IA lo registrará en la base de datos.\n\n**4. 🎙️ Micrófono Unificado con Telemetría GPS Continua:**\n- Un solo botón de micrófono para todo: hacer preguntas, dictar gastos o inventariar árboles mientras caminas por la finca.\n- Muestrea tu posición GPS cada 1.5s e interpola la ubicación exacta de cada árbol o arqueta descrita durante el paseo.\n\n**5. 🧠 Memoria y Aprendizaje Permanente Nativo:**\n- Enseña reglas sin botones ni menús: solo dile *"Recuerda que..."* o *"Aprende que..."*.\n- Se guarda de forma híbrida e instantánea en la memoria de tu dispositivo y en la base de datos permanente.\n- Pregunta en cualquier momento: *"¿Qué cosas recuerdas de la finca?"*.\n\n**6. 📎 Botón '+' Multiformato:**\n- Sube análisis de suelo o foliares en PDF, fotos de hojas con posibles plagas, albaranes o archivos Excel/CSV para alimentar el conocimiento del asistente.\n\n**7. 🗺️ Catastro Satélite y Descargas:**\n- Visualiza árboles geolocalizados por colores, traza caminos y calcula sus metros.\n- Descarga tus informes en **PDF**, **Excel**, **KML (Google My Maps)** y **GeoJSON** con un solo clic.\n\n**8. ⚡ Cascada Inteligente de Modelos IA:**\n- Conectado a los modelos más avanzados de Gemini (Pro y Flash) con conmutación automática ante saturación de cuota.`,
                         serverUsed: activeServer,
                       },
                     ]);
