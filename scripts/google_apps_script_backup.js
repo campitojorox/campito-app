@@ -27,6 +27,7 @@ const GITHUB_CONFIG = {
 const DRIVE_FOLDER_NAME = 'APP CAMPITO JOROX';
 const IMAGES_SUBFOLDER_NAME = 'Comprobantes';
 const CODE_SUBFOLDER_NAME = 'Codigo Fuente';
+const CHAT_SUBFOLDER_NAME = 'Chat IA Files';
 
 // ─── MENÚ EN GOOGLE SHEETS ───────────────────────────────────────────────────
 function onOpen() {
@@ -34,7 +35,8 @@ function onOpen() {
   ui.createMenu('🏕️ Campito Jorox')
     .addItem('🔄 Sincronizar datos + imágenes ahora', 'actualizarCampitoJorox')
     .addItem('📦 Respaldar código de la app (ZIP) ahora', 'respaldarCodigoGitHubMenu')
-    .addItem('🖼️ Respaldar imágenes solamente', 'respaldarImagenes')
+    .addItem('🖼️ Respaldar imágenes de contabilidad solamente', 'respaldarImagenes')
+    .addItem('💬 Respaldar Chat IA (Conversaciones + Archivos)', 'respaldarChatIAMenu')
     .addSeparator()
     .addItem('⏰ Activar Respaldo Automático Semanal (Lunes 04:00 AM)', 'activarRespaldoSemanal')
     .addSeparator()
@@ -220,9 +222,39 @@ function actualizarCampitoJorox() {
   sheetCal.getRange(1, 1, calRows.length, calHeaders.length).setValues(calRows);
   formatearEncabezado(sheetCal, calHeaders.length);
 
-  // 5. DESCARGAR IMÁGENES A DRIVE
-  Logger.log('Descargando imágenes a Google Drive...');
+  // 4b. ACTUALIZAR HOJA 'CHAT_IA' (HISTORIAL DE CONVERSACIONES)
+  let chatMessages = [];
+  try {
+    Logger.log('Descargando historial de Chat IA...');
+    const chatUrl = SUPABASE_CONFIG.url + '/rest/v1/chat_history?select=*&order=created_at.desc&limit=2000';
+    const chatRes = UrlFetchApp.fetch(chatUrl, {
+      method: 'get',
+      headers: {
+        'apikey': SUPABASE_CONFIG.serviceKey,
+        'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+      },
+      muteHttpExceptions: true
+    });
+    if (chatRes.getResponseCode() === 200) {
+      chatMessages = JSON.parse(chatRes.getContentText());
+      sincronizarHojaChatIA(ss, chatMessages);
+    }
+  } catch (chatErr) {
+    Logger.log('Aviso al sincronizar Chat IA: ' + chatErr.message);
+  }
+
+  // 5. DESCARGAR IMÁGENES DE CONTABILIDAD A DRIVE
+  Logger.log('Descargando comprobantes a Google Drive...');
   const imagenesGuardadas = respaldarImagenesInterno(transactions, sheetCont);
+
+  // 5b. DESCARGAR ARCHIVOS E IMÁGENES DE CHAT IA A 'Chat IA Files'
+  let chatArchivosGuardados = 0;
+  try {
+    Logger.log('Descargando archivos de Chat IA a Google Drive...');
+    chatArchivosGuardados = respaldarArchivosChatIAInterno(chatMessages);
+  } catch (chatFilesErr) {
+    Logger.log('Aviso al respaldar archivos de Chat IA: ' + chatFilesErr.message);
+  }
 
   // 6. RESPALDAR CÓDIGO FUENTE DE GITHUB TAMBIÉN
   try {
@@ -234,13 +266,124 @@ function actualizarCampitoJorox() {
   const msg = '✅ Sincronización completada:\n' +
     '• ' + transactions.length + ' transacciones\n' +
     '• ' + events.length + ' eventos\n' +
-    '• ' + imagenesGuardadas + ' imágenes nuevas guardadas\n' +
+    '• ' + chatMessages.length + ' mensajes de Chat IA guardados\n' +
+    '• ' + imagenesGuardadas + ' comprobantes en Drive\n' +
+    '• ' + chatArchivosGuardados + ' archivos en "Chat IA Files/"\n' +
     '• Código fuente respaldado en "Codigo Fuente/"';
   Logger.log(msg);
 
   try {
     SpreadsheetApp.getActiveSpreadsheet().toast(msg, '🏕️ Campito Jorox', 8);
   } catch (e) {}
+}
+
+// ─── HOJA CHAT IA EN SHEETS ──────────────────────────────────────────────────
+function sincronizarHojaChatIA(ss, chatMessages) {
+  let sheetChat = ss.getSheetByName('CHAT_IA');
+  if (!sheetChat) sheetChat = ss.insertSheet('CHAT_IA');
+  sheetChat.clearContents();
+
+  const chatHeaders = ['MessageID', 'Fecha', 'Hora', 'Usuario', 'Rol', 'Mensaje', 'Modelo IA', 'URL Archivo', 'Archivo en Drive'];
+  const chatRows = [chatHeaders];
+
+  for (let k = 0; k < chatMessages.length; k++) {
+    const msg = chatMessages[k];
+    const created = msg.created_at || '';
+    const dateStr = created ? created.split('T')[0] : '';
+    const timeStr = created ? (created.split('T')[1] || '').substring(0, 8) : '';
+
+    chatRows.push([
+      msg.id || '',
+      dateStr,
+      timeStr,
+      msg.user_name || 'Admin',
+      msg.role || 'user',
+      msg.content || '',
+      msg.model_used || '',
+      msg.file_url || '',
+      ''
+    ]);
+  }
+
+  sheetChat.getRange(1, 1, chatRows.length, chatHeaders.length).setValues(chatRows);
+  formatearEncabezado(sheetChat, chatHeaders.length);
+}
+
+// ─── RESPALDO INDEPENDIENTE DE CHAT IA DESDE EL MENÚ ─────────────────────────
+function respaldarChatIAMenu() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const chatUrl = SUPABASE_CONFIG.url + '/rest/v1/chat_history?select=*&order=created_at.desc&limit=2000';
+  const chatRes = UrlFetchApp.fetch(chatUrl, {
+    method: 'get',
+    headers: {
+      'apikey': SUPABASE_CONFIG.serviceKey,
+      'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+    },
+    muteHttpExceptions: true
+  });
+
+  if (chatRes.getResponseCode() !== 200) {
+    SpreadsheetApp.getUi().alert('❌ Error al conectar con Chat IA en Supabase: ' + chatRes.getContentText());
+    return;
+  }
+
+  const chatMessages = JSON.parse(chatRes.getContentText());
+  sincronizarHojaChatIA(ss, chatMessages);
+  const guardados = respaldarArchivosChatIAInterno(chatMessages);
+
+  SpreadsheetApp.getUi().alert(
+    '💬 Respaldo de Chat IA completado:\n\n' +
+    '• ' + chatMessages.length + ' mensajes guardados en la pestaña "CHAT_IA"\n' +
+    '• ' + guardados + ' archivos/imágenes respaldados en:\n' +
+    'Mi unidad / APP CAMPITO JOROX / ' + CHAT_SUBFOLDER_NAME + '/'
+  );
+}
+
+// ─── DESCARGA DE ARCHIVOS/FOTOS DE CHAT IA A GOOGLE DRIVE ────────────────────
+function respaldarArchivosChatIAInterno(chatMessages) {
+  if (!chatMessages || chatMessages.length === 0) return 0;
+
+  const rootFolders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
+  if (!rootFolders.hasNext()) {
+    Logger.log('❌ No se encontró la carpeta "' + DRIVE_FOLDER_NAME + '" en Google Drive.');
+    return 0;
+  }
+  const rootFolder = rootFolders.next();
+  const chatFolder = obtenerOCrearSubcarpeta(rootFolder, CHAT_SUBFOLDER_NAME);
+
+  let count = 0;
+
+  for (let i = 0; i < chatMessages.length; i++) {
+    const item = chatMessages[i];
+    if (!item.file_url || !item.file_url.startsWith('https://')) continue;
+
+    try {
+      const datePrefix = item.created_at ? item.created_at.split('T')[0] : 'sin-fecha';
+      const monthFolder = datePrefix.substring(0, 7);
+      const ext = item.file_name ? item.file_name.split('.').pop() : 'jpg';
+      const fileName = datePrefix + '-' + item.id + '-chat.' + ext;
+
+      const mesFolder = obtenerOCrearSubcarpeta(chatFolder, monthFolder);
+
+      // Si ya existe en Drive, saltar
+      const existing = mesFolder.getFilesByName(fileName);
+      if (existing.hasNext()) {
+        continue;
+      }
+
+      const fileRes = UrlFetchApp.fetch(item.file_url, { muteHttpExceptions: true });
+      if (fileRes.getResponseCode() !== 200) continue;
+
+      const contentType = fileRes.getHeaders()['Content-Type'] || 'image/jpeg';
+      const blob = fileRes.getBlob().setName(fileName).setContentType(contentType);
+      mesFolder.createFile(blob);
+      count++;
+    } catch (err) {
+      Logger.log('Error descargando archivo de chat ' + item.id + ': ' + err.message);
+    }
+  }
+
+  return count;
 }
 
 // ─── RESPALDO INDEPENDIENTE DE IMÁGENES ──────────────────────────────────────

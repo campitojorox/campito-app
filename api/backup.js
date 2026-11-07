@@ -18,9 +18,10 @@ export default async function handler(req, res) {
   const supabase = createClient(url, key);
 
   try {
-    const [txRes, evRes] = await Promise.all([
+    const [txRes, evRes, chatRes] = await Promise.all([
       supabase.from('transactions').select('*, profiles(name)').order('date', { ascending: false }),
-      supabase.from('events').select('*, profiles:responsible_id(name)').order('date', { ascending: false })
+      supabase.from('events').select('*, profiles:responsible_id(name)').order('date', { ascending: false }),
+      supabase.from('chat_history').select('*').order('created_at', { ascending: false }).limit(2000).catch(() => ({ data: [] }))
     ]);
 
     if (txRes.error) throw txRes.error;
@@ -57,11 +58,26 @@ export default async function handler(req, res) {
       };
     });
 
+    const chat_ia = (chatRes.data || []).map(msg => ({
+      MessageID: msg.id,
+      Fecha: msg.created_at ? msg.created_at.split('T')[0] : '',
+      Hora: msg.created_at ? msg.created_at.split('T')[1]?.substring(0, 8) : '',
+      Usuario: msg.user_name || 'Admin',
+      Rol: msg.role || 'user',
+      Mensaje: msg.content || '',
+      ModeloIA: msg.model_used || '',
+      ArchivoURL: msg.file_url || '',
+      ArchivoNombre: msg.file_name || ''
+    }));
+
     const format = req.query.format || 'json';
 
     if (format === 'csv') {
-      const table = req.query.table || 'contabilidad';
-      const rows = table === 'calendario' ? calendario : contabilidad;
+      const table = (req.query.table || 'contabilidad').toLowerCase();
+      let rows = contabilidad;
+      if (table === 'calendario') rows = calendario;
+      if (table === 'chat_ia' || table === 'chat') rows = chat_ia;
+
       if (rows.length === 0) {
         return res.send('');
       }
@@ -87,11 +103,13 @@ export default async function handler(req, res) {
       timestamp: new Date().toISOString(),
       counts: {
         contabilidad: contabilidad.length,
-        calendario: calendario.length
+        calendario: calendario.length,
+        chat_ia: chat_ia.length
       },
       data: {
         contabilidad,
-        calendario
+        calendario,
+        chat_ia
       }
     });
   } catch (err) {

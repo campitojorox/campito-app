@@ -718,6 +718,57 @@ export default function ChatIA() {
             serverUsed: serverThatAnswered,
           },
         ]);
+
+        // Persistir en segundo plano en Supabase para respaldo automático a Drive
+        (async () => {
+          try {
+            let uploadedFileUrl = null;
+            let uploadedFileName = null;
+
+            // Subir imagen/archivo si se adjuntó alguno
+            if (img && img.file) {
+              const fileExt = img.file.name ? img.file.name.split('.').pop() : 'jpg';
+              const cleanFileName = `chat-ia/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+              const { error: uploadErr } = await supabase.storage
+                .from('comprobantes')
+                .upload(cleanFileName, img.file, { contentType: img.file.type });
+
+              if (!uploadErr) {
+                const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
+                uploadedFileUrl = pubUrl?.publicUrl || null;
+                uploadedFileName = cleanFileName;
+              }
+            }
+
+            const { data: authData } = await supabase.auth.getUser();
+            const u = authData?.user;
+            const currentUserName = u?.user_metadata?.name || u?.email?.split('@')[0] || 'Admin';
+
+            // Guardar mensaje del usuario
+            await supabase.from('chat_history').insert({
+              role: 'user',
+              content: text || (img ? '[Archivo adjunto]' : ''),
+              file_url: uploadedFileUrl,
+              file_name: uploadedFileName,
+              user_id: u?.id || null,
+              user_name: currentUserName,
+              model_used: null,
+            });
+
+            // Guardar respuesta del asistente
+            await supabase.from('chat_history').insert({
+              role: 'assistant',
+              content: successResult,
+              file_url: null,
+              file_name: null,
+              user_id: u?.id || null,
+              user_name: 'Asistente IA',
+              model_used: `${serverThatAnswered.name} (${serverThatAnswered.level})`,
+            });
+          } catch (persistErr) {
+            console.warn('[ChatIA] Aviso al persistir para backup:', persistErr.message);
+          }
+        })();
       } else {
         const isQuota = lastError?.isQuota;
         setError(
