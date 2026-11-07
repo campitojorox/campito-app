@@ -229,13 +229,60 @@ export default function ChatIA() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState(null);
-  const [pendingImage, setPendingImage] = useState(null); // { dataUrl, file }
+  const [pendingImage, setPendingImage] = useState(null);
+  // Contexto de Supabase cargado UNA SOLA VEZ al montar el componente
+  const contextDataRef = useRef('');
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+
+  // ── Cargar contexto Supabase al abrir el chat (una vez, en paralelo) ──────────
+  useEffect(() => {
+    const loadContext = async () => {
+      try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        // Ambas consultas en paralelo para máxima velocidad
+        const [{ data: transactions }, { data: events }] = await Promise.all([
+          supabase
+            .from('transactions')
+            .select('date, type, amount, description, category')
+            .order('date', { ascending: false })
+            .limit(40),
+          supabase
+            .from('events')
+            .select('title, start_date, category')
+            .gte('start_date', thirtyDaysAgo.toISOString().split('T')[0])
+            .order('start_date', { ascending: true })
+            .limit(20),
+        ]);
+
+        let ctx = '';
+        if (transactions?.length > 0) {
+          const ingresos = transactions.filter(t => t.type === 'ingreso').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+          const gastos = transactions.filter(t => t.type === 'gasto').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+          ctx += `\n\n📊 DATOS REALES (${transactions.length} transacciones):\n`;
+          ctx += `Ingresos: €${ingresos.toFixed(2)} | Gastos: €${gastos.toFixed(2)} | Balance: €${(ingresos - gastos).toFixed(2)}\n`;
+          ctx += `Últimas transacciones:\n`;
+          transactions.slice(0, 12).forEach(t => {
+            ctx += `- [${t.date}] ${t.type?.toUpperCase()}: €${t.amount} — ${t.description || t.category || ''}\n`;
+          });
+        }
+        if (events?.length > 0) {
+          ctx += `\nEventos próximos:\n`;
+          events.forEach(e => { ctx += `- [${e.start_date}] ${e.title} ${e.category ? `(${e.category})` : ''}\n`; });
+        }
+        contextDataRef.current = ctx;
+      } catch (err) {
+        console.warn('No se pudo cargar contexto Supabase:', err.message);
+      }
+    };
+    loadContext();
+  }, []);
 
   // Auto-scroll al último mensaje
   useEffect(() => {
@@ -305,41 +352,8 @@ export default function ChatIA() {
     setError(null);
 
     try {
-      // Obtener contexto de Supabase (últimas transacciones y eventos)
-      let contextData = '';
-      try {
-        const { data: transactions } = await supabase
-          .from('transactions')
-          .select('date, type, amount, description, category')
-          .order('date', { ascending: false })
-          .limit(40);
-
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const { data: events } = await supabase
-          .from('events')
-          .select('title, start_date, category')
-          .gte('start_date', thirtyDaysAgo.toISOString().split('T')[0])
-          .order('start_date', { ascending: true })
-          .limit(20);
-
-        if (transactions?.length > 0) {
-          const ingresos = transactions.filter(t => t.type === 'ingreso').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-          const gastos = transactions.filter(t => t.type === 'gasto').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-          contextData += `\n\n📊 DATOS REALES (${transactions.length} transacciones):\n`;
-          contextData += `Ingresos: €${ingresos.toFixed(2)} | Gastos: €${gastos.toFixed(2)} | Balance: €${(ingresos - gastos).toFixed(2)}\n`;
-          contextData += `Últimas transacciones:\n`;
-          transactions.slice(0, 12).forEach(t => {
-            contextData += `- [${t.date}] ${t.type?.toUpperCase()}: €${t.amount} — ${t.description || t.category || ''}\n`;
-          });
-        }
-        if (events?.length > 0) {
-          contextData += `\nEventos próximos:\n`;
-          events.forEach(e => { contextData += `- [${e.start_date}] ${e.title} ${e.category ? `(${e.category})` : ''}\n`; });
-        }
-      } catch (dbErr) {
-        console.warn('No se pudo leer Supabase:', dbErr.message);
-      }
+      // Usar contexto ya cargado al inicio (sin volver a consultar Supabase)
+      const contextData = contextDataRef.current;
 
       // Preparar historial para Gemini (excluyendo mensaje de bienvenida)
       const history = updatedMessages
