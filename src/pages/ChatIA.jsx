@@ -1,10 +1,32 @@
 // src/pages/ChatIA.jsx — Chat IA Campito Jorox
-// Interfaz de chat con Gemini, contexto de finca agrícola
+// Interfaz de chat con Gemini 2.0 Flash — llamada directa desde el navegador
+// La API key se expone solo con VITE_ prefix (cliente). Para producción usar api/chat.js en Vercel.
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Send, Mic, Camera, StopCircle, Bot, User, AlertCircle } from 'lucide-react';
+import { supabase } from '../supabaseClient';
+
+// ─── Cliente Gemini ────────────────────────────────────────────────────────────
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
+
+const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de explotación agrícola.
+
+Tu función es ayudar con:
+- 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
+- 💰 **Contabilidad y finanzas**: análisis de transacciones, gastos, ingresos, resúmenes económicos
+- 📅 **Planificación**: organización de tareas, eventos, temporadas
+- 📊 **Análisis de datos**: interpretar los datos de la app, tendencias, estadísticas
+- 📝 **Documentación**: ayudar a registrar información sobre la finca
+- 🗺️ **Gestión territorial**: orientación sobre mapas, parcelas, zonas de la finca
+
+Cuando tengas datos de transacciones o eventos del contexto, úsalos para dar respuestas precisas y basadas en datos reales.
+Responde siempre en **español**, de forma clara, concisa y útil. Puedes usar formato markdown.
+Si te muestran una imagen, analízala en detalle relacionándola con el contexto de la finca.
+Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
 
 // ─── Estilos inline ────────────────────────────────────────────────────────────
 const styles = {
@@ -262,6 +284,11 @@ export default function ChatIA() {
     if (!text && !img) return;
     if (isLoading) return;
 
+    if (!genAI) {
+      setError('API key de Gemini no configurada. Revisa el archivo .env (VITE_GEMINI_API_KEY).');
+      return;
+    }
+
     // Construir mensaje del usuario
     const userMsg = {
       id: Date.now().toString(),
@@ -278,37 +305,74 @@ export default function ChatIA() {
     setError(null);
 
     try {
-      // Preparar historial para la API (sin el mensaje de bienvenida si es el primer intercambio real)
-      const apiMessages = updatedMessages
-        .filter(m => m.id !== 'welcome')
-        .map(m => ({ role: m.role, content: m.content }));
+      // Obtener contexto de Supabase (últimas transacciones y eventos)
+      let contextData = '';
+      try {
+        const { data: transactions } = await supabase
+          .from('transactions')
+          .select('date, type, amount, description, category')
+          .order('date', { ascending: false })
+          .limit(40);
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: apiMessages,
-          includeContext: true,
-        }),
-      });
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const { data: events } = await supabase
+          .from('events')
+          .select('title, start_date, category')
+          .gte('start_date', thirtyDaysAgo.toISOString().split('T')[0])
+          .order('start_date', { ascending: true })
+          .limit(20);
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${response.status}`);
+        if (transactions?.length > 0) {
+          const ingresos = transactions.filter(t => t.type === 'ingreso').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+          const gastos = transactions.filter(t => t.type === 'gasto').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+          contextData += `\n\n📊 DATOS REALES (${transactions.length} transacciones):\n`;
+          contextData += `Ingresos: €${ingresos.toFixed(2)} | Gastos: €${gastos.toFixed(2)} | Balance: €${(ingresos - gastos).toFixed(2)}\n`;
+          contextData += `Últimas transacciones:\n`;
+          transactions.slice(0, 12).forEach(t => {
+            contextData += `- [${t.date}] ${t.type?.toUpperCase()}: €${t.amount} — ${t.description || t.category || ''}\n`;
+          });
+        }
+        if (events?.length > 0) {
+          contextData += `\nEventos próximos:\n`;
+          events.forEach(e => { contextData += `- [${e.start_date}] ${e.title} ${e.category ? `(${e.category})` : ''}\n`; });
+        }
+      } catch (dbErr) {
+        console.warn('No se pudo leer Supabase:', dbErr.message);
       }
 
-      const data = await response.json();
+      // Preparar historial para Gemini (excluyendo mensaje de bienvenida)
+      const history = updatedMessages
+        .slice(0, -1) // sin el último (que ya lo enviamos aparte)
+        .filter(m => m.id !== 'welcome')
+        .map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content || '' }],
+        }));
+
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.0-flash',
+        systemInstruction: SYSTEM_PROMPT + contextData,
+      });
+
+      const chat = model.startChat({ history });
+      const result = await chat.sendMessage(text || '(imagen adjunta)');
+      const response = await result.response;
+      const aiText = response.text();
 
       setMessages(prev => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: data.message,
+          content: aiText,
         },
       ]);
     } catch (err) {
-      setError(err.message || 'No se pudo conectar con el asistente. Intenta de nuevo.');
+      console.error('Error Gemini:', err);
+      setError(err.message?.includes('API_KEY') 
+        ? 'API key inválida. Verifica VITE_GEMINI_API_KEY en .env'
+        : 'Error al conectar con el asistente. Intenta de nuevo.');
     } finally {
       setIsLoading(false);
     }
