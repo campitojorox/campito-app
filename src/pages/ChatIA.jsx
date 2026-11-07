@@ -38,7 +38,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
-import { processVoiceGeoSession } from '../services/voiceTreeExtractor';
+import { interpolateGpsAtAudioTime } from '../utils/geoAudioInterpolation';
 import {
   exportInventoryToExcel,
   exportInventoryToPDF,
@@ -120,36 +120,42 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
 - El sistema cuenta con un visor satélite en vivo que dibuja puntos y líneas de colores (sin iconos), permite trazar nuevos caminos o senderos interactivos y calcular sus distancias métricas.
 - Puedes responder sobre conteo de árboles por variedad (Hass, Bacon, etc.), estado fitosanitario (saludable, clorosis, poda), longitud de caminos, y guiar al usuario para exportar a **Google My Maps (KML), PDF, Excel y GeoJSON**.
 
-🛰️ **CONEXIÓN Y TELEMETRÍA GPS DEL MÓVIL EN TIEMPO REAL**:
-- La app de Campito Jorox **SÍ tiene acceso directo y en tiempo real al sensor GPS del dispositivo móvil del usuario**.
+🛰️ **CONEXIÓN Y TELEMETRÍA GPS CONTINUA (MICRÓFONO UNIFICADO)**:
+- La app de Campito Jorox utiliza un **ÚNICO botón de micrófono** para todo: hacer preguntas, registrar gastos o inventariar árboles y elementos mientras caminas por la finca.
+- Cada grabación de audio obtiene y muestrea de forma continua la posición GPS en alta precisión (enableHighAccuracy) cada 1.5s (o la posición fija si estás quieto).
 - Si el usuario te pregunta si recibes datos de coordenadas del móvil o si tienes GPS, responde SIEMPRE ROTUNDAMENTE QUE SÍ:
   "**¡Sí! La app de Campito Jorox está conectada al GPS de tu móvil en tiempo real.**"
   Menciónale sus coordenadas actuales si aparecen indicadas en la telemetría del contexto (latitud, longitud y precisión en metros).
-- Explica de forma concisa y práctica cómo obtiene el sistema las coordenadas para registrar árboles y caminos:
-  1. 🧭 **Modo 'Caminar y Mapear' con Voz + GPS continuo (Botón de la brújula/navegación en la barra de abajo):**
-     - Muestrea el GPS de alta precisión (enableHighAccuracy) de forma continua cada 1 a 1.5 segundos mientras caminas por los bancales y graba audio simultáneamente.
-     - Sincronización espacio-temporal: cuando dices por ejemplo *"Aguacate Hass con clorosis"* o *"Arqueta de riego norte"*, la IA detecta el segundo del audio en que lo nombraste e interpola la posición GPS exacta de tus pasos en ese segundo.
-     - Automáticamente guarda cada árbol o arqueta en el mapa satélite y permite correcciones por voz como *"borra el último árbol"*.
-  2. 💬 **Registro puntual por Chat o Nota de voz:**
-     - En cada mensaje de texto o nota de voz enviada al chat, la app adjunta automáticamente tus coordenadas GPS en vivo del móvil.
-     - Si estás frente a un árbol o elemento y dices *"Registra un aguacate aquí"* o *"Apunta esta arqueta"*, toma tus coordenadas en vivo para guardarlo al instante en el mapa usando el comando:
-       [[REGISTRAR_PUNTO: {"name": "Aguacate Hass", "category": "arbol|riego|arqueta|mojon|camino", "variety_type": "Hass", "status": "saludable|clorosis|poda_requerida|enfermo", "latitude": 0.0, "longitude": 0.0, "notes": "Notas"}]]
-  3. 🗺️ **Visor Satélite y Trazador de Caminos (Botón de mapa 🗺️):**
-     - Muestra las lindes oficiales del Catastro (Parcelas 195 y 196 de Campito Jorox), cotas y caminos.
-     - Puedes activar el modo "Dibujar Camino / Sendero" para trazar caminos haciendo clics/toques en la pantalla sobre la foto satélite, calculando su distancia métrica exacta.
-  4. 📥 **Exportación e Integración con Google My Maps:**
-     - Puedes solicitarme o pulsar para descargar el archivo KML oficial que se abre en Google My Maps y Google Earth, además de GeoJSON, Excel y PDF.
 
-🎙️ **MENSAJES DE VOZ DIRECTOS DEL AGRICULTOR**:
-- El usuario puede hablarte por notas de voz grabadas directamente desde su teléfono mientras trabaja en la finca.
-- Cuando recibas un audio en el mensaje, escucha con atención la voz del agricultor.
-- Si el mensaje incluye audio, transcribe o interpreta sus palabras con naturalidad y responde directamente a su duda o petición técnica, agrícola o contable.
+🎙️ **PROCESAMIENTO DE AUDIO CON GPS E INVENTARIO AUTOMÁTICO**:
+- Escucha atentamente la voz del agricultor y actúa con inteligencia según su intención:
+  1. **Si consulta dudas agronómicas, plagas, contabilidad o generales:** Responde directamente en Markdown con claridad.
+  2. **Si el usuario menciona, describe o cuenta árboles, plantas, arquetas o elementos de riego:**
+     (Ejemplos: *"Aquí hay un aguacate Hass saludable"*, *"Apunta esta arqueta de riego"*, *"Caminando por este bancal: primer aguacate Hass podado... más arriba otro con clorosis... y una arqueta al final"*):
+     - Confirma en tu texto qué elementos has identificado y ubicado en el catastro.
+     - Incluye OBLIGATORIAMENTE al final de tu respuesta el comando estructurado con el segundo del audio en que nombró cada elemento (\`timestamp_audio_s\`):
+       [[REGISTRAR_PUNTOS: [
+         {
+           "tipo": "aguacate|limonero|olivo|arqueta|tubería|mojón|otro",
+           "variedad": "Hass|Bacon|Fuerte|etc|null",
+           "estado": "saludable|clorosis|poda_requerida|enfermo|observaciones",
+           "timestamp_audio_s": 2.5,
+           "observaciones": "Notas u observaciones del agricultor"
+         }
+       ] ]]
+  3. **Si da una orden de borrado o cancelación por voz:**
+     (Ejemplos: *"Borra el último árbol"*, *"Elimina el aguacate que acabo de decir"*, *"Cancela este punto"*):
+     - Confirma qué elemento has eliminado del catastro.
+     - Incluye al final el comando estructurado:
+       [[BORRAR_PUNTO: {"target": "ultimo|especifico", "query": "descripción del punto a borrar"}]]
+  4. **Si pide recordar o aprender una regla:**
+     - Confirma que queda grabado en la memoria permanente de la finca e incluye:
+       [[MEMORIA: {"category": "cultivo|riego|parcela|general", "title": "...", "content": "..."}]]
 
-🗑️ **BORRADO Y CORRECCIÓN DE PUNTOS POR VOZ O TEXTO**:
-- Si el usuario te pide por voz o texto borrar, eliminar o corregir un árbol, arqueta o punto del catastro (ej: "borra el último árbol", "elimina el aguacate Bacon", "cancela el último punto registrado", "borra el árbol de aquí"):
-  1. Confirma claramente qué elemento has eliminado del catastro.
-  2. Incluye obligatoriamente al final de tu respuesta el comando estructurado:
-     [[BORRAR_PUNTO: {"target": "ultimo|nombre|categoria", "query": "nombre o descripción del elemento a borrar"}]]
+🗺️ **VISOR SATÉLITE, CAMINOS Y EXPORTACIÓN**:
+- Muestra las parcelas 195 y 196, cotas y caminos en el visor satélite accesible desde el icono de mapa en el header.
+- Se puede activar el modo "Dibujar Camino / Sendero" para trazar caminos tocando sobre el satélite con cálculo de metros.
+- Los datos se pueden exportar a Google My Maps (KML), GeoJSON, Excel y PDF en cualquier momento.
 
 Tu función es ayudar con:
 - 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
@@ -613,15 +619,15 @@ export default function ChatIA() {
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState('all');
   const [isProcessingVoiceGeo, setIsProcessingVoiceGeo] = useState(false);
 
-  // Hook para captura sincronizada de audio continuo y telemetría GPS
+  // Hook unificado para captura sincronizada de audio continuo y telemetría GPS
   const {
-    isRecording: isWalkingRecording,
-    elapsedSeconds: walkingSeconds,
+    isRecording,
+    elapsedSeconds: recordingSeconds,
     currentGps,
     gpsPointsCount,
     accuracyWarning,
-    startTracking: startWalkingTracking,
-    stopTracking: stopWalkingTracking,
+    startTracking,
+    stopTracking,
   } = useVoiceGeoTracker();
 
   const [autoFallback, setAutoFallback] = useState(true);
@@ -637,9 +643,7 @@ export default function ChatIA() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [pendingAudio, setPendingAudio] = useState(null); // { blob, dataUrl, mimeType, duration }
+  const [pendingAudio, setPendingAudio] = useState(null); // { blob, dataUrl, mimeType, duration, t0, gpsTrack }
   const [error, setError] = useState(null);
   const [pendingImage, setPendingImage] = useState(null);
 
@@ -651,10 +655,6 @@ export default function ChatIA() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const recordingTimerRef = useRef(null);
-  const recordingStreamRef = useRef(null);
 
   // Auto-scroll
   useEffect(() => {
@@ -947,127 +947,6 @@ export default function ChatIA() {
     }
   };
 
-  // ── Iniciar / Detener sesión de Mapeo de Voz y GPS en Movimiento ─────────────
-  const handleToggleWalkingSession = async () => {
-    if (!isWalkingRecording) {
-      try {
-        await startWalkingTracking();
-      } catch (err) {
-        setError(`No se pudo iniciar el modo caminar y mapear: ${err.message}`);
-      }
-      return;
-    }
-
-    // Detener y procesar con Gemini
-    setIsProcessingVoiceGeo(true);
-    const processingMsgId = (Date.now() + 1).toString();
-
-    try {
-      const sessionResult = await stopWalkingTracking();
-      if (!sessionResult || sessionResult.gpsTrack.length === 0) {
-        setError('No se recogieron suficientes datos GPS durante el recorrido.');
-        setIsProcessingVoiceGeo(false);
-        return;
-      }
-
-      // Guardar track para opción de convertirlo en camino
-      setLastRecordedGpsTrack(sessionResult.gpsTrack);
-
-      // Mensaje de espera en el chat
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: processingMsgId,
-          role: 'assistant',
-          content: `🛰️ **Procesando recorrido en campo...**\n- Duración: **${sessionResult.durationSeconds.toFixed(0)}s**\n- Muestras GPS recogidas: **${sessionResult.totalGpsSamples} lecturas**\n- Conectando con Gemini para transcribir e interpolar coordenadas...`,
-          serverUsed: activeServer,
-        },
-      ]);
-
-      const extraction = await processVoiceGeoSession({
-        audioBlob: sessionResult.audioBlob,
-        t0: sessionResult.t0,
-        gpsTrack: sessionResult.gpsTrack,
-      });
-
-      const addedTrees = extraction.trees || [];
-      const deletedEntities = extraction.deletedEntities || [];
-
-      // Si se borraron elementos que ya estaban en la base de datos
-      const deletedDbIds = deletedEntities
-        .map((d) => d.deletedDatabaseId)
-        .filter(Boolean);
-
-      if (deletedDbIds.length > 0) {
-        setFarmInventory((prev) => prev.filter((item) => !deletedDbIds.includes(item.id)));
-      }
-
-      if (addedTrees.length > 0) {
-        setFarmInventory((prev) => [...addedTrees, ...prev]);
-
-        // Inyectar en contexto
-        addedTrees.forEach((t) => {
-          contextDataRef.current += `\n- [${(t.tipo || 'arbol').toUpperCase()}] ${t.tipo} ${t.variedad || ''} | Estado: ${t.estado || 'saludable'} | Lat/Lng: ${t.coordenadas?.lat}, ${t.coordenadas?.lng}`;
-        });
-      }
-
-      // Preparar mensaje de respuesta detallado con adiciones y borrados
-      if (addedTrees.length > 0 || deletedEntities.length > 0) {
-        let msgContent = `### 🛰️ Recorrido de Mapeo y Voz Completado\n\n`;
-
-        if (addedTrees.length > 0) {
-          msgContent += `**🌳 Elementos agregados al catastro (${addedTrees.length}):**\n\n` +
-            addedTrees
-              .map(
-                (t, i) =>
-                  `${i + 1}. **${t.tipo} ${t.variedad || ''}**\n   - Estado: \`${t.estado || 'saludable'}\`\n   - Coordenadas: \`${t.coordenadas?.lat}, ${t.coordenadas?.lng}\` (Precisión: ±${t.accuracy_m}m)${t.advertencia_gps ? ' ⚠️ *Alerta dispersión*' : ''}\n   - Observaciones: *${t.observaciones || 'Sin notas'}*`
-              )
-              .join('\n\n') + '\n\n';
-        }
-
-        if (deletedEntities.length > 0) {
-          msgContent += `**🗑️ Acciones de borrado por voz ejecutadas (${deletedEntities.length}):**\n` +
-            deletedEntities
-              .map((d) => {
-                const targetText = d.item ? `${d.item.tipo} ${d.item.variedad || ''}` : (d.deletedDatabaseName || d.description || 'Último punto');
-                return `- Eliminado por orden de voz: **${targetText}** (*${d.description}*)`;
-              })
-              .join('\n') + '\n\n';
-        }
-
-        msgContent += `📌 *Actualizado en el mapa satélite y en la base de datos de Campito Jorox.*`;
-
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === processingMsgId
-              ? {
-                  ...m,
-                  content: msgContent,
-                  inventoryExportBatch: addedTrees.length > 0 ? addedTrees : null,
-                }
-              : m
-          )
-        );
-      } else {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === processingMsgId
-              ? {
-                  ...m,
-                  content: `⚠️ No se detectaron menciones de árboles ni órdenes de borrado en el audio grabado. Comprueba que el micrófono haya capturado bien tu voz y vuelve a intentarlo.`,
-                }
-              : m
-          )
-        );
-      }
-    } catch (walkErr) {
-      console.error('Error procesando sesión de caminata:', walkErr);
-      setError(`Error procesando audio y telemetría GPS: ${walkErr.message}`);
-    } finally {
-      setIsProcessingVoiceGeo(false);
-    }
-  };
-
   // ── Enviar mensaje con cascada/fallback entre los 3 servidores ────────────────
   const sendMessage = useCallback(
     async (textOverride = null, imageData = null, audioData = null) => {
@@ -1113,15 +992,26 @@ export default function ChatIA() {
         .map((m) => ({ role: m.role, content: m.content || '' }));
 
       const currentGpsInfo = deviceGpsRef.current;
-      const gpsContextSnippet = currentGpsInfo
-        ? `\n\n📍 **TELEMETRÍA GPS DEL DISPOSITIVO DEL USUARIO EN TIEMPO REAL (MÓVIL)**:
-- Latitud actual: ${currentGpsInfo.lat.toFixed(6)}
-- Longitud actual: ${currentGpsInfo.lng.toFixed(6)}
-- Precisión satelital: ±${currentGpsInfo.accuracy ? currentGpsInfo.accuracy.toFixed(1) + 'm' : '3.0m'}
-- Estado: Conectado y geolocalizado en Campito Jorox.
-*INSTRUCCIÓN CRUCIAL: Si el usuario te pregunta si recibes datos de coordenadas del móvil, o cómo obtienes el GPS para árboles y caminos, confirma rotundamente que SÍ, indicando que actualmente su teléfono marca ${currentGpsInfo.lat.toFixed(6)}, ${currentGpsInfo.lng.toFixed(6)} con ±${currentGpsInfo.accuracy ? currentGpsInfo.accuracy.toFixed(1) + 'm' : '3m'} de precisión en Campito Jorox. Si te pide registrar un árbol, punto o elemento "aquí", regístralo con estas coordenadas usando [[REGISTRAR_PUNTO: ...]].*`
-        : `\n\n📍 **ESTADO GPS DEL DISPOSITIVO**:
-El navegador y la app de Campito Jorox tienen soporte de geolocalización activa y el modo "Caminar y Mapear con Voz + GPS" (Botón 🧭) que rastrea continuamente las coordenadas satelitales cada 1.5s. Si el usuario te pregunta si recibes coordenadas del móvil, responde SIEMPRE que SÍ y explícale con total claridad cómo funciona el rastreo satelital.`;
+      const audTrack = aud?.gpsTrack || [];
+      const hasTrack = audTrack.length > 1;
+
+      let gpsContextSnippet = '';
+      if (hasTrack) {
+        gpsContextSnippet = `\n\n🛰️ **TELEMETRÍA GPS DEL RECORRIDO EN AUDIO (${audTrack.length} lecturas continuas)**:
+- Inicio audio (t0): ${aud.t0}
+- Duración: ${aud.duration}s
+- Punto inicial: [${audTrack[0]?.lat.toFixed(6)}, ${audTrack[0]?.lng.toFixed(6)}]
+- Punto final: [${audTrack[audTrack.length - 1]?.lat.toFixed(6)}, ${audTrack[audTrack.length - 1]?.lng.toFixed(6)}]
+- Precisión satelital: ±${(audTrack.reduce((s, p) => s + p.accuracy, 0) / audTrack.length).toFixed(1)}m.
+*INSTRUCCIÓN: El usuario caminaba por la finca mientras hablaba. Si menciona árboles, arquetas, tuberías o elementos a lo largo del camino, confirma en el texto y genera [[REGISTRAR_PUNTOS: [...] ]] con timestamp_audio_s para cada uno.*`;
+      } else if (currentGpsInfo || audTrack.length === 1) {
+        const pt = audTrack[0] || currentGpsInfo;
+        gpsContextSnippet = `\n\n📍 **UBICACIÓN GPS EN TIEMPO REAL DEL DISPOSITIVO**:
+- Coordenadas: [${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}] (Precisión: ±${pt.accuracy ? pt.accuracy.toFixed(1) + 'm' : '3m'}).
+*INSTRUCCIÓN: Si el usuario te pregunta si recibes datos de coordenadas del móvil o cómo obtienes el GPS para árboles y caminos, confirma rotundamente que SÍ, indicando que actualmente su teléfono marca ${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)} con ±${pt.accuracy ? pt.accuracy.toFixed(1) + 'm' : '3m'} de precisión en Campito Jorox. Si te pide registrar un árbol o elemento, usa [[REGISTRAR_PUNTOS: [...] ]] o [[REGISTRAR_PUNTO: ...]].*`;
+      } else {
+        gpsContextSnippet = `\n\n📍 **ESTADO GPS DEL DISPOSITIVO**: La geolocalización está habilitada en el navegador y cada audio muestrea el GPS en alta precisión. Si el usuario pregunta si recibes coordenadas del móvil, dile rotundamente que SÍ.`;
+      }
 
       const systemInstruction = SYSTEM_PROMPT + contextDataRef.current + gpsContextSnippet;
 
@@ -1169,6 +1059,8 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
         // Detección y extracción de aprendizaje para la memoria permanente de la finca
         let displayedContent = successResult;
         let learnedMemory = null;
+        let newlyAddedBatch = [];
+
         const memMatch = successResult.match(/\[\[MEMORIA:\s*(\{.*?\})\s*\]\]/s);
         if (memMatch) {
           try {
@@ -1176,6 +1068,99 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
             displayedContent = successResult.replace(memMatch[0], '').trim();
           } catch (e) {
             console.warn('Error al parsear bloque de memoria:', e);
+          }
+        }
+
+        // 1. Detección y ejecución de registro de múltiples puntos con GPS continuo interpolado
+        const regPointsMatch = successResult.match(/\[\[REGISTRAR_PUNTOS:\s*(\[.*?\])\s*\]\]/s);
+        if (regPointsMatch) {
+          try {
+            const items = JSON.parse(regPointsMatch[1]);
+            displayedContent = displayedContent.replace(regPointsMatch[0], '').trim();
+
+            if (Array.isArray(items) && items.length > 0) {
+              const audTrack = aud?.gpsTrack || (deviceGpsRef.current ? [{ ...deviceGpsRef.current, timestamp: Date.now() }] : []);
+              const t0 = aud?.t0 || Date.now();
+
+              for (const item of items) {
+                const geo = interpolateGpsAtAudioTime({
+                  t0,
+                  gpsTrack: audTrack,
+                  timestampAudioSec: Number(item.timestamp_audio_s) || 0,
+                });
+
+                const lat = geo.lat || currentGpsInfo?.lat || 36.72595;
+                const lng = geo.lng || currentGpsInfo?.lng || -4.89462;
+                const acc = geo.accuracy_m || currentGpsInfo?.accuracy || 3.0;
+
+                const name = item.name || `${item.tipo || 'Árbol'} ${item.variedad || ''}`.trim();
+                const category = item.category || item.tipo || 'arbol';
+
+                const { data: newRow, error: insErr } = await supabase
+                  .from('farm_inventory')
+                  .insert({
+                    name,
+                    category,
+                    variety_type: item.variedad || item.variety_type || null,
+                    status: item.estado || item.status || 'saludable',
+                    latitude: lat,
+                    longitude: lng,
+                    accuracy_meters: acc,
+                    notes: item.observaciones || item.notes || 'Registrado por voz en Campito Jorox',
+                    is_active: true,
+                  })
+                  .select()
+                  .single();
+
+                if (!insErr && newRow) {
+                  newlyAddedBatch.push(newRow);
+                  contextDataRef.current += `\n- [${(newRow.category || 'arbol').toUpperCase()}] ${newRow.name} (${newRow.variety_type || ''}) | Lat/Lng: ${newRow.latitude}, ${newRow.longitude}`;
+                }
+              }
+
+              if (newlyAddedBatch.length > 0) {
+                setFarmInventory((prev) => [...newlyAddedBatch, ...prev]);
+              }
+            }
+          } catch (e) {
+            console.warn('Error al procesar bloque REGISTRAR_PUNTOS:', e);
+          }
+        }
+
+        // 2. Detección y ejecución de orden de registro de punto único
+        const regPointMatch = successResult.match(/\[\[REGISTRAR_PUNTO:\s*(\{.*?\})\s*\]\]/s);
+        if (regPointMatch) {
+          try {
+            const regData = JSON.parse(regPointMatch[1]);
+            displayedContent = displayedContent.replace(regPointMatch[0], '').trim();
+
+            const lat = Number(regData.latitude) || (currentGpsInfo ? currentGpsInfo.lat : 36.72595);
+            const lng = Number(regData.longitude) || (currentGpsInfo ? currentGpsInfo.lng : -4.89462);
+            const acc = Number(regData.accuracy_meters) || (currentGpsInfo ? currentGpsInfo.accuracy : 3.0);
+
+            const { data: newPoint, error: insErr } = await supabase
+              .from('farm_inventory')
+              .insert({
+                name: regData.name || regData.tipo || 'Punto registrado',
+                category: regData.category || 'arbol',
+                variety_type: regData.variety_type || regData.variedad || null,
+                status: regData.status || regData.estado || 'saludable',
+                latitude: lat,
+                longitude: lng,
+                accuracy_meters: acc,
+                notes: regData.notes || regData.observaciones || 'Registrado con GPS desde Chat IA',
+                is_active: true,
+              })
+              .select()
+              .single();
+
+            if (!insErr && newPoint) {
+              newlyAddedBatch.push(newPoint);
+              setFarmInventory((prev) => [newPoint, ...prev]);
+              contextDataRef.current += `\n- [${(newPoint.category || 'arbol').toUpperCase()}] ${newPoint.name} (${newPoint.variety_type || ''}) | Estado: ${newPoint.status} | Lat/Lng: ${newPoint.latitude}, ${newPoint.longitude}`;
+            }
+          } catch (e) {
+            console.warn('Error al procesar orden de registro de punto:', e);
           }
         }
 
@@ -1206,42 +1191,6 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
             }
           } catch (e) {
             console.warn('Error al procesar orden de borrado de punto:', e);
-          }
-        }
-
-        // Detección y ejecución de orden de registro de punto con GPS en tiempo real
-        const regPointMatch = successResult.match(/\[\[REGISTRAR_PUNTO:\s*(\{.*?\})\s*\]\]/s);
-        if (regPointMatch) {
-          try {
-            const regData = JSON.parse(regPointMatch[1]);
-            displayedContent = displayedContent.replace(regPointMatch[0], '').trim();
-
-            const lat = Number(regData.latitude) || (currentGpsInfo ? currentGpsInfo.lat : 36.72595);
-            const lng = Number(regData.longitude) || (currentGpsInfo ? currentGpsInfo.lng : -4.89462);
-            const acc = Number(regData.accuracy_meters) || (currentGpsInfo ? currentGpsInfo.accuracy : 3.0);
-
-            const { data: newPoint, error: insErr } = await supabase
-              .from('farm_inventory')
-              .insert({
-                name: regData.name || regData.tipo || 'Punto registrado',
-                category: regData.category || 'arbol',
-                variety_type: regData.variety_type || regData.variedad || null,
-                status: regData.status || regData.estado || 'saludable',
-                latitude: lat,
-                longitude: lng,
-                accuracy_meters: acc,
-                notes: regData.notes || regData.observaciones || 'Registrado con GPS desde Chat IA',
-                is_active: true,
-              })
-              .select()
-              .single();
-
-            if (!insErr && newPoint) {
-              setFarmInventory((prev) => [newPoint, ...prev]);
-              contextDataRef.current += `\n- [${(newPoint.category || 'arbol').toUpperCase()}] ${newPoint.name} (${newPoint.variety_type || ''}) | Estado: ${newPoint.status} | Lat/Lng: ${newPoint.latitude}, ${newPoint.longitude}`;
-            }
-          } catch (e) {
-            console.warn('Error al procesar orden de registro de punto:', e);
           }
         } else if (text) {
           // Heurística de respaldo si el usuario pidió explícitamente borrar por voz o texto
@@ -1295,6 +1244,7 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
             content: displayedContent,
             serverUsed: serverThatAnswered,
             learnedMemory: learnedMemory || null,
+            inventoryExportBatch: newlyAddedBatch.length > 0 ? newlyAddedBatch : null,
           },
         ]);
 
@@ -1421,98 +1371,51 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
     e.target.value = '';
   };
 
-  // Grabación de audio multimodal nativo con Gemini (iOS Safari / Android compatible)
+  // Grabación unificada de audio y telemetría GPS continua
   const handleMicClick = async () => {
-    if (isWalkingRecording) {
-      setError('Tienes activa una sesión de caminata y mapeo con Voz + GPS. Finalízala antes de grabar una nota de voz directa.');
-      return;
-    }
-
     if (isRecording) {
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
       try {
-        mediaRecorderRef.current?.stop();
+        const sessionResult = await stopTracking();
+        if (!sessionResult || !sessionResult.audioBlob) return;
+
+        const { audioBlob, t0, durationSeconds, gpsTrack } = sessionResult;
+
+        // Si se registraron múltiples puntos GPS, guardar para caminos/senderos
+        if (gpsTrack && gpsTrack.length > 1) {
+          setLastRecordedGpsTrack(gpsTrack);
+        }
+
+        // Asegurar que al menos tengamos la posición actual del dispositivo si el track tiene 0 lecturas
+        const effectiveGpsTrack = gpsTrack && gpsTrack.length > 0
+          ? gpsTrack
+          : (deviceGpsRef.current ? [{ ...deviceGpsRef.current, timestamp: t0 }] : []);
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPendingAudio({
+            blob: audioBlob,
+            dataUrl: reader.result,
+            mimeType: audioBlob.type || 'audio/webm',
+            duration: Math.max(1, Math.round(durationSeconds)),
+            t0,
+            gpsTrack: effectiveGpsTrack,
+          });
+        };
+        reader.readAsDataURL(audioBlob);
       } catch (err) {
-        console.warn('Error al detener MediaRecorder:', err);
+        console.error('Error deteniendo grabación de voz:', err);
+        setError('Error al procesar la grabación de voz.');
       }
-      setIsRecording(false);
       return;
     }
 
     try {
       setPendingAudio(null);
       setError(null);
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      recordingStreamRef.current = stream;
-
-      // Detección de códec compatible (iOS Safari soporta audio/mp4 o audio/webm)
-      let mimeType = 'audio/webm;codecs=opus';
-      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          if (MediaRecorder.isTypeSupported('audio/mp4')) mimeType = 'audio/mp4';
-          else if (MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
-          else if (MediaRecorder.isTypeSupported('audio/ogg')) mimeType = 'audio/ogg';
-          else mimeType = '';
-        }
-      }
-
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-
-      const startMs = Date.now();
-      setRecordingSeconds(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds(Math.max(1, Math.round((Date.now() - startMs) / 1000)));
-      }, 1000);
-
-      recorder.onstop = () => {
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-        stream.getTracks().forEach((t) => t.stop());
-        const totalDuration = Math.max(1, Math.round((Date.now() - startMs) / 1000));
-        const finalBlob = new Blob(audioChunksRef.current, {
-          type: mimeType || recorder.mimeType || 'audio/webm',
-        });
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setPendingAudio({
-            blob: finalBlob,
-            dataUrl: reader.result,
-            mimeType: finalBlob.type || 'audio/webm',
-            duration: totalDuration,
-          });
-        };
-        reader.readAsDataURL(finalBlob);
-      };
-
-      recorder.start(250);
-      setIsRecording(true);
+      await startTracking();
     } catch (err) {
-      console.error('Error accediendo al micrófono:', err);
-      setError('No se pudo acceder al micrófono. Por favor verifica los permisos en tu navegador o móvil.');
-      setIsRecording(false);
+      console.error('Error iniciando grabación:', err);
+      setError('No se pudo acceder al micrófono o GPS. Verifica los permisos en tu navegador o móvil.');
     }
   };
 
@@ -3180,68 +3083,94 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
         </div>
       )}
 
-      {/* ─── Grabando Audio en Directo ────────────────────────────────────────── */}
+      {/* ─── Grabando Audio con Telemetría GPS en Directo ────────────────────── */}
       {isRecording && (
         <div
           style={{
-            padding: '8px 14px',
-            backgroundColor: '#fef2f2',
-            borderTop: '1px solid #fecaca',
+            padding: '10px 14px',
+            backgroundColor: '#0f172a',
+            color: '#ffffff',
+            borderTop: '2px solid #00979d',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 10,
+            flexDirection: 'column',
+            gap: 6,
+            zIndex: 10,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#dc2626' }}>
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                backgroundColor: '#dc2626',
-                display: 'inline-block',
-                animation: 'chatPulseRed 1.2s infinite ease-in-out',
-              }}
-            />
-            <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>
-              Grabando mensaje de voz...
-            </span>
-            <span
-              style={{
-                fontSize: '0.78rem',
-                backgroundColor: '#fee2e2',
-                color: '#991b1b',
-                padding: '1px 8px',
-                borderRadius: 12,
-                fontWeight: 700,
-                fontFamily: 'monospace',
-              }}
-            >
-              {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  display: 'inline-block',
+                  animation: 'chatPulseRed 1.2s infinite ease-in-out',
+                }}
+              />
+              <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>
+                Grabando con GPS activo...
+              </span>
+              <span
+                style={{
+                  fontSize: '0.78rem',
+                  backgroundColor: '#334155',
+                  color: '#38bdf8',
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                }}
+              >
+                {Math.floor(recordingSeconds / 60)}:{(recordingSeconds % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {currentGps ? (
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    backgroundColor: accuracyWarning ? '#78350f' : '#065f46',
+                    color: accuracyWarning ? '#fef08a' : '#a7f3d0',
+                    fontWeight: 600,
+                  }}
+                >
+                  📍 ±{currentGps.accuracy?.toFixed(1)}m ({gpsPointsCount} lecturas)
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>📍 Buscando satélites GPS...</span>
+              )}
+
+              <button
+                type="button"
+                onClick={handleMicClick}
+                style={{
+                  padding: '5px 14px',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 16,
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <StopCircle size={14} />
+                Detener
+              </button>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleMicClick}
-            style={{
-              padding: '4px 12px',
-              backgroundColor: '#dc2626',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: 16,
-              fontSize: '0.74rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <StopCircle size={14} />
-            Detener
-          </button>
+          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+            Habla libremente: registra árboles mientras caminas (<i>"Aguacate Hass"</i>), consulta dudas o pide balances.
+          </span>
         </div>
       )}
 
@@ -3278,8 +3207,8 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
               <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369a1' }}>
                 Nota de voz ({pendingAudio.duration}s)
               </span>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                · Pulsa enviar para que Gemini la escuche
+              <span style={{ fontSize: '0.7rem', color: '#0369a1' }}>
+                · 📍 {pendingAudio.gpsTrack?.length || 1} lecturas GPS vinculadas
               </span>
             </div>
             <audio
@@ -3341,115 +3270,6 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
         </div>
       )}
 
-      {/* ─── Barra de Estado: Modo Caminar y Mapear con Voz + GPS ─────────────── */}
-      {isWalkingRecording && (
-        <div
-          style={{
-            padding: '10px 14px',
-            backgroundColor: '#0f172a',
-            color: '#ffffff',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
-            borderTop: '2px solid #00979d',
-            zIndex: 10,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  backgroundColor: '#ef4444',
-                  animation: 'chatBounce 1s infinite',
-                  display: 'inline-block',
-                }}
-              />
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f8fafc' }}>
-                Mapeando en movimiento: {Math.floor(walkingSeconds / 60)}:{(walkingSeconds % 60).toString().padStart(2, '0')}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {currentGps ? (
-                <span
-                  style={{
-                    fontSize: '0.72rem',
-                    padding: '2px 8px',
-                    borderRadius: 12,
-                    backgroundColor: accuracyWarning ? '#78350f' : '#065f46',
-                    color: accuracyWarning ? '#fef08a' : '#a7f3d0',
-                    fontWeight: 600,
-                  }}
-                >
-                  📍 ±{currentGps.accuracy?.toFixed(1)}m {accuracyWarning ? '⚠️ Impreciso' : '✓ Preciso'}
-                </span>
-              ) : (
-                <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Buscando satélites GPS...</span>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-              Habla para registrar o borrar: <i>"Aguacate Hass"</i>, <i>"Arqueta norte"</i>, <i>"Borra el último árbol"</i>.
-            </span>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setInventoryModalTab('map');
-                  setIsInventoryMapOpen(true);
-                }}
-                style={{
-                  padding: '5px 10px',
-                  backgroundColor: '#00979d',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: 20,
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-                title="Abrir mapa satélite mientras caminas"
-              >
-                <Compass size={12} />
-                Ver Mapa
-              </button>
-
-              <button
-                onClick={handleToggleWalkingSession}
-                disabled={isProcessingVoiceGeo}
-                style={{
-                  padding: '6px 14px',
-                  backgroundColor: '#ef4444',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: 20,
-                  fontSize: '0.76rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                }}
-              >
-                <Radio size={13} />
-                Finalizar y Procesar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ─── Barra de Input Inferior ─────────────────────────────────────────── */}
       <div style={styles.inputBar}>
         <input
@@ -3469,22 +3289,6 @@ El navegador y la app de Campito Jorox tienen soporte de geolocalización activa
           aria-label="Adjuntar foto"
         >
           <Camera size={18} />
-        </button>
-
-        {/* Botón Mapeo Caminar y Mapear con Voz + GPS */}
-        <button
-          className="chatia-iconbtn"
-          style={{
-            ...styles.iconBtn(isWalkingRecording),
-            backgroundColor: isWalkingRecording ? '#ef4444' : '#f0fdf4',
-            color: isWalkingRecording ? '#ffffff' : '#16a34a',
-            border: isWalkingRecording ? 'none' : '1px solid #bbf7d0',
-          }}
-          onClick={handleToggleWalkingSession}
-          title={isWalkingRecording ? 'Detener y procesar ruta de campo' : 'Caminar y Mapear con Voz + GPS en tiempo real'}
-          aria-label="Caminar y Mapear con Voz y GPS"
-        >
-          <Navigation size={18} />
         </button>
 
         {/* Input Texto */}
