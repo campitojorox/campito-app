@@ -351,7 +351,7 @@ export default function ChatIA() {
         }));
 
       const model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.8-flash',
         systemInstruction: SYSTEM_PROMPT + contextData,
       });
 
@@ -450,7 +450,7 @@ export default function ChatIA() {
         </div>
         <div>
           <p style={styles.headerTitle}>Asistente IA</p>
-          <p style={styles.headerSub}>Campito Jorox · Gemini 2.0</p>
+          <p style={styles.headerSub}>Campito Jorox · Gemini 3.8</p>
         </div>
       </div>
 

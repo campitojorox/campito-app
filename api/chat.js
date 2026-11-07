@@ -116,7 +116,7 @@ export default async function handler(req, res) {
 
     // Crear modelo Gemini
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.8-flash',
       systemInstruction: SYSTEM_PROMPT + (contextData ? contextData : ''),
     });
 
