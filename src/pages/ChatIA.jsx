@@ -549,6 +549,7 @@ const styles = {
     color: '#1a1a1a',
     margin: 0,
     lineHeight: 1.2,
+    whiteSpace: 'nowrap',
   },
   headerSub: {
     fontSize: '0.68rem',
@@ -559,16 +560,18 @@ const styles = {
   serverBadge: () => ({
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    padding: '5px 9px',
-    borderRadius: 20,
+    gap: 5,
+    padding: '4px 8px',
+    borderRadius: 18,
     backgroundColor: '#f8fafc',
     border: '1px solid #e2e8f0',
     cursor: 'pointer',
-    fontSize: '0.72rem',
+    fontSize: '0.70rem',
     fontWeight: 600,
     color: '#334155',
     flexShrink: 0,
+    maxWidth: 135,
+    overflow: 'hidden',
     userSelect: 'none',
     transition: 'all 0.15s ease',
   }),
@@ -2015,88 +2018,46 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           <div style={styles.headerIcon}>
             <Bot size={18} color="#ffffff" />
           </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <p style={styles.headerTitle}>Asistente IA</p>
-              <button
-                onClick={() => setIsInfoModalOpen(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  color: '#94a3b8',
-                  borderRadius: '50%',
-                  transition: 'color 0.15s, background-color 0.15s',
-                }}
-                title="Información de confidencialidad y modo de operación"
-                aria-label="Información de confidencialidad y modo de operación"
-              >
-                <Info size={15} />
-              </button>
-              <button
-                onClick={() => setIsInventoryMapOpen(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  color: farmInventory.length > 0 ? '#10b981' : '#94a3b8',
-                  borderRadius: '50%',
-                  transition: 'color 0.15s',
-                }}
-                title={`Catastro e Inventario GPS (${farmInventory.length} elementos)`}
-                aria-label="Catastro e Inventario GPS"
-              >
-                <MapPin size={15} />
-              </button>
-              <button
-                onClick={handleResetChat}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  color: '#94a3b8',
-                  borderRadius: '50%',
-                  transition: 'color 0.15s, transform 0.15s',
-                }}
-                title="Nueva conversación limpia (el historial se mantiene respaldado)"
-                aria-label="Nueva conversación"
-              >
-                <RotateCcw size={14} />
-              </button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <p style={styles.headerSub}>Campito Jorox</p>
-              {deviceGps ? (
-                <span
-                  style={{
-                    fontSize: '0.62rem',
-                    color: '#059669',
-                    backgroundColor: '#ecfdf5',
-                    padding: '1px 6px',
-                    borderRadius: 8,
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 3,
-                  }}
-                  title={`GPS conectado: ${deviceGps.lat.toFixed(5)}, ${deviceGps.lng.toFixed(5)} (±${deviceGps.accuracy?.toFixed(1)}m)`}
-                >
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#10b981' }} />
-                  GPS ±{deviceGps.accuracy ? `${deviceGps.accuracy.toFixed(0)}m` : 'OK'}
-                </span>
-              ) : (
-                <span style={{ fontSize: '0.62rem', color: '#94a3b8' }}>· GPS buscando...</span>
-              )}
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <p style={styles.headerTitle}>CHAT IA</p>
+            <button
+              onClick={() => setIsInfoModalOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                color: '#94a3b8',
+                borderRadius: '50%',
+                transition: 'color 0.15s, background-color 0.15s',
+                flexShrink: 0,
+              }}
+              title="Información de confidencialidad y modo de operación"
+              aria-label="Información de confidencialidad y modo de operación"
+            >
+              <Info size={15} />
+            </button>
+            <button
+              onClick={handleResetChat}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                color: '#94a3b8',
+                borderRadius: '50%',
+                transition: 'color 0.15s, transform 0.15s',
+                flexShrink: 0,
+              }}
+              title="Nueva conversación limpia (el historial se mantiene respaldado)"
+              aria-label="Nueva conversación"
+            >
+              <RotateCcw size={14} />
+            </button>
           </div>
         </div>
 
@@ -2104,14 +2065,21 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         <div
           style={styles.serverBadge(currentBadgeServer.badgeColor)}
           onClick={() => setIsServerModalOpen(true)}
-          title="Click para ver/cambiar servidor de Gemini"
+          title={`Click para ver/cambiar servidor de Gemini (${currentBadgeServer.name})`}
         >
           <span style={styles.statusDot(currentBadgeServer.badgeColor)} />
-          <span>
-            {currentBadgeServer.name}{' '}
-            <span style={{ opacity: 0.85, fontWeight: 700 }}>({currentBadgeServer.level})</span>
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+              display: 'inline-block',
+            }}
+          >
+            {currentBadgeServer.name}
           </span>
-          <ChevronDown size={13} style={{ color: '#64748b' }} />
+          <ChevronDown size={13} style={{ color: '#64748b', flexShrink: 0 }} />
         </div>
       </div>
 
@@ -3684,7 +3652,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           ref={inputRef}
           className="chatia-input"
           style={styles.textInput}
-          placeholder={`Escribe a ${currentBadgeServer.name}...`}
+          placeholder="Texto..."
           value={input}
           onChange={(e) => {
             const val = e.target.value;
