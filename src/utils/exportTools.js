@@ -23,20 +23,22 @@ export function triggerFileDownload(blob, filename) {
 
 /**
  * 1. EXPORTACIÓN A EXCEL (.csv con BOM UTF-8 y enlaces Google Maps)
+ * Soporta puntos de inventario y trazados de caminos/senderos.
  */
-export function exportInventoryToExcel(items = [], filename = null) {
+export function exportInventoryToExcel(items = [], paths = [], filename = null) {
   const dateStr = new Date().toISOString().split('T')[0];
   const finalFilename = filename || `CAMPITO_JOROX_INVENTARIO_${dateStr}.csv`;
 
   const headers = [
+    'Tipo Elemento',
     'ID',
     'Fecha Registro',
     'Nombre',
     'Categoría',
-    'Variedad',
-    'Estado Fitosanitario',
-    'Latitud',
-    'Longitud',
+    'Variedad / Tipo Trazado',
+    'Estado / Color',
+    'Latitud / Vértices',
+    'Longitud / Metros',
     'Precisión GPS (m)',
     'Altitud (m)',
     'Zona',
@@ -46,12 +48,13 @@ export function exportInventoryToExcel(items = [], filename = null) {
     'Registrado Por',
   ];
 
-  const rows = items.map((item) => {
+  const pointRows = (items || []).map((item) => {
     const lat = item.latitude || (item.coordenadas && item.coordenadas.lat) || '';
     const lng = item.longitude || (item.coordenadas && item.coordenadas.lng) || '';
     const mapsLink = lat && lng ? `https://maps.google.com/?q=${lat},${lng}` : '';
 
     return [
+      'PUNTO',
       item.id || '',
       item.created_at ? item.created_at.split('T')[0] : dateStr,
       item.name || `${item.tipo || 'Elemento'} ${item.variedad || ''}`.trim(),
@@ -70,9 +73,36 @@ export function exportInventoryToExcel(items = [], filename = null) {
     ];
   });
 
+  const pathRows = (paths || []).map((path) => {
+    const coords = Array.isArray(path.coordinates) ? path.coordinates : [];
+    const firstCoord = coords[0] || {};
+    const mapsLink = firstCoord.lat && firstCoord.lng ? `https://maps.google.com/?q=${firstCoord.lat},${firstCoord.lng}` : '';
+
+    return [
+      'TRAZADO / CAMINO',
+      path.id || '',
+      path.created_at ? path.created_at.split('T')[0] : dateStr,
+      path.name || 'Camino / Sendero',
+      path.path_type || 'camino',
+      `${coords.length} vértices`,
+      path.color || '#f97316',
+      firstCoord.lat || '—',
+      path.length_meters ? `${Number(path.length_meters).toFixed(1)}m` : '—',
+      '—',
+      '—',
+      path.zone || 'Finca Principal',
+      'OK',
+      mapsLink,
+      (path.notes || '').replace(/"/g, '""'),
+      path.user_name || 'Admin',
+    ];
+  });
+
+  const allRows = [...pointRows, ...pathRows];
+
   const csvContent = [
     headers.map((h) => `"${h}"`).join(';'),
-    ...rows.map((row) =>
+    ...allRows.map((row) =>
       row
         .map((cell) => {
           const str = String(cell ?? '');
@@ -91,7 +121,13 @@ export function exportInventoryToExcel(items = [], filename = null) {
 /**
  * 2. EXPORTACIÓN A PDF (Membrete oficial, métricas y tabla con jspdf)
  */
-export function exportInventoryToPDF(items = [], filename = null, title = 'CATASTRO E INVENTARIO AGRÍCOLA') {
+export function exportInventoryToPDF(items = [], paths = [], filename = null, title = 'CATASTRO E INVENTARIO AGRÍCOLA') {
+  // Manejo de llamada con solo (items, filename) o (items, paths, filename)
+  if (typeof paths === 'string') {
+    filename = paths;
+    paths = [];
+  }
+
   const dateStr = new Date().toISOString().split('T')[0];
   const finalFilename = filename || `CAMPITO_JOROX_INVENTARIO_${dateStr}.pdf`;
 
@@ -117,60 +153,82 @@ export function exportInventoryToPDF(items = [], filename = null, title = 'CATAS
 
   doc.setFontSize(8);
   doc.setTextColor(220, 220, 220);
-  doc.text(`Fecha de emisión: ${dateStr} | Total registros: ${items.length}`, 220, 15);
+  doc.text(`Fecha de emisión: ${dateStr} | Puntos: ${(items || []).length} | Caminos/Líneas: ${(paths || []).length}`, 200, 15);
 
   // Resumen métrico
-  const countAguacates = items.filter((i) => (i.category || i.tipo || '').toLowerCase().includes('aguacate')).length;
-  const countRiego = items.filter((i) => ['riego_linea', 'arqueta', 'acequia'].includes((i.category || i.tipo || '').toLowerCase())).length;
-  const countClorosis = items.filter((i) => (i.status || i.estado || '').toLowerCase() === 'clorosis').length;
-  const countPoda = items.filter((i) => (i.status || i.estado || '').toLowerCase() === 'poda_requerida').length;
+  const safeItems = items || [];
+  const safePaths = paths || [];
+  const countAguacates = safeItems.filter((i) => (i.category || i.tipo || '').toLowerCase().includes('aguacate')).length;
+  const countRiego = safeItems.filter((i) => ['riego_linea', 'arqueta', 'acequia'].includes((i.category || i.tipo || '').toLowerCase())).length;
+  const countClorosis = safeItems.filter((i) => (i.status || i.estado || '').toLowerCase() === 'clorosis').length;
+  const countPoda = safeItems.filter((i) => (i.status || i.estado || '').toLowerCase() === 'poda_requerida').length;
+  const totalMeters = safePaths.reduce((acc, p) => acc + (Number(p.length_meters) || 0), 0);
 
   doc.setFillColor(245, 248, 248);
-  doc.rect(14, 28, 269, 12, 'F');
+  doc.rect(14, 28, 269, 13, 'F');
   doc.setDrawColor(210, 220, 220);
-  doc.rect(14, 28, 269, 12, 'S');
+  doc.rect(14, 28, 269, 13, 'S');
 
   doc.setFontSize(8);
   doc.setTextColor(43, 61, 65);
   doc.setFont('helvetica', 'bold');
-  doc.text(`MÉTRICAS:`, 18, 35);
+  doc.text(`MÉTRICAS:`, 18, 36);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Árboles/Plantas: ${countAguacates || items.length}  |  Infraestructura Riego: ${countRiego}  |  Clorosis/Falta hierro: ${countClorosis}  |  Poda urgente: ${countPoda}`, 40, 35);
+  doc.text(
+    `Árboles/Plantas: ${countAguacates || safeItems.length}  |  Riego: ${countRiego}  |  Clorosis: ${countClorosis}  |  Poda urgente: ${countPoda}  |  Caminos/Trazados: ${safePaths.length} (${totalMeters.toFixed(0)}m)`,
+    38,
+    36
+  );
 
   // Columnas para autoTable
   const tableHeaders = [
-    'Elemento / Especie',
-    'Variedad',
-    'Estado',
-    'Latitud',
-    'Longitud',
+    'Tipo',
+    'Elemento / Nombre',
+    'Variedad / Detalle',
+    'Estado / Color',
+    'Latitud / Inicio',
+    'Longitud / Longitud (m)',
     'Precisión',
-    'Alerta GPS',
     'Observaciones de Campo',
   ];
 
-  const tableRows = items.map((item) => {
+  const pointRows = safeItems.map((item) => {
     const lat = item.latitude || (item.coordenadas && item.coordenadas.lat) || '—';
     const lng = item.longitude || (item.coordenadas && item.coordenadas.lng) || '—';
     const acc = item.accuracy_meters || item.accuracy_m ? `±${Number(item.accuracy_meters || item.accuracy_m).toFixed(1)}m` : '—';
     const hasWarn = item.gps_warning || item.advertencia_gps;
 
     return [
+      'PUNTO',
       item.name || `${item.tipo || 'Árbol'}`,
       item.variety_type || item.variedad || '—',
       (item.status || item.estado || 'saludable').toUpperCase(),
       typeof lat === 'number' ? lat.toFixed(6) : String(lat),
       typeof lng === 'number' ? lng.toFixed(6) : String(lng),
-      acc,
-      hasWarn ? 'DISPERSIÓN (>6m)' : 'OK (Preciso)',
-      (item.notes || item.observaciones || '').substring(0, 60),
+      hasWarn ? '±>6m (DISP.)' : acc,
+      (item.notes || item.observaciones || '').substring(0, 50),
+    ];
+  });
+
+  const pathRows = safePaths.map((p) => {
+    const coords = Array.isArray(p.coordinates) ? p.coordinates : [];
+    const firstCoord = coords[0] || {};
+    return [
+      'CAMINO',
+      p.name || 'Camino / Trazado',
+      `${p.path_type || 'sendero'} (${coords.length} pts)`,
+      p.color || '#f97316',
+      firstCoord.lat ? Number(firstCoord.lat).toFixed(6) : '—',
+      p.length_meters ? `${Number(p.length_meters).toFixed(1)}m` : '—',
+      'Línea trazada',
+      (p.notes || '').substring(0, 50),
     ];
   });
 
   autoTable(doc, {
-    startY: 44,
+    startY: 45,
     head: [tableHeaders],
-    body: tableRows,
+    body: [...pointRows, ...pathRows],
     theme: 'grid',
     styles: {
       fontSize: 7.5,
@@ -187,17 +245,16 @@ export function exportInventoryToPDF(items = [], filename = null, title = 'CATAS
       fillColor: [248, 250, 252],
     },
     columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 42 },
-      1: { cellWidth: 26 },
-      2: { cellWidth: 26, halign: 'center' },
+      0: { fontStyle: 'bold', cellWidth: 22, halign: 'center' },
+      1: { fontStyle: 'bold', cellWidth: 42 },
+      2: { cellWidth: 32 },
       3: { cellWidth: 26, halign: 'center' },
       4: { cellWidth: 26, halign: 'center' },
-      5: { cellWidth: 20, halign: 'center' },
-      6: { cellWidth: 28, halign: 'center' },
-      7: { cellWidth: 75 },
+      5: { cellWidth: 26, halign: 'center' },
+      6: { cellWidth: 24, halign: 'center' },
+      7: { cellWidth: 71 },
     },
-    didDrawPage: (data) => {
-      // Pie de página
+    didDrawPage: () => {
       const str = `Página ${doc.internal.getNumberOfPages()} — Documento Confidencial de Gestión Interna Campito Jorox`;
       doc.setFontSize(7);
       doc.setTextColor(140);
@@ -210,19 +267,65 @@ export function exportInventoryToPDF(items = [], filename = null, title = 'CATAS
 }
 
 /**
- * 3. EXPORTACIÓN A KML (Compatible con Google Earth y Google My Maps)
+ * Convierte color hex (#RRGGBB) a formato KML aabbggrr.
  */
-export function exportInventoryToKML(items = [], filename = null) {
+function hexToKmlColor(hex, opacity = 'ff') {
+  if (!hex || typeof hex !== 'string') return `${opacity}1673f9`;
+  const cleanHex = hex.replace('#', '');
+  if (cleanHex.length === 6) {
+    const r = cleanHex.substring(0, 2);
+    const g = cleanHex.substring(2, 4);
+    const b = cleanHex.substring(4, 6);
+    return `${opacity}${b}${g}${r}`;
+  }
+  return `${opacity}1673f9`;
+}
+
+/**
+ * 3. EXPORTACIÓN A KML (Compatible con Google Earth y Google My Maps)
+ * Soporta Puntos (árboles, arquetas) y Líneas (caminos, senderos, líneas de riego).
+ */
+export function exportInventoryToKML(items = [], paths = [], filename = null) {
+  if (typeof paths === 'string') {
+    filename = paths;
+    paths = [];
+  }
+
   const dateStr = new Date().toISOString().split('T')[0];
   const finalFilename = filename || `CAMPITO_JOROX_MAPA_${dateStr}.kml`;
 
-  const validItems = items.filter((i) => {
+  const validItems = (items || []).filter((i) => {
     const lat = i.latitude || (i.coordenadas && i.coordenadas.lat);
     const lng = i.longitude || (i.coordenadas && i.coordenadas.lng);
     return lat && lng;
   });
 
-  const placemarks = validItems.map((item) => {
+  // Estilos de puntos y líneas para My Maps
+  const styles = `
+    <Style id="punto-arbol">
+      <IconStyle>
+        <color>ff81b910</color>
+        <scale>1.1</scale>
+        <Icon><href>https://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Style id="punto-riego">
+      <IconStyle>
+        <color>ffc78402</color>
+        <scale>1.1</scale>
+        <Icon><href>https://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Style id="punto-acequia">
+      <IconStyle>
+        <color>ffd4b606</color>
+        <scale>1.1</scale>
+        <Icon><href>https://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon>
+      </IconStyle>
+    </Style>
+  `;
+
+  const pointPlacemarks = validItems.map((item) => {
     const lat = item.latitude || item.coordenadas.lat;
     const lng = item.longitude || item.coordenadas.lng;
     const alt = item.altitude_meters || item.altitude_m || 0;
@@ -230,11 +333,17 @@ export function exportInventoryToKML(items = [], filename = null) {
     const status = item.status || item.estado || 'saludable';
     const notes = item.notes || item.observaciones || '';
     const acc = item.accuracy_meters || item.accuracy_m || '';
+    const cat = (item.category || item.tipo || 'arbol').toLowerCase();
+
+    let styleUrl = '#punto-arbol';
+    if (cat.includes('riego') || cat.includes('arqueta')) styleUrl = '#punto-riego';
+    if (cat.includes('acequia')) styleUrl = '#punto-acequia';
 
     return `    <Placemark>
       <name><![CDATA[${name}]]></name>
+      <styleUrl>${styleUrl}</styleUrl>
       <description><![CDATA[
-        <p><b>Categoría:</b> ${item.category || item.tipo || 'arbol'}</p>
+        <p><b>Categoría:</b> ${cat}</p>
         <p><b>Variedad:</b> ${item.variety_type || item.variedad || 'N/A'}</p>
         <p><b>Estado:</b> ${status}</p>
         <p><b>Precisión GPS:</b> ±${acc}m</p>
@@ -246,12 +355,48 @@ export function exportInventoryToKML(items = [], filename = null) {
     </Placemark>`;
   });
 
+  const pathPlacemarks = (paths || []).map((path) => {
+    const coords = Array.isArray(path.coordinates) ? path.coordinates : [];
+    if (coords.length < 2) return '';
+
+    const kmlColor = hexToKmlColor(path.color || '#f97316', 'e6');
+    const coordString = coords.map((c) => `${c.lng},${c.lat},${c.alt || 0}`).join(' ');
+
+    return `    <Placemark>
+      <name><![CDATA[${path.name || 'Camino / Sendero'}]]></name>
+      <description><![CDATA[
+        <p><b>Tipo:</b> ${path.path_type || 'camino'}</p>
+        <p><b>Longitud aprox:</b> ${path.length_meters ? `${Number(path.length_meters).toFixed(1)} metros` : 'N/A'}</p>
+        <p><b>Vértices:</b> ${coords.length}</p>
+        <p><b>Notas:</b> ${path.notes || ''}</p>
+      ]]></description>
+      <Style>
+        <LineStyle>
+          <color>${kmlColor}</color>
+          <width>${path.stroke_width || 4}</width>
+        </LineStyle>
+      </Style>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>${coordString}</coordinates>
+      </LineString>
+    </Placemark>`;
+  }).filter(Boolean);
+
   const kmlTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>Campito Jorox - Inventario y Catastro Agrícola</name>
-    <description>Puntos georreferenciados mediante sistema de voz y GPS en tiempo real.</description>
-${placemarks.join('\n')}
+    <name>Campito Jorox - Mapa y Catastro Satélite</name>
+    <description>Puntos, árboles, arquetas y trazados de caminos/senderos georreferenciados.</description>
+${styles}
+    <Folder>
+      <name>Puntos de Inventario (${pointPlacemarks.length})</name>
+${pointPlacemarks.join('\n')}
+    </Folder>
+    <Folder>
+      <name>Caminos y Senderos (${pathPlacemarks.length})</name>
+${pathPlacemarks.join('\n')}
+    </Folder>
   </Document>
 </kml>`;
 
@@ -262,15 +407,65 @@ ${placemarks.join('\n')}
 
 /**
  * 4. EXPORTACIÓN A GeoJSON ESTÁNDAR (RFC 7946)
+ * Soporta geometrías Point y LineString.
  */
-export function exportInventoryToGeoJSON(items = [], filename = null) {
+export function exportInventoryToGeoJSON(items = [], paths = [], filename = null) {
+  if (typeof paths === 'string') {
+    filename = paths;
+    paths = [];
+  }
+
   const dateStr = new Date().toISOString().split('T')[0];
   const finalFilename = filename || `CAMPITO_JOROX_GEOJSON_${dateStr}.geojson`;
 
-  const validItems = items.filter((i) => {
+  const validItems = (items || []).filter((i) => {
     const lat = i.latitude || (i.coordenadas && i.coordenadas.lat);
     const lng = i.longitude || (i.coordenadas && i.coordenadas.lng);
     return lat && lng;
+  });
+
+  const pointFeatures = validItems.map((item) => {
+    const lat = item.latitude || item.coordenadas.lat;
+    const lng = item.longitude || item.coordenadas.lng;
+    return {
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [Number(lng), Number(lat)],
+      },
+      properties: {
+        id: item.id,
+        entity_type: 'point',
+        name: item.name || `${item.tipo || 'Elemento'} ${item.variedad || ''}`.trim(),
+        category: item.category || item.tipo || 'arbol',
+        variety: item.variety_type || item.variedad || null,
+        status: item.status || item.estado || 'saludable',
+        accuracy_meters: item.accuracy_meters || item.accuracy_m || null,
+        gps_warning: Boolean(item.gps_warning || item.advertencia_gps),
+        notes: item.notes || item.observaciones || '',
+      },
+    };
+  });
+
+  const pathFeatures = (paths || []).map((path) => {
+    const coords = Array.isArray(path.coordinates) ? path.coordinates : [];
+    return {
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: coords.map((c) => [Number(c.lng), Number(c.lat)]),
+      },
+      properties: {
+        id: path.id,
+        entity_type: 'path',
+        name: path.name || 'Camino / Sendero',
+        path_type: path.path_type || 'camino',
+        color: path.color || '#f97316',
+        stroke_width: path.stroke_width || 4,
+        length_meters: path.length_meters || null,
+        notes: path.notes || '',
+      },
+    };
   });
 
   const geojson = {
@@ -278,29 +473,10 @@ export function exportInventoryToGeoJSON(items = [], filename = null) {
     metadata: {
       generated_at: new Date().toISOString(),
       farm: 'Campito Jorox',
-      total_features: validItems.length,
+      total_points: pointFeatures.length,
+      total_paths: pathFeatures.length,
     },
-    features: validItems.map((item) => {
-      const lat = item.latitude || item.coordenadas.lat;
-      const lng = item.longitude || item.coordenadas.lng;
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [Number(lng), Number(lat)],
-        },
-        properties: {
-          id: item.id,
-          name: item.name || `${item.tipo || 'Elemento'} ${item.variedad || ''}`.trim(),
-          category: item.category || item.tipo || 'arbol',
-          variety: item.variety_type || item.variedad || null,
-          status: item.status || item.estado || 'saludable',
-          accuracy_meters: item.accuracy_meters || item.accuracy_m || null,
-          gps_warning: Boolean(item.gps_warning || item.advertencia_gps),
-          notes: item.notes || item.observaciones || '',
-        },
-      };
-    }),
+    features: [...pointFeatures, ...pathFeatures],
   };
 
   const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/geo+json;charset=utf-8;' });

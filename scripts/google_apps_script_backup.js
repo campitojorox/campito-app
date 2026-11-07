@@ -287,6 +287,27 @@ function actualizarCampitoJorox() {
     Logger.log('Aviso al sincronizar Inventario GPS: ' + invErr.message);
   }
 
+  // 4e. ACTUALIZAR HOJA 'CAMINOS_SENDEROS' (LÍNEAS Y TRAZADOS GEOGRÁFICOS)
+  let pathItems = [];
+  try {
+    Logger.log('Descargando caminos y senderos de la finca...');
+    const pathUrl = SUPABASE_CONFIG.url + '/rest/v1/farm_paths?select=*&order=created_at.desc';
+    const pathRes = UrlFetchApp.fetch(pathUrl, {
+      method: 'get',
+      headers: {
+        'apikey': SUPABASE_CONFIG.serviceKey,
+        'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+      },
+      muteHttpExceptions: true
+    });
+    if (pathRes.getResponseCode() === 200) {
+      pathItems = JSON.parse(pathRes.getContentText());
+      sincronizarHojaCaminos(ss, pathItems);
+    }
+  } catch (pathErr) {
+    Logger.log('Aviso al sincronizar Caminos y Senderos: ' + pathErr.message);
+  }
+
   // 5. DESCARGAR IMÁGENES DE CONTABILIDAD A DRIVE
   Logger.log('Descargando comprobantes a Google Drive...');
   const imagenesGuardadas = respaldarImagenesInterno(transactions, sheetCont);
@@ -516,6 +537,40 @@ function respaldarInventarioMenu() {
     '• ' + inventoryItems.length + ' elementos guardados en la pestaña "INVENTARIO_GPS"\n' +
     'Incluye coordenadas GPS, estado fitosanitario y enlaces directos a Google Maps.'
   );
+}
+
+// ─── HOJA CAMINOS Y SENDEROS EN SHEETS ───────────────────────────────────────
+function sincronizarHojaCaminos(ss, pathItems) {
+  let sheetPaths = ss.getSheetByName('CAMINOS_SENDEROS');
+  if (!sheetPaths) sheetPaths = ss.insertSheet('CAMINOS_SENDEROS');
+  sheetPaths.clearContents();
+
+  const pathHeaders = ['ID', 'Fecha', 'Nombre', 'Tipo', 'Color', 'Grosor', 'Longitud (m)', 'Vértices', 'Zona', 'Notas', 'Usuario'];
+  const pathRows = [pathHeaders];
+
+  for (let p = 0; p < pathItems.length; p++) {
+    const item = pathItems[p];
+    const created = item.created_at || '';
+    const dateStr = created ? created.split('T')[0] : '';
+    const coords = Array.isArray(item.coordinates) ? item.coordinates : [];
+
+    pathRows.push([
+      item.id || '',
+      dateStr,
+      item.name || '',
+      item.path_type || 'camino',
+      item.color || '#f97316',
+      item.stroke_width || 4,
+      item.length_meters ? Number(item.length_meters).toFixed(1) : '',
+      coords.length,
+      item.zone || '',
+      item.notes || '',
+      item.user_name || 'Admin'
+    ]);
+  }
+
+  sheetPaths.getRange(1, 1, pathRows.length, pathHeaders.length).setValues(pathRows);
+  formatearEncabezado(sheetPaths, pathHeaders.length);
 }
 
 // ─── DESCARGA DE ARCHIVOS/FOTOS DE CHAT IA A GOOGLE DRIVE ────────────────────

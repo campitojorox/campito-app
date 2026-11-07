@@ -18,12 +18,13 @@ export default async function handler(req, res) {
   const supabase = createClient(url, key);
 
   try {
-    const [txRes, evRes, chatRes, knowledgeRes, inventoryRes] = await Promise.all([
+    const [txRes, evRes, chatRes, knowledgeRes, inventoryRes, pathsRes] = await Promise.all([
       supabase.from('transactions').select('*, profiles(name)').order('date', { ascending: false }),
       supabase.from('events').select('*, profiles:responsible_id(name)').order('date', { ascending: false }),
       supabase.from('chat_history').select('*').order('created_at', { ascending: false }).limit(2000),
       supabase.from('farm_knowledge').select('*').order('created_at', { ascending: false }),
-      supabase.from('farm_inventory').select('*').order('created_at', { ascending: false })
+      supabase.from('farm_inventory').select('*').order('created_at', { ascending: false }),
+      supabase.from('farm_paths').select('*').order('created_at', { ascending: false })
     ]);
 
     if (txRes.error) throw txRes.error;
@@ -83,7 +84,7 @@ export default async function handler(req, res) {
       Activo: k.is_active ? 'SI' : 'NO'
     }));
 
-    const inventario_gps = (inventoryRes.data || []).map(inv => ({
+    const inventario_gps = (inventoryRes?.data || []).map(inv => ({
       ID: inv.id,
       Fecha: inv.created_at ? inv.created_at.split('T')[0] : '',
       Nombre: inv.name || '',
@@ -102,6 +103,23 @@ export default async function handler(req, res) {
       Activo: inv.is_active ? 'SI' : 'NO'
     }));
 
+    const caminos_senderos = (pathsRes?.data || []).map(p => {
+      const coords = Array.isArray(p.coordinates) ? p.coordinates : [];
+      return {
+        ID: p.id,
+        Fecha: p.created_at ? p.created_at.split('T')[0] : '',
+        Nombre: p.name || '',
+        Tipo: p.path_type || 'camino',
+        Color: p.color || '#f97316',
+        Grosor: p.stroke_width || 4,
+        Longitud_m: p.length_meters || '',
+        NumVertices: coords.length,
+        Zona: p.zone || '',
+        Notas: p.notes || '',
+        Activo: p.is_active ? 'SI' : 'NO'
+      };
+    });
+
     const format = req.query.format || 'json';
 
     if (format === 'csv') {
@@ -111,6 +129,7 @@ export default async function handler(req, res) {
       if (table === 'chat_ia' || table === 'chat') rows = chat_ia;
       if (table === 'memoria' || table === 'farm_knowledge' || table === 'conocimiento') rows = memoria_finca;
       if (table === 'inventario' || table === 'farm_inventory' || table === 'arboles' || table === 'gps') rows = inventario_gps;
+      if (table === 'caminos' || table === 'senderos' || table === 'farm_paths' || table === 'rutas') rows = caminos_senderos;
 
       if (rows.length === 0) {
         return res.send('');
@@ -140,14 +159,16 @@ export default async function handler(req, res) {
         calendario: calendario.length,
         chat_ia: chat_ia.length,
         memoria_finca: memoria_finca.length,
-        inventario_gps: inventario_gps.length
+        inventario_gps: inventario_gps.length,
+        caminos_senderos: caminos_senderos.length
       },
       data: {
         contabilidad,
         calendario,
         chat_ia,
         memoria_finca,
-        inventario_gps
+        inventario_gps,
+        caminos_senderos
       }
     });
   } catch (err) {
