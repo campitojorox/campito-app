@@ -18,10 +18,11 @@ export default async function handler(req, res) {
   const supabase = createClient(url, key);
 
   try {
-    const [txRes, evRes, chatRes] = await Promise.all([
+    const [txRes, evRes, chatRes, knowledgeRes] = await Promise.all([
       supabase.from('transactions').select('*, profiles(name)').order('date', { ascending: false }),
       supabase.from('events').select('*, profiles:responsible_id(name)').order('date', { ascending: false }),
-      supabase.from('chat_history').select('*').order('created_at', { ascending: false }).limit(2000).catch(() => ({ data: [] }))
+      supabase.from('chat_history').select('*').order('created_at', { ascending: false }).limit(2000).catch(() => ({ data: [] })),
+      supabase.from('farm_knowledge').select('*').order('created_at', { ascending: false }).catch(() => ({ data: [] }))
     ]);
 
     if (txRes.error) throw txRes.error;
@@ -70,6 +71,17 @@ export default async function handler(req, res) {
       ArchivoNombre: msg.file_name || ''
     }));
 
+    const memoria_finca = (knowledgeRes.data || []).map(k => ({
+      ID: k.id,
+      Fecha: k.created_at ? k.created_at.split('T')[0] : '',
+      Categoria: k.category || 'general',
+      Titulo: k.title || '',
+      Contenido: k.content || '',
+      Usuario: k.user_name || 'Admin',
+      Origen: k.source || 'chat',
+      Activo: k.is_active ? 'SI' : 'NO'
+    }));
+
     const format = req.query.format || 'json';
 
     if (format === 'csv') {
@@ -77,6 +89,7 @@ export default async function handler(req, res) {
       let rows = contabilidad;
       if (table === 'calendario') rows = calendario;
       if (table === 'chat_ia' || table === 'chat') rows = chat_ia;
+      if (table === 'memoria' || table === 'farm_knowledge' || table === 'conocimiento') rows = memoria_finca;
 
       if (rows.length === 0) {
         return res.send('');
@@ -104,12 +117,14 @@ export default async function handler(req, res) {
       counts: {
         contabilidad: contabilidad.length,
         calendario: calendario.length,
-        chat_ia: chat_ia.length
+        chat_ia: chat_ia.length,
+        memoria_finca: memoria_finca.length
       },
       data: {
         contabilidad,
         calendario,
-        chat_ia
+        chat_ia,
+        memoria_finca
       }
     });
   } catch (err) {

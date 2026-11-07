@@ -20,6 +20,15 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
 - Se permite la importación y análisis interno de información para la gestión de la finca, pero NUNCA su exportación, divulgación o compartición con servidores o entidades externas.
 - Toda la información permanece bajo custodia exclusiva de los administradores de Campito Jorox.
 
+🧠 **MÓDULO DE APRENDIZAJE Y MEMORIA PERMANENTE DE LA FINCA**:
+- Cuentas con memoria permanente conectada a la base de datos de la finca ('farm_knowledge'). Todo lo que aprendas aquí lo recordarás en futuras sesiones.
+- Si en el contexto ves una sección "MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA", consulta y aplica rigurosamente esas reglas, parcelas, tipos de cultivo, calendarios de riego, maquinaria o proveedores que los administradores te hayan enseñado.
+- Cuando el usuario te pida recordar o aprender un dato (por ejemplo: "recuerda que...", "aprende que...", "guarda este dato...", "anota que...", "toma nota de..."), o cuando te comunique una regla operativa o dato clave de la finca:
+  1. Confirma claramente que lo has aprendido y que queda guardado en la memoria permanente de Campito Jorox.
+  2. Incluye al final de tu respuesta el comando estructurado:
+     [[MEMORIA: {"category": "cultivo|riego|parcela|maquinaria|suelo|general|proveedor|protocolo|plaga", "title": "Título descriptivo breve", "content": "Detalle completo del conocimiento o regla aprendido"}]]
+- Si el usuario te pregunta qué cosas sabes o recuerdas de la finca, lístale de forma ordenada y concisa todo el conocimiento que tienes registrado en tu memoria.
+
 Tu función es ayudar con:
 - 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
 - 💰 **Contabilidad y finanzas**: análisis de transacciones, gastos, ingresos, resúmenes económicos
@@ -61,22 +70,35 @@ export default async function handler(req, res) {
     let contextData = '';
     if (includeContext) {
       try {
-        // Obtener últimas 50 transacciones
-        const { data: transactions } = await supabase
-          .from('transactions')
-          .select('*')
-          .order('date', { ascending: false })
-          .limit(50);
-
-        // Obtener eventos próximos y recientes
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const { data: events } = await supabase
-          .from('events')
-          .select('*')
-          .gte('start_date', thirtyDaysAgo.toISOString().split('T')[0])
-          .order('start_date', { ascending: true })
-          .limit(30);
+
+        const [{ data: transactions }, { data: events }, { data: knowledge }] = await Promise.all([
+          supabase
+            .from('transactions')
+            .select('*')
+            .order('date', { ascending: false })
+            .limit(50),
+          supabase
+            .from('events')
+            .select('*')
+            .gte('start_date', thirtyDaysAgo.toISOString().split('T')[0])
+            .order('start_date', { ascending: true })
+            .limit(30),
+          supabase
+            .from('farm_knowledge')
+            .select('*')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .catch(() => ({ data: [] }))
+        ]);
+
+        if (knowledge && knowledge.length > 0) {
+          contextData += `\n\n🧠 **MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA** (${knowledge.length} hechos/reglas):\n`;
+          knowledge.forEach(k => {
+            contextData += `- [${(k.category || 'general').toUpperCase()}] ${k.title}: ${k.content}\n`;
+          });
+        }
 
         if (transactions && transactions.length > 0) {
           // Calcular resumen financiero

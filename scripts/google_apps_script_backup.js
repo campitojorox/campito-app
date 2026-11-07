@@ -37,6 +37,7 @@ function onOpen() {
     .addItem('📦 Respaldar código de la app (ZIP) ahora', 'respaldarCodigoGitHubMenu')
     .addItem('🖼️ Respaldar imágenes de contabilidad solamente', 'respaldarImagenes')
     .addItem('💬 Respaldar Chat IA (Conversaciones + Archivos)', 'respaldarChatIAMenu')
+    .addItem('🧠 Sincronizar Memoria de Finca (Aprendizaje IA)', 'respaldarMemoriaMenu')
     .addSeparator()
     .addItem('⏰ Activar Respaldo Automático Semanal (Lunes 04:00 AM)', 'activarRespaldoSemanal')
     .addSeparator()
@@ -243,6 +244,27 @@ function actualizarCampitoJorox() {
     Logger.log('Aviso al sincronizar Chat IA: ' + chatErr.message);
   }
 
+  // 4c. ACTUALIZAR HOJA 'MEMORIA_FINCA' (APRENDIZAJE Y CONOCIMIENTO ACUMULADO)
+  let knowledgeItems = [];
+  try {
+    Logger.log('Descargando memoria y conocimientos aprendidos...');
+    const knowUrl = SUPABASE_CONFIG.url + '/rest/v1/farm_knowledge?select=*&order=created_at.desc';
+    const knowRes = UrlFetchApp.fetch(knowUrl, {
+      method: 'get',
+      headers: {
+        'apikey': SUPABASE_CONFIG.serviceKey,
+        'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+      },
+      muteHttpExceptions: true
+    });
+    if (knowRes.getResponseCode() === 200) {
+      knowledgeItems = JSON.parse(knowRes.getContentText());
+      sincronizarHojaMemoria(ss, knowledgeItems);
+    }
+  } catch (knowErr) {
+    Logger.log('Aviso al sincronizar Memoria de Finca: ' + knowErr.message);
+  }
+
   // 5. DESCARGAR IMÁGENES DE CONTABILIDAD A DRIVE
   Logger.log('Descargando comprobantes a Google Drive...');
   const imagenesGuardadas = respaldarImagenesInterno(transactions, sheetCont);
@@ -267,6 +289,7 @@ function actualizarCampitoJorox() {
     '• ' + transactions.length + ' transacciones\n' +
     '• ' + events.length + ' eventos\n' +
     '• ' + chatMessages.length + ' mensajes de Chat IA guardados\n' +
+    '• ' + knowledgeItems.length + ' conocimientos aprendidos (Memoria Finca)\n' +
     '• ' + imagenesGuardadas + ' comprobantes en Drive\n' +
     '• ' + chatArchivosGuardados + ' archivos en "Chat IA Files/"\n' +
     '• Código fuente respaldado en "Codigo Fuente/"';
@@ -336,6 +359,64 @@ function respaldarChatIAMenu() {
     '• ' + chatMessages.length + ' mensajes guardados en la pestaña "CHAT_IA"\n' +
     '• ' + guardados + ' archivos/imágenes respaldados en:\n' +
     'Mi unidad / APP CAMPITO JOROX / ' + CHAT_SUBFOLDER_NAME + '/'
+  );
+}
+
+// ─── HOJA MEMORIA FINCA (APRENDIZAJE IA) EN SHEETS ────────────────────────────
+function sincronizarHojaMemoria(ss, knowledgeItems) {
+  let sheetMem = ss.getSheetByName('MEMORIA_FINCA');
+  if (!sheetMem) sheetMem = ss.insertSheet('MEMORIA_FINCA');
+  sheetMem.clearContents();
+
+  const memHeaders = ['ID', 'Fecha Creación', 'Categoría', 'Título', 'Contenido / Regla Aprendida', 'Usuario', 'Origen', 'Activo'];
+  const memRows = [memHeaders];
+
+  for (let m = 0; m < knowledgeItems.length; m++) {
+    const k = knowledgeItems[m];
+    const created = k.created_at || '';
+    const dateStr = created ? created.split('T')[0] : '';
+
+    memRows.push([
+      k.id || '',
+      dateStr,
+      k.category || 'general',
+      k.title || '',
+      k.content || '',
+      k.user_name || 'Admin',
+      k.source || 'chat',
+      k.is_active ? 'SÍ' : 'NO'
+    ]);
+  }
+
+  sheetMem.getRange(1, 1, memRows.length, memHeaders.length).setValues(memRows);
+  formatearEncabezado(sheetMem, memHeaders.length);
+}
+
+// ─── RESPALDO INDEPENDIENTE DE MEMORIA DE FINCA DESDE EL MENÚ ─────────────────
+function respaldarMemoriaMenu() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const knowUrl = SUPABASE_CONFIG.url + '/rest/v1/farm_knowledge?select=*&order=created_at.desc';
+  const knowRes = UrlFetchApp.fetch(knowUrl, {
+    method: 'get',
+    headers: {
+      'apikey': SUPABASE_CONFIG.serviceKey,
+      'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+    },
+    muteHttpExceptions: true
+  });
+
+  if (knowRes.getResponseCode() !== 200) {
+    SpreadsheetApp.getUi().alert('❌ Error al conectar con Memoria de Finca en Supabase: ' + knowRes.getContentText());
+    return;
+  }
+
+  const knowledgeItems = JSON.parse(knowRes.getContentText());
+  sincronizarHojaMemoria(ss, knowledgeItems);
+
+  SpreadsheetApp.getUi().alert(
+    '🧠 Memoria de Finca sincronizada con éxito:\n\n' +
+    '• ' + knowledgeItems.length + ' reglas y conocimientos guardados en la pestaña "MEMORIA_FINCA"\n' +
+    'El Asistente IA de Campito Jorox consulta esta base de datos en cada sesión.'
   );
 }
 
