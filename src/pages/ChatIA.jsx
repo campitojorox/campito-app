@@ -18,7 +18,10 @@ import {
   ShieldCheck,
   X,
   ExternalLink,
-  CreditCard
+  CreditCard,
+  Info,
+  Lock,
+  FileText
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -508,6 +511,7 @@ export default function ChatIA() {
   const [activeServer, setActiveServer] = useState(GEMINI_SERVERS[initialIndex >= 0 ? initialIndex : 0]);
   const [fallbackNotice, setFallbackNotice] = useState(null);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [autoFallback, setAutoFallback] = useState(true);
 
   const [messages, setMessages] = useState([
@@ -797,7 +801,27 @@ export default function ChatIA() {
             <Bot size={18} color="#ffffff" />
           </div>
           <div>
-            <p style={styles.headerTitle}>Asistente IA</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <p style={styles.headerTitle}>Asistente IA</p>
+              <button
+                onClick={() => setIsInfoModalOpen(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  borderRadius: '50%',
+                  transition: 'color 0.15s, background-color 0.15s',
+                }}
+                title="Información de confidencialidad y modo de operación"
+                aria-label="Información de confidencialidad y modo de operación"
+              >
+                <Info size={15} />
+              </button>
+            </div>
             <p style={styles.headerSub}>Campito Jorox</p>
           </div>
         </div>
@@ -1060,6 +1084,153 @@ export default function ChatIA() {
                 <span style={{ color: '#64748b', fontSize: '0.64rem', marginTop: 2 }}>
                   Cuenta: Google AI Studio (Key ...3w8BcQ) · Sesión protegida
                 </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Modal de Información y Confidencialidad ─────────────────────────── */}
+      {isInfoModalOpen && (
+        <div style={styles.modalOverlay} onClick={() => setIsInfoModalOpen(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Info size={18} color="#00979d" />
+                <p style={styles.modalTitle}>Confidencialidad y Uso del Asistente</p>
+              </div>
+              <button
+                onClick={() => setIsInfoModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                aria-label="Cerrar modal de información"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              {/* Tarjeta 1: Confidencialidad */}
+              <div
+                style={{
+                  padding: '12px',
+                  backgroundColor: '#f0fdfa',
+                  borderRadius: 10,
+                  border: '1px solid #ccfbf1',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0f766e', fontWeight: 700, fontSize: '0.85rem' }}>
+                  <Lock size={15} color="#00979d" />
+                  <span>1. Confidencialidad Absoluta</span>
+                </div>
+                <p style={{ fontSize: '0.76rem', color: '#134e4a', margin: 0, lineHeight: 1.45 }}>
+                  Toda la información subida a este chat (textos, facturas, transacciones, contabilidad, fotos de la finca, audios y documentos) es <b>estrictamente confidencial y privada</b> de los administradores de Campito Jorox.
+                </p>
+              </div>
+
+              {/* Tarjeta 2: Aislamiento / Importar sí, exportar no */}
+              <div
+                style={{
+                  padding: '12px',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 10,
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1e293b', fontWeight: 700, fontSize: '0.85rem' }}>
+                  <ShieldCheck size={15} color="#00979d" />
+                  <span>2. Importar Sí, Exportar No</span>
+                </div>
+                <p style={{ fontSize: '0.76rem', color: '#475569', margin: 0, lineHeight: 1.45 }}>
+                  El entorno está diseñado como un <b>circuito cerrado</b>: puedes importar libremente fotos, recibos y notas para que la IA los analice y sintetice, pero <b>ningún dato se exporta, comparte ni sincroniza con servidores o entidades externas</b>.
+                </p>
+              </div>
+
+              {/* Tarjeta 3: Modus Operandi */}
+              <div
+                style={{
+                  padding: '12px',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: 10,
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1e293b', fontWeight: 700, fontSize: '0.85rem' }}>
+                  <Zap size={15} color="#f59e0b" />
+                  <span>3. Modo de Operación (Modus Operandi)</span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.75rem', color: '#475569', lineHeight: 1.5 }}>
+                  <li>
+                    <b>🌿 Asesoría Agrícola:</b> Pregunta sobre poda, riego, abonado, control de plagas y labores de la finca.
+                  </li>
+                  <li>
+                    <b>💰 Contabilidad Integrada:</b> Consulta balances, gastos o ingresos; el chat lee directamente las transacciones reales de la app sin inventar datos.
+                  </li>
+                  <li>
+                    <b>📷 Fotos & Cámara:</b> Sube imágenes de hojas, facturas o mapas para que la IA las analice al instante.
+                  </li>
+                  <li>
+                    <b>🎙️ Dictado por Voz:</b> Pulsa el micrófono para dictar tus preguntas rápidamente mientras trabajas en el campo.
+                  </li>
+                  <li>
+                    <b>⚡ Cascada de IA Inteligente:</b> El sistema conecta siempre con el modelo más potente disponible. Si se agota la cuota, desciende automáticamente al siguiente sin interrumpir tu consulta.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Botón de acción */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button
+                  onClick={() => {
+                    setIsInfoModalOpen(false);
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        id: Date.now().toString(),
+                        role: 'assistant',
+                        content: `### 🔒 Política de Confidencialidad y Modo de Operación\n\n**1. Confidencialidad:** Toda la información procesada en este chat (contabilidad, imágenes, audios y documentos) es estrictamente confidencial de **Campito Jorox**.\n\n**2. Aislamiento:** Puedes importar cualquier documento o imagen para análisis interno. **Ningún dato se exporta a servidores externos.**\n\n**3. Capacidades:**\n- 🌿 Diagnóstico y manejo de cultivos\n- 💰 Análisis financiero y contable en tiempo real\n- 📷 Reconocimiento visual de facturas y plagas\n- 🎙️ Consultas por voz sobre el terreno\n- ⚡ Conexión multinivel con respaldo automático`,
+                        serverUsed: activeServer,
+                      },
+                    ]);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '9px 12px',
+                    borderRadius: 8,
+                    border: '1px solid #00979d',
+                    backgroundColor: '#ffffff',
+                    color: '#00979d',
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Pegar guía en el chat
+                </button>
+                <button
+                  onClick={() => setIsInfoModalOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: '9px 12px',
+                    borderRadius: 8,
+                    border: 'none',
+                    backgroundColor: '#00979d',
+                    color: '#ffffff',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Entendido
+                </button>
               </div>
             </div>
           </div>
