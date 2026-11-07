@@ -22,15 +22,37 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
-// ─── Configuración de Modelos de Gemini ───────────────────────────────────────
+// ─── Configuración de Modelos de Gemini (Ordenados de más a menos potente) ─────
 const GEMINI_SERVERS = [
+  {
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro',
+    level: 'pro',
+    badgeColor: '#3b82f6', // Azul
+    desc: 'El modelo más potente. Máxima capacidad deductiva, análisis y lógica',
+    recommended: true,
+    available: true,
+    hasCreditsLink: true,
+    actionUrl: 'https://aistudio.google.com/plan_information',
+  },
+  {
+    id: 'gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    level: 'pro',
+    badgeColor: '#0ea5e9', // Celeste
+    desc: 'Alta precisión para tablas financieras complejas y planificación',
+    recommended: false,
+    available: true,
+    hasCreditsLink: true,
+    actionUrl: 'https://aistudio.google.com/plan_information',
+  },
   {
     id: 'gemini-3.5-flash',
     name: 'Gemini 3.5 Flash',
     level: 'high',
     badgeColor: '#8b5cf6', // Púrpura
     desc: 'Razonamiento avanzado, análisis profundo de cosechas y balances',
-    recommended: true,
+    recommended: false,
     available: true,
   },
   {
@@ -50,28 +72,6 @@ const GEMINI_SERVERS = [
     desc: 'Ultra ligero, mínima latencia, respaldo seguro de cuota',
     recommended: false,
     available: true,
-  },
-  {
-    id: 'gemini-3.1-pro-preview',
-    name: 'Gemini 3.1 Pro',
-    level: 'pro',
-    badgeColor: '#3b82f6', // Azul
-    desc: 'El modelo más potente. Máxima capacidad analítica y lógica',
-    recommended: false,
-    available: false, // Requiere plan con facturación / créditos
-    requiresBilling: true,
-    actionUrl: 'https://aistudio.google.com/plan_information',
-  },
-  {
-    id: 'gemini-2.5-pro',
-    name: 'Gemini 2.5 Pro',
-    level: 'pro',
-    badgeColor: '#0ea5e9', // Celeste
-    desc: 'Capacidad superior para tablas complejas y previsiones financieras',
-    recommended: false,
-    available: false,
-    requiresBilling: true,
-    actionUrl: 'https://aistudio.google.com/plan_information',
   },
   {
     id: 'gemini-4-argon',
@@ -813,13 +813,34 @@ export default function ChatIA() {
       {/* ─── Banner de Notificación de Fallback Automático ────────────────────── */}
       {fallbackNotice && (
         <div style={styles.fallbackAlert}>
-          <span>
-            ⚡ Cuota agotada en <b>{fallbackNotice.from.name}</b>. Conectado automáticamente a{' '}
-            <b>
-              {fallbackNotice.to.name} ({fallbackNotice.to.level})
-            </b>
-            .
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span>
+              ⚡ Cuota agotada en <b>{fallbackNotice.from.name}</b>. Conectado a{' '}
+              <b>
+                {fallbackNotice.to.name} ({fallbackNotice.to.level})
+              </b>
+              .
+            </span>
+            {fallbackNotice.from.hasCreditsLink && (
+              <a
+                href={fallbackNotice.from.actionUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: '#92400e',
+                  fontWeight: 700,
+                  textDecoration: 'underline',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  marginLeft: 4,
+                }}
+              >
+                Recargar créditos
+                <ExternalLink size={10} />
+              </a>
+            )}
+          </div>
           <button
             onClick={() => setFallbackNotice(null)}
             style={{ background: 'none', border: 'none', color: '#92400e', cursor: 'pointer', padding: 2 }}
@@ -896,9 +917,9 @@ export default function ChatIA() {
                               Predeterminado
                             </span>
                           )}
-                          {!srv.available && srv.requiresBilling && (
-                            <span style={{ fontSize: '0.65rem', color: '#d97706', fontWeight: 600 }}>
-                              Plan Pago / Créditos
+                          {srv.hasCreditsLink && (
+                            <span style={{ fontSize: '0.65rem', color: '#2563eb', fontWeight: 600 }}>
+                              Máxima Potencia
                             </span>
                           )}
                           {srv.comingSoon && (
@@ -914,22 +935,22 @@ export default function ChatIA() {
                       {isSelected && <CheckCircle2 size={16} color="#00979d" />}
                     </div>
 
-                    {/* Botón de activación / recarga si requiere créditos */}
-                    {!srv.available && srv.requiresBilling && (
+                    {/* Botón de activación / recarga si tiene link de créditos */}
+                    {srv.hasCreditsLink && (
                       <div
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           padding: '6px 10px',
-                          backgroundColor: '#fffbeb',
+                          backgroundColor: '#f0f9ff',
                           borderRadius: 6,
-                          border: '1px solid #fef3c7',
+                          border: '1px solid #e0f2fe',
                           marginTop: 2,
                         }}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <span style={{ fontSize: '0.7rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontSize: '0.7rem', color: '#0369a1', display: 'flex', alignItems: 'center', gap: 4 }}>
                           <CreditCard size={12} />
                           Requiere créditos en Google AI Studio
                         </span>
@@ -941,7 +962,7 @@ export default function ChatIA() {
                             fontSize: '0.7rem',
                             fontWeight: 700,
                             color: '#ffffff',
-                            backgroundColor: '#d97706',
+                            backgroundColor: '#0284c7',
                             padding: '4px 8px',
                             borderRadius: 6,
                             textDecoration: 'none',

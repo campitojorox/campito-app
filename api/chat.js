@@ -114,8 +114,14 @@ export default async function handler(req, res) {
     const lastMessage = messages[messages.length - 1];
     const userInput = lastMessage.content;
 
-    // Modelos en orden de fallback (HIGH como predeterminado)
-    const modelsToTry = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+    // Modelos en orden de fallback (de más potente a menos potente)
+    const modelsToTry = [
+      'gemini-3.1-pro-preview',
+      'gemini-2.5-pro',
+      'gemini-3.5-flash',
+      'gemini-2.5-flash',
+      'gemini-3.1-flash-lite',
+    ];
     let text = null;
     let modelUsed = null;
     let lastErr = null;

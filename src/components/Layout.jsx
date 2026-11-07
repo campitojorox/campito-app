@@ -51,43 +51,46 @@ export default function Layout({ session }) {
   });
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
+  const isChatIA = location.pathname.startsWith('/chat-ia');
 
   return (
     <div className="app-container">
-      {/* Top App Bar mimicking AppSheet */}
-      <header className="app-header" style={{ padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
-            <MenuIcon size={24} />
-            {needRefresh && (
-              <span style={{
-                position: 'absolute',
-                top: '-6px',
-                right: '-8px',
-                backgroundColor: 'var(--primary)',
-                color: 'white',
-                borderRadius: '50%',
-                width: '18px',
-                height: '18px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                border: '2px solid var(--bg-color)'
-              }}>!</span>
-            )}
-          </button>
-          <Trees size={32} color="var(--primary)" />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {location.pathname !== '/historial' && (
-            <button style={{ color: 'var(--primary)' }} onClick={() => setIsSearchOpen(true)}>
-              <Search size={22} />
+      {/* Top App Bar mimicking AppSheet — se oculta en Chat IA */}
+      {!isChatIA && (
+        <header className="app-header" style={{ padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
+              <MenuIcon size={24} />
+              {needRefresh && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-6px',
+                  right: '-8px',
+                  backgroundColor: 'var(--primary)',
+                  color: 'white',
+                  borderRadius: '50%',
+                  width: '18px',
+                  height: '18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  border: '2px solid var(--bg-color)'
+                }}>!</span>
+              )}
             </button>
-          )}
-        </div>
-      </header>
+            <Trees size={32} color="var(--primary)" />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {location.pathname !== '/historial' && (
+              <button style={{ color: 'var(--primary)' }} onClick={() => setIsSearchOpen(true)}>
+                <Search size={22} />
+              </button>
+            )}
+          </div>
+        </header>
+      )}
 
       {/* Logout Confirmation Modal */}
       {isConfirmingSignOut && (
@@ -414,7 +417,7 @@ export default function Layout({ session }) {
         </div>
       )}
 
-      <main className="main-content">
+      <main className={`main-content ${isChatIA ? 'no-padding' : ''}`}>
         <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>Cargando página...</div>}>
           <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users, events, transactions, refetchUsers, refetchEvents, refetchTransactions, currentUser }} />
         </Suspense>
