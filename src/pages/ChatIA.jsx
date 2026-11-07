@@ -21,7 +21,7 @@ import {
 import { supabase } from '../supabaseClient';
 
 // ─── Configuración de los 3 Servidores de Gemini ──────────────────────────────
-export const GEMINI_SERVERS = [
+const GEMINI_SERVERS = [
   {
     id: 'gemini-3.5-flash',
     name: 'Gemini 3.5 Flash',
