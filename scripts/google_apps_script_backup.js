@@ -38,6 +38,7 @@ function onOpen() {
     .addItem('🖼️ Respaldar imágenes de contabilidad solamente', 'respaldarImagenes')
     .addItem('💬 Respaldar Chat IA (Conversaciones + Archivos)', 'respaldarChatIAMenu')
     .addItem('🧠 Sincronizar Memoria de Finca (Aprendizaje IA)', 'respaldarMemoriaMenu')
+    .addItem('🗺️ Sincronizar Inventario y Catastro GPS', 'respaldarInventarioMenu')
     .addSeparator()
     .addItem('⏰ Activar Respaldo Automático Semanal (Lunes 04:00 AM)', 'activarRespaldoSemanal')
     .addSeparator()
@@ -265,6 +266,27 @@ function actualizarCampitoJorox() {
     Logger.log('Aviso al sincronizar Memoria de Finca: ' + knowErr.message);
   }
 
+  // 4d. ACTUALIZAR HOJA 'INVENTARIO_GPS' (ÁRBOLES, RIEGO, ARQUETAS, ACEQUIAS)
+  let inventoryItems = [];
+  try {
+    Logger.log('Descargando inventario y catastro GPS de la finca...');
+    const invUrl = SUPABASE_CONFIG.url + '/rest/v1/farm_inventory?select=*&order=created_at.desc';
+    const invRes = UrlFetchApp.fetch(invUrl, {
+      method: 'get',
+      headers: {
+        'apikey': SUPABASE_CONFIG.serviceKey,
+        'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+      },
+      muteHttpExceptions: true
+    });
+    if (invRes.getResponseCode() === 200) {
+      inventoryItems = JSON.parse(invRes.getContentText());
+      sincronizarHojaInventario(ss, inventoryItems);
+    }
+  } catch (invErr) {
+    Logger.log('Aviso al sincronizar Inventario GPS: ' + invErr.message);
+  }
+
   // 5. DESCARGAR IMÁGENES DE CONTABILIDAD A DRIVE
   Logger.log('Descargando comprobantes a Google Drive...');
   const imagenesGuardadas = respaldarImagenesInterno(transactions, sheetCont);
@@ -290,6 +312,7 @@ function actualizarCampitoJorox() {
     '• ' + events.length + ' eventos\n' +
     '• ' + chatMessages.length + ' mensajes de Chat IA guardados\n' +
     '• ' + knowledgeItems.length + ' conocimientos aprendidos (Memoria Finca)\n' +
+    '• ' + inventoryItems.length + ' elementos georreferenciados (Inventario GPS)\n' +
     '• ' + imagenesGuardadas + ' comprobantes en Drive\n' +
     '• ' + chatArchivosGuardados + ' archivos en "Chat IA Files/"\n' +
     '• Código fuente respaldado en "Codigo Fuente/"';
@@ -417,6 +440,81 @@ function respaldarMemoriaMenu() {
     '🧠 Memoria de Finca sincronizada con éxito:\n\n' +
     '• ' + knowledgeItems.length + ' reglas y conocimientos guardados en la pestaña "MEMORIA_FINCA"\n' +
     'El Asistente IA de Campito Jorox consulta esta base de datos en cada sesión.'
+  );
+}
+
+// ─── HOJA INVENTARIO Y CATASTRO GPS EN SHEETS ────────────────────────────────
+function sincronizarHojaInventario(ss, inventoryItems) {
+  let sheetInv = ss.getSheetByName('INVENTARIO_GPS');
+  if (!sheetInv) sheetInv = ss.insertSheet('INVENTARIO_GPS');
+  sheetInv.clearContents();
+
+  const invHeaders = [
+    'ID', 'Fecha', 'Nombre', 'Categoría', 'Variedad',
+    'Latitud', 'Longitud', 'Precisión (m)', 'Altitud (m)',
+    'Zona', 'Estado', 'Alerta GPS', 'Ver en Google Maps',
+    'Notas', 'Usuario'
+  ];
+  const invRows = [invHeaders];
+
+  for (let n = 0; n < inventoryItems.length; n++) {
+    const item = inventoryItems[n];
+    const created = item.created_at || '';
+    const dateStr = created ? created.split('T')[0] : '';
+    const lat = item.latitude || '';
+    const lng = item.longitude || '';
+    const mapsLink = (lat && lng)
+      ? `=HYPERLINK("https://maps.google.com/?q=${lat},${lng}"; "📍 Abrir Mapa")`
+      : '';
+
+    invRows.push([
+      item.id || '',
+      dateStr,
+      item.name || '',
+      item.category || 'arbol',
+      item.variety_type || '',
+      lat,
+      lng,
+      item.accuracy_meters || '',
+      item.altitude_meters || '',
+      item.zone || '',
+      item.status || 'saludable',
+      item.gps_warning ? 'SÍ (>6m)' : 'OK',
+      mapsLink,
+      item.notes || '',
+      item.user_name || 'Admin'
+    ]);
+  }
+
+  sheetInv.getRange(1, 1, invRows.length, invHeaders.length).setValues(invRows);
+  formatearEncabezado(sheetInv, invHeaders.length);
+}
+
+// ─── RESPALDO INDEPENDIENTE DE INVENTARIO GPS DESDE EL MENÚ ──────────────────
+function respaldarInventarioMenu() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const invUrl = SUPABASE_CONFIG.url + '/rest/v1/farm_inventory?select=*&order=created_at.desc';
+  const invRes = UrlFetchApp.fetch(invUrl, {
+    method: 'get',
+    headers: {
+      'apikey': SUPABASE_CONFIG.serviceKey,
+      'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+    },
+    muteHttpExceptions: true
+  });
+
+  if (invRes.getResponseCode() !== 200) {
+    SpreadsheetApp.getUi().alert('❌ Error al conectar con Inventario GPS en Supabase: ' + invRes.getContentText());
+    return;
+  }
+
+  const inventoryItems = JSON.parse(invRes.getContentText());
+  sincronizarHojaInventario(ss, inventoryItems);
+
+  SpreadsheetApp.getUi().alert(
+    '🗺️ Inventario Agrícola y Catastro GPS sincronizado con éxito:\n\n' +
+    '• ' + inventoryItems.length + ' elementos guardados en la pestaña "INVENTARIO_GPS"\n' +
+    'Incluye coordenadas GPS, estado fitosanitario y enlaces directos a Google Maps.'
   );
 }
 

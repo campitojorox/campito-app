@@ -25,9 +25,25 @@ import {
   Brain,
   BookOpen,
   Plus,
-  Trash2
+  Trash2,
+  MapPin,
+  Navigation,
+  FileSpreadsheet,
+  Download,
+  Map,
+  Layers,
+  Activity,
+  Radio
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
+import { processVoiceGeoSession } from '../services/voiceTreeExtractor';
+import {
+  exportInventoryToExcel,
+  exportInventoryToPDF,
+  exportInventoryToKML,
+  exportInventoryToGeoJSON,
+} from '../utils/exportTools';
 
 // ─── Configuración de Modelos de Gemini (Ordenados de más a menos potente) ─────
 const GEMINI_SERVERS = [
@@ -84,10 +100,9 @@ const GEMINI_SERVERS = [
 
 const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de explotación agrícola.
 
-🔒 **CONFIDENCIALIDAD ESTRICTA (ENTORNO PRIVADO Y CERRADO)**:
-- Toda la información subida a este chat (textos, documentos, imágenes, audios, fotos de plagas, facturas, transacciones y contabilidad) es ESTRICTAMENTE CONFIDENCIAL de Campito Jorox.
-- Se permite la importación y análisis interno de información para la gestión de la finca, pero NUNCA su exportación, divulgación o compartición con servidores o entidades externas.
-- Toda la información permanece bajo custodia exclusiva de los administradores de Campito Jorox.
+🔒 **CONFIDENCIALIDAD Y DESCARGAS DEL USUARIO**:
+- Toda la información subida a este chat es ESTRICTAMENTE CONFIDENCIAL de Campito Jorox y no se comparte con redes ni servidores externos.
+- Sin embargo, el usuario administrador tiene plena potestad para solicitar y descargar en cualquier momento recopilaciones, fichas e inventarios en formato **PDF o EXCEL**, así como mapas en **KML y GeoJSON**. Puedes guiarle en cualquier momento sobre cómo descargarlos.
 
 🧠 **MÓDULO DE APRENDIZAJE Y MEMORIA PERMANENTE DE LA FINCA**:
 - Tienes memoria persistente en la base de datos de Campito Jorox ('farm_knowledge'). Todo lo que aprendas aquí lo recordarás en futuras sesiones.
@@ -97,6 +112,11 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
   2. Incluye al final de tu respuesta el comando estructurado:
      [[MEMORIA: {"category": "cultivo|riego|parcela|maquinaria|suelo|general|proveedor|protocolo|plaga", "title": "Título descriptivo breve", "content": "Detalle completo del conocimiento o regla aprendido"}]]
 - Si el usuario te pregunta qué cosas recuerdas o sabes de la finca, lístale de forma ordenada y concisa todo el conocimiento que tienes registrado en tu memoria.
+
+🗺️ **INVENTARIO AGRÍCOLA Y CATASTRO GPS EN TIEMPO REAL**:
+- Cuentas con un registro georreferenciado de árboles, plantas, tuberías de riego, arquetas, acequias y mojones ('farm_inventory').
+- Puedes responder sobre conteo de árboles por variedad (Hass, Bacon, etc.), estado fitosanitario (saludable, clorosis, poda), coordenadas exactas y ubicación en las parcelas.
+- Si el usuario te pide un informe o inventario, genera el resumen y recuérdale que puede descargarlo al instante en PDF o Excel.
 
 Tu función es ayudar con:
 - 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
@@ -516,10 +536,29 @@ export default function ChatIA() {
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [isKnowledgeModalOpen, setIsKnowledgeModalOpen] = useState(false);
+  const [isInventoryMapOpen, setIsInventoryMapOpen] = useState(false);
   const [farmKnowledge, setFarmKnowledge] = useState([]);
   const [knowledgeSearch, setKnowledgeSearch] = useState('');
   const [newKnowledge, setNewKnowledge] = useState({ category: 'cultivo', title: '', content: '' });
   const [isSavingKnowledge, setIsSavingKnowledge] = useState(false);
+  
+  // ─── Estado del Inventario y Catastro GPS ──────────────────────────────────
+  const [farmInventory, setFarmInventory] = useState([]);
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState('all');
+  const [isProcessingVoiceGeo, setIsProcessingVoiceGeo] = useState(false);
+
+  // Hook para captura sincronizada de audio continuo y telemetría GPS
+  const {
+    isRecording: isWalkingRecording,
+    elapsedSeconds: walkingSeconds,
+    currentGps,
+    gpsPointsCount,
+    accuracyWarning,
+    startTracking: startWalkingTracking,
+    stopTracking: stopWalkingTracking,
+  } = useVoiceGeoTracker();
+
   const [autoFallback, setAutoFallback] = useState(true);
 
   const [messages, setMessages] = useState([
@@ -590,7 +629,7 @@ export default function ChatIA() {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const [{ data: transactions }, { data: events }, { data: knowledge }] = await Promise.all([
+        const [{ data: transactions }, { data: events }, { data: knowledge }, { data: inventory }] = await Promise.all([
           supabase
             .from('transactions')
             .select('date, type, amount, description, category')
@@ -606,6 +645,11 @@ export default function ChatIA() {
             .from('farm_knowledge')
             .select('*')
             .eq('is_active', true)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('farm_inventory')
+            .select('*')
+            .eq('is_active', true)
             .order('created_at', { ascending: false })
         ]);
 
@@ -617,6 +661,15 @@ export default function ChatIA() {
           ctx += `\n\n🧠 MEMORIA Y APRENDIZAJE ACUMULADO DE LA FINCA (${knowledge.length} hechos/reglas grabadas):\n`;
           knowledge.forEach((k) => {
             ctx += `- [${(k.category || 'general').toUpperCase()}] ${k.title}: ${k.content}\n`;
+          });
+        }
+
+        // Inyectar inventario y catastro GPS de la finca
+        if (inventory && inventory.length > 0) {
+          setFarmInventory(inventory);
+          ctx += `\n\n🗺️ INVENTARIO Y CATASTRO GPS (${inventory.length} elementos georreferenciados):\n`;
+          inventory.slice(0, 30).forEach((inv) => {
+            ctx += `- [${(inv.category || 'arbol').toUpperCase()}] ${inv.name} (${inv.variety_type || ''}) | Estado: ${inv.status || 'saludable'} | Lat/Lng: ${inv.latitude}, ${inv.longitude} | Obs: ${inv.notes || ''}\n`;
           });
         }
 
@@ -695,6 +748,103 @@ export default function ChatIA() {
       setFarmKnowledge((prev) => prev.filter((k) => k.id !== id));
     } catch (err) {
       console.warn('Error al desactivar conocimiento:', err);
+    }
+  };
+
+  // ── Eliminar o desactivar elemento del inventario ─────────────────────────────
+  const handleDeleteInventoryItem = async (id) => {
+    try {
+      await supabase.from('farm_inventory').update({ is_active: false }).eq('id', id);
+      setFarmInventory((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      console.warn('Error al eliminar elemento del inventario:', err);
+    }
+  };
+
+  // ── Iniciar / Detener sesión de Mapeo de Voz y GPS en Movimiento ─────────────
+  const handleToggleWalkingSession = async () => {
+    if (!isWalkingRecording) {
+      try {
+        await startWalkingTracking();
+      } catch (err) {
+        setError(`No se pudo iniciar el modo caminar y mapear: ${err.message}`);
+      }
+      return;
+    }
+
+    // Detener y procesar con Gemini
+    setIsProcessingVoiceGeo(true);
+    const processingMsgId = (Date.now() + 1).toString();
+
+    try {
+      const sessionResult = await stopWalkingTracking();
+      if (!sessionResult || sessionResult.gpsTrack.length === 0) {
+        setError('No se recogieron suficientes datos GPS durante el recorrido.');
+        setIsProcessingVoiceGeo(false);
+        return;
+      }
+
+      // Mensaje de espera en el chat
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: processingMsgId,
+          role: 'assistant',
+          content: `🛰️ **Procesando recorrido en campo...**\n- Duración: **${sessionResult.durationSeconds.toFixed(0)}s**\n- Muestras GPS recogidas: **${sessionResult.totalGpsSamples} lecturas**\n- Conectando con Gemini para transcribir e interpolar coordenadas...`,
+          serverUsed: activeServer,
+        },
+      ]);
+
+      const extraction = await processVoiceGeoSession({
+        audioBlob: sessionResult.audioBlob,
+        t0: sessionResult.t0,
+        gpsTrack: sessionResult.gpsTrack,
+      });
+
+      if (extraction.trees && extraction.trees.length > 0) {
+        setFarmInventory((prev) => [...extraction.trees, ...prev]);
+
+        // Inyectar en contexto
+        extraction.trees.forEach((t) => {
+          contextDataRef.current += `\n- [${(t.tipo || 'arbol').toUpperCase()}] ${t.tipo} ${t.variedad || ''} | Estado: ${t.estado || 'saludable'} | Lat/Lng: ${t.coordenadas?.lat}, ${t.coordenadas?.lng}`;
+        });
+
+        // Actualizar mensaje con el resumen y botones de exportación
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === processingMsgId
+              ? {
+                  ...m,
+                  content: `### 🌳 Recorrido de Mapeo Completado\n\nSe han geolocalizado **${extraction.trees.length} elementos** durante tu caminata:\n\n` +
+                    extraction.trees
+                      .map(
+                        (t, i) =>
+                          `${i + 1}. **${t.tipo} ${t.variedad || ''}**\n   - Estado: \`${t.estado || 'saludable'}\`\n   - Coordenadas: \`${t.coordenadas?.lat}, ${t.coordenadas?.lng}\` (Precisión: ±${t.accuracy_m}m)${t.advertencia_gps ? ' ⚠️ *Alerta dispersión*' : ''}\n   - Observaciones: *${t.observaciones || 'Sin notas'}*`
+                      )
+                      .join('\n\n') +
+                    `\n\n📌 *Guardados en la base de datos de Campito Jorox. Puedes visualizarlos en el mapa o descargarlos.*`,
+                  inventoryExportBatch: extraction.trees,
+                }
+              : m
+          )
+        );
+      } else {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === processingMsgId
+              ? {
+                  ...m,
+                  content: `⚠️ No se detectaron menciones claras de árboles o infraestructura en el audio grabado. Comprueba que el micrófono haya capturado bien tu voz y vuelve a intentarlo.`,
+                }
+              : m
+          )
+        );
+      }
+    } catch (walkErr) {
+      console.error('Error procesando sesión de caminata:', walkErr);
+      setError(`Error procesando audio y telemetría GPS: ${walkErr.message}`);
+    } finally {
+      setIsProcessingVoiceGeo(false);
     }
   };
 
@@ -1014,6 +1164,24 @@ export default function ChatIA() {
               >
                 <Brain size={15} />
               </button>
+              <button
+                onClick={() => setIsInventoryMapOpen(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  color: farmInventory.length > 0 ? '#10b981' : '#94a3b8',
+                  borderRadius: '50%',
+                  transition: 'color 0.15s',
+                }}
+                title={`Catastro e Inventario GPS (${farmInventory.length} elementos)`}
+                aria-label="Catastro e Inventario GPS"
+              >
+                <MapPin size={15} />
+              </button>
             </div>
             <p style={styles.headerSub}>Campito Jorox</p>
           </div>
@@ -1265,7 +1433,7 @@ export default function ChatIA() {
                 </p>
               </div>
 
-              {/* Tarjeta 2: Aislamiento / Importar sí, exportar no */}
+              {/* Tarjeta 2: Aislamiento / Descargas seguras */}
               <div
                 style={{
                   padding: '12px',
@@ -1279,10 +1447,10 @@ export default function ChatIA() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1e293b', fontWeight: 700, fontSize: '0.85rem' }}>
                   <ShieldCheck size={15} color="#00979d" />
-                  <span>2. Importar Sí, Exportar No</span>
+                  <span>2. Circuito Seguro y Privado (Descargas para el Usuario)</span>
                 </div>
                 <p style={{ fontSize: '0.76rem', color: '#475569', margin: 0, lineHeight: 1.45 }}>
-                  El entorno está diseñado como un <b>circuito cerrado</b>: puedes importar libremente fotos, recibos y notas para que la IA los analice y sintetice, pero <b>ningún dato se exporta, comparte ni sincroniza con servidores o entidades externas</b>.
+                  El entorno es <b>completamente privado</b>: ningún dato se comparte, vende o sincroniza con redes públicas o terceros externos. Sin embargo, tú como usuario administrador tienes <b>pleno control para descargar tus recopilaciones, balances, inventarios e informes en formato PDF o EXCEL</b>, así como mapas en <b>KML y GeoJSON</b> en cualquier momento.
                 </p>
               </div>
 
@@ -1376,6 +1544,127 @@ export default function ChatIA() {
                   <BookOpen size={14} />
                   Ver y Administrar Memoria de la Finca ({farmKnowledge.length})
                 </button>
+              </div>
+
+              {/* Tarjeta 5: Catastro Agrícola GPS y Descargas PDF / EXCEL */}
+              <div
+                style={{
+                  padding: '12px',
+                  backgroundColor: '#f0f9ff',
+                  borderRadius: 10,
+                  border: '1px solid #bae6fd',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#0369a1', fontWeight: 700, fontSize: '0.85rem' }}>
+                    <MapPin size={16} color="#0284c7" />
+                    <span>5. Catastro GPS y Descargas (PDF / Excel / KML)</span>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, backgroundColor: '#e0f2fe', color: '#0284c7', padding: '1px 8px', borderRadius: 10 }}>
+                    {farmInventory.length} puntos mapeados
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.76rem', color: '#075985', margin: 0, lineHeight: 1.45 }}>
+                  Puedes mapear árboles, arquetas y acequias caminando por la finca con el botón <b>🧭 (Navegación)</b> o pedirle al chat recopilaciones y descargarlas al instante:
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 2 }}>
+                  <button
+                    onClick={() => {
+                      setIsInfoModalOpen(false);
+                      setIsInventoryMapOpen(true);
+                    }}
+                    style={{
+                      padding: '7px 8px',
+                      backgroundColor: '#0284c7',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Map size={13} />
+                    Ver Mapa / Catastro
+                  </button>
+
+                  <button
+                    onClick={() => exportInventoryToExcel(farmInventory)}
+                    disabled={farmInventory.length === 0}
+                    style={{
+                      padding: '7px 8px',
+                      backgroundColor: '#059669',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: farmInventory.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: farmInventory.length === 0 ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <FileSpreadsheet size={13} />
+                    Descargar Excel
+                  </button>
+
+                  <button
+                    onClick={() => exportInventoryToPDF(farmInventory)}
+                    disabled={farmInventory.length === 0}
+                    style={{
+                      padding: '7px 8px',
+                      backgroundColor: '#dc2626',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: farmInventory.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: farmInventory.length === 0 ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Download size={13} />
+                    Descargar PDF
+                  </button>
+
+                  <button
+                    onClick={() => exportInventoryToKML(farmInventory)}
+                    disabled={farmInventory.length === 0}
+                    style={{
+                      padding: '7px 8px',
+                      backgroundColor: '#475569',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: farmInventory.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: farmInventory.length === 0 ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    <Layers size={13} />
+                    Capa KML (My Maps)
+                  </button>
+                </div>
               </div>
 
               {/* Botón de acción */}
@@ -1692,7 +1981,341 @@ export default function ChatIA() {
         </div>
       )}
 
-      {/* ─── Área de Mensajes ────────────────────────────────────────────────── */}
+      {/* ─── Modal de Catastro e Inventario GPS con Mapas y Descargas ─────────── */}
+      {isInventoryMapOpen && (
+        <div style={styles.modalOverlay} onClick={() => setIsInventoryMapOpen(false)}>
+          <div
+            style={{
+              ...styles.modalContent,
+              maxWidth: 540,
+              maxHeight: '90vh',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MapPin size={18} color="#00979d" />
+                <div>
+                  <p style={styles.modalTitle}>Catastro e Inventario de Campito Jorox</p>
+                  <p style={{ margin: 0, fontSize: '0.68rem', color: '#64748b' }}>
+                    {farmInventory.length} elementos georreferenciados activos
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsInventoryMapOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                aria-label="Cerrar modal de mapa"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              {/* Barra de Descargas y Exportaciones */}
+              <div
+                style={{
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0f172a' }}>
+                    📥 Exportación y Herramientas de Mapas
+                  </span>
+                  <a
+                    href="https://www.google.com/maps/d/u/1/edit?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      color: '#0284c7',
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    Google My Maps Jorox
+                    <ExternalLink size={10} />
+                  </a>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                  <button
+                    onClick={() => exportInventoryToExcel(farmInventory)}
+                    disabled={farmInventory.length === 0}
+                    style={{
+                      padding: '8px 10px',
+                      backgroundColor: '#059669',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: farmInventory.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: farmInventory.length === 0 ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 5,
+                    }}
+                  >
+                    <FileSpreadsheet size={13} />
+                    Excel (.csv)
+                  </button>
+
+                  <button
+                    onClick={() => exportInventoryToPDF(farmInventory)}
+                    disabled={farmInventory.length === 0}
+                    style={{
+                      padding: '8px 10px',
+                      backgroundColor: '#dc2626',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: farmInventory.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: farmInventory.length === 0 ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 5,
+                    }}
+                  >
+                    <Download size={13} />
+                    Informe PDF
+                  </button>
+
+                  <button
+                    onClick={() => exportInventoryToKML(farmInventory)}
+                    disabled={farmInventory.length === 0}
+                    style={{
+                      padding: '8px 10px',
+                      backgroundColor: '#0284c7',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: farmInventory.length === 0 ? 'not-allowed' : 'pointer',
+                      opacity: farmInventory.length === 0 ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 5,
+                    }}
+                  >
+                    <Map size={13} />
+                    Capa KML
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtro y Búsqueda */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Buscar por árbol, variedad o zona..."
+                  value={inventorySearch}
+                  onChange={(e) => setInventorySearch(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    border: '1px solid #e2e8f0',
+                    fontSize: '0.75rem',
+                    outline: 'none',
+                    backgroundColor: '#fafafa',
+                  }}
+                />
+                <select
+                  value={inventoryCategoryFilter}
+                  onChange={(e) => setInventoryCategoryFilter(e.target.value)}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 6,
+                    border: '1px solid #e2e8f0',
+                    fontSize: '0.72rem',
+                    backgroundColor: '#ffffff',
+                  }}
+                >
+                  <option value="all">Todas ({farmInventory.length})</option>
+                  <option value="arbol">🥑 Árboles</option>
+                  <option value="riego_linea">💧 Riego / Tuberías</option>
+                  <option value="arqueta">🔲 Arquetas</option>
+                  <option value="acequia">🧱 Acequias / Albercas</option>
+                  <option value="piedra_linde">🪨 Piedras de Linde</option>
+                </select>
+              </div>
+
+              {/* Lista de elementos georreferenciados */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                {farmInventory.length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      padding: '24px 16px',
+                      color: '#94a3b8',
+                      fontSize: '0.78rem',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: 8,
+                      border: '1px dashed #cbd5e1',
+                    }}
+                  >
+                    <MapPin size={24} color="#94a3b8" style={{ margin: '0 auto 8px', display: 'block' }} />
+                    <p style={{ margin: 0, fontWeight: 600, color: '#64748b' }}>
+                      Aún no hay elementos georreferenciados
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: '0.72rem' }}>
+                      Inicia una caminata en campo con el botón <b>🧭 (Navegación)</b> del chat para mapear con voz y GPS.
+                    </p>
+                  </div>
+                ) : (
+                  farmInventory
+                    .filter((item) => {
+                      if (inventoryCategoryFilter !== 'all') {
+                        const cat = (item.category || item.tipo || '').toLowerCase();
+                        if (!cat.includes(inventoryCategoryFilter)) return false;
+                      }
+                      if (!inventorySearch.trim()) return true;
+                      const q = inventorySearch.toLowerCase();
+                      return (
+                        (item.name && item.name.toLowerCase().includes(q)) ||
+                        (item.variety_type && item.variety_type.toLowerCase().includes(q)) ||
+                        (item.notes && item.notes.toLowerCase().includes(q)) ||
+                        (item.status && item.status.toLowerCase().includes(q))
+                      );
+                    })
+                    .map((item) => {
+                      const lat = item.latitude || (item.coordenadas && item.coordenadas.lat);
+                      const lng = item.longitude || (item.coordenadas && item.coordenadas.lng);
+                      const acc = item.accuracy_meters || item.accuracy_m;
+                      const hasWarning = item.gps_warning || item.advertencia_gps;
+
+                      const statusColors = {
+                        saludable: { bg: '#dcfce7', text: '#15803d', label: 'Saludable' },
+                        clorosis: { bg: '#fef3c7', text: '#b45309', label: 'Clorosis' },
+                        poda_requerida: { bg: '#fee2e2', text: '#b91c1c', label: 'Poda urgente' },
+                        enfermo: { bg: '#fee2e2', text: '#991b1b', label: 'Enfermo' },
+                        seco: { bg: '#f1f5f9', text: '#475569', label: 'Seco' },
+                        mantenimiento: { bg: '#fef3c7', text: '#92400e', label: 'Mantenimiento' },
+                        bueno: { bg: '#dcfce7', text: '#166534', label: 'Bueno' },
+                      };
+                      const stInfo = statusColors[item.status || item.estado] || statusColors.saludable;
+
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            padding: '10px 12px',
+                            backgroundColor: '#ffffff',
+                            borderRadius: 8,
+                            border: '1px solid #e2e8f0',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 5,
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0f172a' }}>
+                                {item.name || `${item.tipo || 'Árbol'} ${item.variedad || ''}`}
+                              </span>
+                              {item.variety_type && (
+                                <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                                  ({item.variety_type})
+                                </span>
+                              )}
+                              <span
+                                style={{
+                                  fontSize: '0.64rem',
+                                  fontWeight: 700,
+                                  padding: '1px 6px',
+                                  borderRadius: 8,
+                                  backgroundColor: stInfo.bg,
+                                  color: stInfo.text,
+                                }}
+                              >
+                                {stInfo.label}
+                              </span>
+                            </div>
+
+                            <button
+                              onClick={() => handleDeleteInventoryItem(item.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: '#94a3b8',
+                                padding: '2px',
+                                borderRadius: 4,
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                              title="Eliminar elemento"
+                              aria-label="Eliminar elemento"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#334155' }}>
+                              <MapPin size={12} color="#00979d" />
+                              <span>
+                                {lat && lng ? `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}` : 'Sin coordenadas'}
+                              </span>
+                              {acc && (
+                                <span style={{ fontSize: '0.66rem', color: hasWarning ? '#b45309' : '#059669', fontWeight: 600 }}>
+                                  (±{Number(acc).toFixed(1)}m){hasWarning ? ' ⚠️' : ''}
+                                </span>
+                              )}
+                            </div>
+
+                            {lat && lng && (
+                              <a
+                                href={`https://maps.google.com/?q=${lat},${lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  fontSize: '0.68rem',
+                                  color: '#0284c7',
+                                  textDecoration: 'none',
+                                  fontWeight: 600,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 3,
+                                }}
+                              >
+                                Ver en Mapa
+                                <ExternalLink size={10} />
+                              </a>
+                            )}
+                          </div>
+
+                          {(item.notes || item.observaciones) && (
+                            <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: '#475569', fontStyle: 'italic', lineHeight: 1.4 }}>
+                              "{item.notes || item.observaciones}"
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={styles.messagesArea}>
         {messages.map((msg) => {
           const isUser = msg.role === 'user';
@@ -1737,6 +2360,76 @@ export default function ChatIA() {
                   >
                     <Brain size={13} color="#16a34a" />
                     <span>Aprendido en memoria: <b>{msg.learnedMemory.title}</b></span>
+                  </div>
+                )}
+                {msg.inventoryExportBatch && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: 6,
+                      marginTop: 10,
+                      paddingTop: 8,
+                      borderTop: '1px solid #e2e8f0',
+                    }}
+                  >
+                    <button
+                      onClick={() => exportInventoryToExcel(msg.inventoryExportBatch)}
+                      style={{
+                        padding: '5px 10px',
+                        backgroundColor: '#059669',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <FileSpreadsheet size={12} />
+                      Descargar Excel
+                    </button>
+                    <button
+                      onClick={() => exportInventoryToPDF(msg.inventoryExportBatch)}
+                      style={{
+                        padding: '5px 10px',
+                        backgroundColor: '#dc2626',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <Download size={12} />
+                      Descargar PDF
+                    </button>
+                    <button
+                      onClick={() => exportInventoryToKML(msg.inventoryExportBatch)}
+                      style={{
+                        padding: '5px 10px',
+                        backgroundColor: '#0284c7',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: '0.7rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <Map size={12} />
+                      Capa KML (My Maps)
+                    </button>
                   </div>
                 )}
               </div>
@@ -1792,6 +2485,88 @@ export default function ChatIA() {
         </div>
       )}
 
+      {/* ─── Barra de Estado: Modo Caminar y Mapear con Voz + GPS ─────────────── */}
+      {isWalkingRecording && (
+        <div
+          style={{
+            padding: '10px 14px',
+            backgroundColor: '#0f172a',
+            color: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+            borderTop: '2px solid #00979d',
+            zIndex: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  animation: 'chatBounce 1s infinite',
+                  display: 'inline-block',
+                }}
+              />
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f8fafc' }}>
+                Mapeando en movimiento: {Math.floor(walkingSeconds / 60)}:{(walkingSeconds % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {currentGps ? (
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    backgroundColor: accuracyWarning ? '#78350f' : '#065f46',
+                    color: accuracyWarning ? '#fef08a' : '#a7f3d0',
+                    fontWeight: 600,
+                  }}
+                >
+                  📍 ±{currentGps.accuracy?.toFixed(1)}m {accuracyWarning ? '⚠️ Impreciso' : '✓ Preciso'}
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Buscando satélites GPS...</span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+              Habla con naturalidad describiendo árboles, variedades y arquetas conforme caminas.
+            </span>
+
+            <button
+              onClick={handleToggleWalkingSession}
+              disabled={isProcessingVoiceGeo}
+              style={{
+                padding: '6px 14px',
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 20,
+                fontSize: '0.76rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              <Radio size={13} />
+              Finalizar y Procesar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ─── Barra de Input Inferior ─────────────────────────────────────────── */}
       <div style={styles.inputBar}>
         <input
@@ -1811,6 +2586,22 @@ export default function ChatIA() {
           aria-label="Adjuntar foto"
         >
           <Camera size={18} />
+        </button>
+
+        {/* Botón Mapeo Caminar y Mapear con Voz + GPS */}
+        <button
+          className="chatia-iconbtn"
+          style={{
+            ...styles.iconBtn(isWalkingRecording),
+            backgroundColor: isWalkingRecording ? '#ef4444' : '#f0fdf4',
+            color: isWalkingRecording ? '#ffffff' : '#16a34a',
+            border: isWalkingRecording ? 'none' : '1px solid #bbf7d0',
+          }}
+          onClick={handleToggleWalkingSession}
+          title={isWalkingRecording ? 'Detener y procesar ruta de campo' : 'Caminar y Mapear con Voz + GPS en tiempo real'}
+          aria-label="Caminar y Mapear con Voz y GPS"
+        >
+          <Navigation size={18} />
         </button>
 
         {/* Input Texto */}
