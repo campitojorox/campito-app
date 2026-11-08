@@ -313,3 +313,216 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   SISTEMA DE PINES UNIFICADOS DE MAPA — CAMPITO JOROX
+   Misma estructura familiar y dimensiones idénticas; colores diferenciados por CSS
+   ========================================================================== */
+
+/* Contenedor transparente de Leaflet DivIcon */
+.farm-pin-div-wrapper {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Área táctil e interactiva (38px x 38px) idéntica para todos los pines */
+.farm-pin-container {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+/* Estructura familiar del Pin (22px x 22px) con transición elástica */
+.farm-pin {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.farm-pin-container:hover .farm-pin {
+  transform: scale(1.22);
+  z-index: 999;
+}
+
+/* Cuerpo físico del Pin (20px visible, borde blanco de 2.5px y sombra de relieve) */
+.farm-pin__body {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+}
+
+/* Núcleo central blanco reflectante */
+.farm-pin__core {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+/* Halo exterior pulsante de selección */
+.farm-pin__halo {
+  display: none;
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2.5px solid #00d1da;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.farm-pin-container.is-selected .farm-pin__halo {
+  display: block;
+  animation: farmPinHaloPulse 1.8s infinite ease-out;
+}
+
+@keyframes farmPinHaloPulse {
+  0% { transform: scale(0.75); opacity: 1; }
+  70% { transform: scale(1.3); opacity: 0.35; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
+
+/* Advertencia GPS (dispersión > 6m) */
+.farm-pin-container.has-warning .farm-pin__body {
+  border-color: #facc15 !important;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.6), 0 2px 7px rgba(0, 0, 0, 0.45);
+}
+
+/* ─── COLORES POR FAMILIA ARQUITECTÓNICA (CSS) ────────────────────────────── */
+.farm-pin--family-arbol .farm-pin__body {
+  background-color: #16a34a; /* Árboles frutales (aguacate, limonero, etc.) */
+}
+
+.farm-pin--family-planta .farm-pin__body {
+  background-color: #22c55e; /* Plantas, huerta, arbustos */
+}
+
+.farm-pin--family-riego .farm-pin__body {
+  background-color: #0284c7; /* Riego, arquetas, agua, contadores */
+}
+
+.farm-pin--family-edificio .farm-pin__body {
+  background-color: #eab308; /* Casas, cueva, almacenes, naves */
+}
+
+.farm-pin--family-herramienta .farm-pin__body {
+  background-color: #f97316; /* Herramientas, maquinaria agrícola */
+}
+
+.farm-pin--family-hito .farm-pin__body {
+  background-color: #8b5cf6; /* Mojones, lindes, cotas */
+}
+
+.farm-pin--family-otros .farm-pin__body {
+  background-color: #64748b; /* Otros elementos */
+}
+
+/* Modificador específico para cotas oficiales de Catastro */
+.farm-pin--cota .farm-pin__body {
+  background-color: #7c3aed;
+  border-color: #ffffff;
+}
+
+/* ─── SUBESTADOS FITOSANITARIOS (SOBREESCRIBEN COLOR POR CSS) ─────────────── */
+.farm-pin--status-enfermo .farm-pin__body,
+.farm-pin--status-seco .farm-pin__body {
+  background-color: #ef4444 !important; /* Rojo alerta fitosanitaria */
+}
+
+.farm-pin--status-clorosis .farm-pin__body {
+  background-color: #f59e0b !important; /* Ámbar clorosis */
+}
+
+.farm-pin--status-poda_requerida .farm-pin__body {
+  background-color: #ea580c !important; /* Naranja poda requerida */
+}
+
+/* ─── TOOLTIP MODERNO Y ESTANDARIZADO DE MAPA ─────────────────────────────── */
+.campito-map-tooltip {
+  background: rgba(15, 23, 42, 0.96) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  padding: 6px 10px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45) !important;
+  font-family: inherit !important;
+  pointer-events: none !important;
+}
+
+.campito-map-tooltip::before {
+  border-top-color: rgba(15, 23, 42, 0.96) !important;
+}
+
+.farm-pin-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.farm-pin-tooltip__badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+  display: inline-block;
+  margin-bottom: 2px;
+}
+
+.farm-pin-tooltip__badge--arbol { color: #86efac; }
+.farm-pin-tooltip__badge--planta { color: #bbf7d0; }
+.farm-pin-tooltip__badge--riego { color: #7dd3fc; }
+.farm-pin-tooltip__badge--edificio { color: #fde047; }
+.farm-pin-tooltip__badge--herramienta { color: #fdba74; }
+.farm-pin-tooltip__badge--hito { color: #d8b4fe; }
+.farm-pin-tooltip__badge--otros { color: #cbd5e1; }
+
+.farm-pin-tooltip__title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.farm-pin-tooltip__sub {
+  font-size: 0.72rem;
+  color: #cbd5e1;
+}
+
+.farm-pin-tooltip__status {
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.farm-pin-tooltip__status--saludable { background: rgba(22, 163, 74, 0.3); color: #86efac; }
+.farm-pin-tooltip__status--clorosis { background: rgba(245, 158, 11, 0.3); color: #fde047; }
+.farm-pin-tooltip__status--poda_requerida { background: rgba(234, 88, 12, 0.3); color: #fdba74; }
+.farm-pin-tooltip__status--enfermo,
+.farm-pin-tooltip__status--seco { background: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+

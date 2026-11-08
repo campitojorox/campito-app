@@ -236,6 +236,109 @@ function getPointColor(item) {
   return CATEGORY_COLORS[parent] || '#94a3b8';
 }
 
+// ─── Arquitectura Familiar de Pines (Mismas Dimensiones y Comportamientos) ───
+function getPinFamilySlug(item) {
+  const parent = getItemCategory(item);
+  switch (parent) {
+    case 'Casas / Edificios':
+    case 'Edificios':
+      return 'edificio';
+    case 'Árboles':
+      return 'arbol';
+    case 'Plantas':
+      return 'planta';
+    case 'Herramientas':
+      return 'herramienta';
+    case 'Riego / Agua':
+      return 'riego';
+    case 'Hitos':
+      return 'hito';
+    default:
+      return 'otros';
+  }
+}
+
+function getPinStatusSlug(item) {
+  const status = (item.status || item.estado || '').toLowerCase().trim();
+  if (['enfermo', 'seco', 'muerto'].includes(status)) return 'enfermo';
+  if (status === 'clorosis') return 'clorosis';
+  if (['poda_requerida', 'poda'].includes(status)) return 'poda_requerida';
+  return 'saludable';
+}
+
+/**
+ * Generador de Icono DivIcon para todos los puntos de inventario.
+ * Garantiza idénticas dimensiones físicas (38px touch box, 20px cuerpo visible,
+ * núcleo blanco reflectante de 6px y borde blanco de 2.5px),
+ * con diferenciación cromática gestionada estrictamente mediante clases CSS.
+ */
+function createFamilyPinIcon({ item, isSelected = false, hasWarning = false }) {
+  const familySlug = getPinFamilySlug(item);
+  const statusSlug = getPinStatusSlug(item);
+  const selectedClass = isSelected ? 'is-selected' : '';
+  const warningClass = hasWarning ? 'has-warning' : '';
+
+  return L.divIcon({
+    className: 'farm-pin-div-wrapper',
+    html: `
+      <div class="farm-pin-container ${selectedClass} ${warningClass}">
+        <div class="farm-pin farm-pin--family-${familySlug} farm-pin--status-${statusSlug}">
+          <div class="farm-pin__halo"></div>
+          <div class="farm-pin__body">
+            <div class="farm-pin__core"></div>
+          </div>
+        </div>
+      </div>
+    `,
+    iconSize: [38, 38],
+    iconAnchor: [19, 19],
+    popupAnchor: [0, -18],
+    tooltipAnchor: [0, -16],
+  });
+}
+
+/**
+ * Generador de Icono DivIcon para Cotas Catastrales Oficiales.
+ * Comparte exactamente las mismas dimensiones y estructura familiar que los demás pines.
+ */
+function createCotaPinIcon({ isSelected = false }) {
+  const selectedClass = isSelected ? 'is-selected' : '';
+  return L.divIcon({
+    className: 'farm-pin-div-wrapper',
+    html: `
+      <div class="farm-pin-container ${selectedClass}">
+        <div class="farm-pin farm-pin--family-hito farm-pin--cota">
+          <div class="farm-pin__halo"></div>
+          <div class="farm-pin__body">
+            <div class="farm-pin__core"></div>
+          </div>
+        </div>
+      </div>
+    `,
+    iconSize: [38, 38],
+    iconAnchor: [19, 19],
+    popupAnchor: [0, -18],
+    tooltipAnchor: [0, -16],
+  });
+}
+
+/**
+ * Detector robusto de intención de borrado en órdenes de voz o texto
+ */
+function isDeleteIntent(text) {
+  if (!text || typeof text !== 'string') return false;
+  const lower = text.toLowerCase().trim();
+  const deleteKeywords = [
+    'borrar', 'eliminar', 'quitar', 'suprimir', 'borra', 'elimina',
+    'quita', 'borralo', 'bórralo', 'eliminalo', 'elimínalo', 'quitalo',
+    'quítalo', 'delete', 'remove'
+  ];
+  return deleteKeywords.some((kw) => {
+    const regex = new RegExp(`\\b${kw}\\b`, 'i');
+    return regex.test(lower);
+  });
+}
+
 /**
  * Motor IA directo de Campito Jorox para ejecutar órdenes sobre el mapa satelital
  * mediante modelos Google Gemini con fallback automático de cuotas y soporte multimodal
@@ -498,6 +601,18 @@ export default function FarmSatelliteMap({
   const catastroLayerRef = useRef(null);
   const navigate = isPageMode ? useNavigate() : () => null;
 
+  // ─── Estados locales optimistas (0ms latency, respuesta inmediata en mapa) ──
+  const [localInventory, setLocalInventory] = useState(inventory);
+  const [localPaths, setLocalPaths] = useState(paths);
+
+  useEffect(() => {
+    setLocalInventory(inventory);
+  }, [inventory]);
+
+  useEffect(() => {
+    setLocalPaths(paths);
+  }, [paths]);
+
   // ─── Inicialización de Capas y Filtros desde caché local (localStorage) ───
   const initialMapSettings = useMemo(() => loadMapSettingsFromCache(), []);
 
@@ -638,7 +753,7 @@ export default function FarmSatelliteMap({
   // ─── Inventario y paths filtrados (búsqueda + categorías) ───────────────────
   const filteredInventory = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return inventory.filter(item => {
+    return localInventory.filter(item => {
       // Filtro de búsqueda
       if (q) {
         const searchable = [item.name, item.category, item.tipo, item.variety_type, item.notes]
@@ -655,11 +770,11 @@ export default function FarmSatelliteMap({
       }
       return true;
     });
-  }, [inventory, searchQuery, visibleCategories, visibleSubcats]);
+  }, [localInventory, searchQuery, visibleCategories, visibleSubcats]);
 
   const filteredPaths = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return paths.filter(path => {
+    return localPaths.filter(path => {
       if (q) {
         const searchable = [path.name, path.path_type, path.notes].filter(Boolean).join(' ').toLowerCase();
         if (!searchable.includes(q)) return false;
@@ -667,7 +782,7 @@ export default function FarmSatelliteMap({
       const pt = path.path_type || 'otro';
       return visiblePathTypes.has(pt);
     });
-  }, [paths, searchQuery, visiblePathTypes]);
+  }, [localPaths, searchQuery, visiblePathTypes]);
 
   // ─── 1. Inicialización de Leaflet y capas base ──────────────────────────────
   useEffect(() => {
@@ -693,6 +808,17 @@ export default function FarmSatelliteMap({
 
     esriLayer.addTo(map);
     map._esriLayer = esriLayer;
+
+    // Crear paneles dedicados con z-index explícito para garantizar que los pines siempre queden sobre polígonos
+    if (!map.getPane('highlightPane')) {
+      const hlPane = map.createPane('highlightPane');
+      hlPane.style.zIndex = '610';
+      hlPane.style.pointerEvents = 'none';
+    }
+    if (!map.getPane('inventoryMarkersPane')) {
+      const markersPane = map.createPane('inventoryMarkersPane');
+      markersPane.style.zIndex = '620';
+    }
 
     // Crear grupos de capas vectoriales
     catastroLayerRef.current = L.featureGroup().addTo(map);
@@ -763,12 +889,14 @@ export default function FarmSatelliteMap({
     if (selectedTarget.lat && selectedTarget.lng) {
       // Círculo exterior pulsante cyan
       L.circleMarker([selectedTarget.lat, selectedTarget.lng], {
-        radius: 14,
+        radius: 16,
         color: '#00d1da',
         weight: 3,
         fillColor: '#00979d',
         fillOpacity: 0.25,
         dashArray: '3, 4',
+        pane: 'highlightPane',
+        interactive: false,
       }).addTo(layer);
 
       // Círculo centro blanco
@@ -778,6 +906,8 @@ export default function FarmSatelliteMap({
         weight: 2,
         fillColor: '#00d1da',
         fillOpacity: 1,
+        pane: 'highlightPane',
+        interactive: false,
       }).addTo(layer);
     } else if (selectedTarget.type === 'path' && selectedTarget.raw?.coordinates) {
       const coords = selectedTarget.raw.coordinates.map((c) => [c.lat, c.lng]);
@@ -845,7 +975,7 @@ export default function FarmSatelliteMap({
     }
   }, [drawPoints]);
 
-  // ─── 4. Renderizado de Puntos de Inventario (SOLO PUNTOS DE COLOR, SIN ICONOS) ─
+  // ─── 4. Renderizado de Puntos de Inventario (Estructura Familiar Unificada y CSS) ─
   useEffect(() => {
     const layer = markersLayerRef.current;
     if (!layer) return;
@@ -858,19 +988,12 @@ export default function FarmSatelliteMap({
       const lng = item.longitude || (item.coordenadas && item.coordenadas.lng);
       if (!lat || !lng) return;
 
-      const color = getPointColor(item);
       const hasWarning = Boolean(item.gps_warning || item.advertencia_gps);
+      const isSelected = selectedTarget && String(selectedTarget.id) === String(item.id);
+      const familySlug = getPinFamilySlug(item);
+      const statusSlug = getPinStatusSlug(item);
 
-      // Usamos L.circleMarker (vector puro, ligero, nítido y sin iconos)
-      const marker = L.circleMarker([lat, lng], {
-        radius: 7,
-        fillColor: color,
-        fillOpacity: 0.92,
-        color: hasWarning ? '#facc15' : '#ffffff', // Borde amarillo si hubo dispersión GPS > 6m
-        weight: hasWarning ? 2.5 : 1.8,
-      });
-
-      marker.on('click', (e) => {
+      const onSelect = (e) => {
         if (e) {
           L.DomEvent.stopPropagation(e);
           if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -895,17 +1018,38 @@ export default function FarmSatelliteMap({
           accuracy: item.accuracy_meters || item.accuracy_m || null,
           raw: item,
         });
+      };
+
+      // Marcador unificado DivIcon (mismas dimensiones, estructura familiar y colores por CSS)
+      const pinIcon = createFamilyPinIcon({ item, isSelected, hasWarning });
+      const marker = L.marker([lat, lng], {
+        icon: pinIcon,
+        pane: 'inventoryMarkersPane',
+        interactive: true,
+        zIndexOffset: isSelected ? 1000 : 100,
       });
 
-      // Tooltip rápido al pasar el ratón
-      marker.bindTooltip(
-        `<b>${item.name || item.tipo}</b> ${item.variety_type ? `(${item.variety_type})` : ''}`,
-        { direction: 'top', offset: [0, -6], className: 'campito-map-tooltip' }
-      );
+      marker.on('click', onSelect);
+
+      // Tooltip informativo estructurado
+      const parentCat = getItemCategory(item);
+      const tooltipHtml = `
+        <div class="farm-pin-tooltip">
+          <span class="farm-pin-tooltip__badge farm-pin-tooltip__badge--${familySlug}">${parentCat}</span>
+          <span class="farm-pin-tooltip__title">${item.name || item.tipo || 'Punto'}</span>
+          ${item.variety_type ? `<span class="farm-pin-tooltip__sub">${item.variety_type}</span>` : ''}
+          ${item.status ? `<span class="farm-pin-tooltip__status farm-pin-tooltip__status--${statusSlug}">${item.status}</span>` : ''}
+        </div>
+      `;
+      marker.bindTooltip(tooltipHtml, {
+        direction: 'top',
+        offset: [0, -14],
+        className: 'campito-map-tooltip',
+      });
 
       marker.addTo(layer);
     });
-  }, [filteredInventory, showPoints]);
+  }, [filteredInventory, showPoints, selectedTarget]);
 
   // ─── 5. Renderizado de Caminos y Senderos (LÍNEAS DE COLOR) ───────────────────
   useEffect(() => {
@@ -1016,23 +1160,10 @@ export default function FarmSatelliteMap({
       poly.addTo(layer);
     });
 
-    // 2. Cotas Catastrales (mojones y vértices oficiales)
+    // 2. Cotas Catastrales (mojones y vértices oficiales en la misma arquitectura familiar)
     (catastroJorox.cotas || []).forEach((cota) => {
-      const marker = L.circleMarker([cota.lat, cota.lng], {
-        radius: 6.5,
-        fillColor: '#ffffff',
-        fillOpacity: 0.95,
-        color: '#00979d',
-        weight: 2,
-      });
-
-      marker.bindTooltip(`<b>Cota Catastral ${cota.name}</b>`, {
-        direction: 'top',
-        offset: [0, -6],
-        className: 'campito-map-tooltip',
-      });
-
-      marker.on('click', (e) => {
+      const isSelected = selectedTarget && String(selectedTarget.id) === `cota-${cota.name}`;
+      const onSelectCota = (e) => {
         if (e) {
           L.DomEvent.stopPropagation(e);
           if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -1051,8 +1182,30 @@ export default function FarmSatelliteMap({
         });
         setSelectedPoint(null);
         setSelectedPath(null);
+      };
+
+      const cotaIcon = createCotaPinIcon({ isSelected });
+      const marker = L.marker([cota.lat, cota.lng], {
+        icon: cotaIcon,
+        pane: 'inventoryMarkersPane',
+        interactive: true,
+        zIndexOffset: isSelected ? 1000 : 80,
       });
 
+      marker.bindTooltip(
+        `<div class="farm-pin-tooltip">
+          <span class="farm-pin-tooltip__badge farm-pin-tooltip__badge--hito">Catastro Oficial</span>
+          <span class="farm-pin-tooltip__title">Cota Catastral ${cota.name}</span>
+          <span class="farm-pin-tooltip__sub">Mojón o linde oficial</span>
+        </div>`,
+        {
+          direction: 'top',
+          offset: [0, -14],
+          className: 'campito-map-tooltip',
+        }
+      );
+
+      marker.on('click', onSelectCota);
       marker.addTo(layer);
     });
 
@@ -1094,7 +1247,7 @@ export default function FarmSatelliteMap({
 
       poly.addTo(layer);
     });
-  }, [showCatastro]);
+  }, [showCatastro, selectedTarget]);
 
   // ─── 6. Auto-ajuste de vista a todos los elementos al cargar ────────────────
   const fitAllElements = () => {
@@ -1229,26 +1382,46 @@ export default function FarmSatelliteMap({
   };
 
   // ─── 10. Eliminar Camino ─────────────────────────────────────────────────────
-  const handleDeletePath = async (id) => {
+  const handleDeletePath = async (id, e) => {
+    if (e) {
+      e.stopPropagation?.();
+      e.preventDefault?.();
+    }
+    if (!id) return;
     if (!window.confirm('¿Seguro que deseas eliminar este camino o sendero del mapa?')) return;
 
     try {
+      setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(id)));
       await deleteFarmPath(id);
+      if (selectedTarget && String(selectedTarget.id) === String(id)) {
+        setSelectedTarget(null);
+      }
       setSelectedPath(null);
-      if (onReloadPaths) onReloadPaths();
+      setIaFeedback({ type: 'success', text: '🗑️ Camino eliminado del mapa' });
+      if (onReloadPaths) await onReloadPaths();
     } catch (err) {
       alert(`Error al eliminar camino: ${err.message}`);
     }
   };
 
   // ─── 11. Eliminar Punto de Inventario ────────────────────────────────────────
-  const handleDeletePoint = async (id) => {
+  const handleDeletePoint = async (id, e) => {
+    if (e) {
+      e.stopPropagation?.();
+      e.preventDefault?.();
+    }
+    if (!id) return;
     if (!window.confirm('¿Seguro que deseas eliminar este punto del inventario?')) return;
 
     try {
+      setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(id)));
       await deleteFarmInventoryItem(id);
+      if (selectedTarget && String(selectedTarget.id) === String(id)) {
+        setSelectedTarget(null);
+      }
       setSelectedPoint(null);
-      if (onReloadInventory) onReloadInventory();
+      setIaFeedback({ type: 'success', text: '🗑️ Punto eliminado del inventario' });
+      if (onReloadInventory) await onReloadInventory();
     } catch (err) {
       alert(`Error al eliminar punto: ${err.message}`);
     }
@@ -1436,6 +1609,9 @@ export default function FarmSatelliteMap({
           status: targetEditData.status || 'saludable',
           notes: targetEditData.notes.trim() || null,
         };
+        setLocalInventory((prev) =>
+          prev.map((i) => (String(i.id) === String(selectedTarget.id) ? { ...i, ...updatePayload } : i))
+        );
         await updateFarmInventoryItem(selectedTarget.id, updatePayload);
         setSelectedTarget((prev) => ({
           ...prev,
@@ -1454,6 +1630,9 @@ export default function FarmSatelliteMap({
           color: targetEditData.color || '#f97316',
           notes: targetEditData.notes.trim() || null,
         };
+        setLocalPaths((prev) =>
+          prev.map((p) => (String(p.id) === String(selectedTarget.id) ? { ...p, ...updatePayload } : p))
+        );
         await updateFarmPath(selectedTarget.id, updatePayload);
         setSelectedTarget((prev) => ({
           ...prev,
@@ -1487,6 +1666,7 @@ export default function FarmSatelliteMap({
           is_active: true,
         };
         const inserted = await insertFarmInventoryItem(newItem);
+        setLocalInventory((prev) => [inserted, ...prev.filter((i) => String(i.id) !== String(inserted.id))]);
         setSelectedTarget({
           type: 'point',
           id: inserted.id,
@@ -1511,21 +1691,35 @@ export default function FarmSatelliteMap({
     }
   };
 
-  const handleDeleteTarget = async () => {
+  const handleDeleteTarget = async (e) => {
+    if (e) {
+      e.stopPropagation?.();
+      e.preventDefault?.();
+    }
     if (!selectedTarget) return;
-    if (!window.confirm(`¿Seguro que deseas eliminar "${selectedTarget.title}"?`)) return;
+    const targetTitle = selectedTarget.title || 'este elemento';
+    if (!window.confirm(`¿Seguro que deseas eliminar "${targetTitle}"?`)) return;
+
     setIsProcessingIa(true);
+    const targetId = selectedTarget.id;
+    const targetType = selectedTarget.type;
+
     try {
-      if (selectedTarget.type === 'point') {
-        await deleteFarmInventoryItem(selectedTarget.id);
-        setIaFeedback({ type: 'success', text: `🗑️ Elemento eliminado: ${selectedTarget.title}` });
+      if (targetType === 'point') {
+        // Actualización optimista inmediata (0ms)
+        setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(targetId)));
+        await deleteFarmInventoryItem(targetId);
+        setIaFeedback({ type: 'success', text: `🗑️ Pin eliminado: ${targetTitle}` });
         setSelectedTarget(null);
-        if (onReloadInventory) onReloadInventory();
-      } else if (selectedTarget.type === 'path') {
-        await deleteFarmPath(selectedTarget.id);
-        setIaFeedback({ type: 'success', text: `🗑️ Trazado eliminado: ${selectedTarget.title}` });
+        setSelectedPoint(null);
+        if (onReloadInventory) await onReloadInventory();
+      } else if (targetType === 'path') {
+        setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(targetId)));
+        await deleteFarmPath(targetId);
+        setIaFeedback({ type: 'success', text: `🗑️ Trazado eliminado: ${targetTitle}` });
         setSelectedTarget(null);
-        if (onReloadPaths) onReloadPaths();
+        setSelectedPath(null);
+        if (onReloadPaths) await onReloadPaths();
       } else {
         setSelectedTarget(null);
       }
@@ -1742,6 +1936,15 @@ export default function FarmSatelliteMap({
     if (!textOrder && !audioOrder && !attOrder) return;
     if (isProcessingIa) return;
 
+    // ─── 0. Detección directa de orden de borrado sobre el elemento seleccionado ─
+    if (selectedTarget && (isDeleteIntent(textOrder) || (audioOrder && isDeleteIntent(audioOrder.transcription)))) {
+      setMapIaInput('');
+      setPendingVoiceAudio(null);
+      setPendingAttachment(null);
+      await handleDeleteTarget();
+      return;
+    }
+
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
       setIaFeedback({ type: 'error', text: 'API Key de Gemini no configurada en las variables de entorno.' });
@@ -1935,28 +2138,36 @@ export default function FarmSatelliteMap({
 
         if (actType === 'DELETE_POINT' || actType === 'REMOVE_POINT') {
           const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          const item = inventory.find((i) => i.id === targetId);
-          if (item) {
+          if (targetId) {
+            const item = localInventory.find((i) => String(i.id) === String(targetId)) || selectedTarget?.raw;
+            setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(targetId)));
             await deleteFarmInventoryItem(targetId);
-            undoAction.reverts.push({ type: 'RESTORE_POINT', itemData: item });
-            if (selectedTarget?.id === targetId) {
+            if (item) {
+              undoAction.reverts.push({ type: 'RESTORE_POINT', itemData: item });
+            }
+            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
               setSelectedTarget(null);
+              setSelectedPoint(null);
             }
           }
         } else if (actType === 'DELETE_PATH' || actType === 'REMOVE_PATH') {
           const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          const path = paths.find((p) => p.id === targetId);
-          if (path) {
+          if (targetId) {
+            const path = localPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
+            setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(targetId)));
             await deleteFarmPath(targetId);
-            undoAction.reverts.push({ type: 'RESTORE_PATH', pathData: path });
-            if (selectedTarget?.id === targetId) {
+            if (path) {
+              undoAction.reverts.push({ type: 'RESTORE_PATH', pathData: path });
+            }
+            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
               setSelectedTarget(null);
+              setSelectedPath(null);
             }
           }
         } else if (actType === 'UPDATE_POINT' || actType === 'EDIT_POINT' || actType === 'MODIFY_POINT') {
           const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          const item = inventory.find((i) => i.id === targetId);
-          if (item && actData) {
+          if (targetId && actData) {
+            const item = localInventory.find((i) => String(i.id) === String(targetId)) || selectedTarget?.raw;
             const updatePayload = { ...actData };
             delete updatePayload.type;
             delete updatePayload.target_id;
@@ -1964,23 +2175,33 @@ export default function FarmSatelliteMap({
             if (uploadedPhotoUrl) {
               updatePayload.photo_url = uploadedPhotoUrl;
             }
-            const prevData = {};
-            Object.keys(updatePayload).forEach((k) => { prevData[k] = item[k]; });
+            setLocalInventory((prev) =>
+              prev.map((i) => (String(i.id) === String(targetId) ? { ...i, ...updatePayload } : i))
+            );
             await updateFarmInventoryItem(targetId, updatePayload);
-            undoAction.reverts.push({ type: 'UPDATE_POINT', target_id: targetId, prevData });
-            if (selectedTarget?.id === targetId) {
+            if (item) {
+              const prevData = {};
+              Object.keys(updatePayload).forEach((k) => { prevData[k] = item[k]; });
+              undoAction.reverts.push({ type: 'UPDATE_POINT', target_id: targetId, prevData });
+            }
+            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
               setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
             }
           }
         } else if (actType === 'UPDATE_PATH' || actType === 'EDIT_PATH') {
           const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          const path = paths.find((p) => p.id === targetId);
-          if (path && actData) {
-            const prevData = {};
-            Object.keys(actData).forEach((k) => { prevData[k] = path[k]; });
+          if (targetId && actData) {
+            const path = localPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
+            setLocalPaths((prev) =>
+              prev.map((p) => (String(p.id) === String(targetId) ? { ...p, ...actData } : p))
+            );
             await updateFarmPath(targetId, actData);
-            undoAction.reverts.push({ type: 'UPDATE_PATH', target_id: targetId, prevData });
-            if (selectedTarget?.id === targetId) {
+            if (path) {
+              const prevData = {};
+              Object.keys(actData).forEach((k) => { prevData[k] = path[k]; });
+              undoAction.reverts.push({ type: 'UPDATE_PATH', target_id: targetId, prevData });
+            }
+            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
               setSelectedTarget((prev) => ({ ...prev, ...actData }));
             }
           }
@@ -2034,6 +2255,7 @@ export default function FarmSatelliteMap({
 
           const inserted = await insertFarmInventoryItem(newItem);
           if (inserted) {
+            setLocalInventory((prev) => [inserted, ...prev.filter((i) => String(i.id) !== String(inserted.id))]);
             undoAction.reverts.push({ type: 'DELETE_POINT', target_id: inserted.id });
             setSelectedTarget({
               type: 'point',
@@ -2087,15 +2309,25 @@ export default function FarmSatelliteMap({
       for (const rev of lastAction.reverts) {
         if (rev.type === 'RESTORE_POINT') {
           await insertFarmInventoryItem(rev.itemData);
+          setLocalInventory((prev) => [rev.itemData, ...prev.filter((i) => String(i.id) !== String(rev.itemData.id))]);
         } else if (rev.type === 'RESTORE_PATH') {
           await insertFarmPath(rev.pathData);
+          setLocalPaths((prev) => [rev.pathData, ...prev.filter((p) => String(p.id) !== String(rev.pathData.id))]);
         } else if (rev.type === 'UPDATE_POINT') {
           await updateFarmInventoryItem(rev.target_id, rev.prevData);
+          setLocalInventory((prev) =>
+            prev.map((i) => (String(i.id) === String(rev.target_id) ? { ...i, ...rev.prevData } : i))
+          );
         } else if (rev.type === 'UPDATE_PATH') {
           await updateFarmPath(rev.target_id, rev.prevData);
+          setLocalPaths((prev) =>
+            prev.map((p) => (String(p.id) === String(rev.target_id) ? { ...p, ...rev.prevData } : p))
+          );
         } else if (rev.type === 'DELETE_POINT') {
+          setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(rev.target_id)));
           await deleteFarmInventoryItem(rev.target_id);
         } else if (rev.type === 'DELETE_PATH') {
+          setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(rev.target_id)));
           await deleteFarmPath(rev.target_id);
         }
       }
@@ -2504,8 +2736,8 @@ export default function FarmSatelliteMap({
               {/* Categorías de puntos */}
               <div style={stylesFilter.sectionLabel}>PUNTOS DE INVENTARIO</div>
               {Object.keys(CATEGORY_MAP).map(parent => {
-                const subcats = getSubcategoriesForParent(inventory, parent);
-                const count = inventory.filter(i => getItemCategory(i) === parent).length;
+                const subcats = getSubcategoriesForParent(localInventory, parent);
+                const count = localInventory.filter(i => getItemCategory(i) === parent).length;
                 const isActive = visibleCategories.has(parent);
                 const isExpanded = expandedParents.has(parent);
                 return (
@@ -2536,7 +2768,7 @@ export default function FarmSatelliteMap({
                       )}
                     </div>
                     {isExpanded && subcats.map(sub => {
-                      const subCount = inventory.filter(i => (i.variety_type || i.category || i.tipo) === sub).length;
+                      const subCount = localInventory.filter(i => (i.variety_type || i.category || i.tipo) === sub).length;
                       return (
                         <div key={sub} style={stylesFilter.subcatRow}>
                           <label style={stylesFilter.subcatLabel}>
@@ -2547,7 +2779,7 @@ export default function FarmSatelliteMap({
                                 setVisibleSubcats(prev => {
                                   if (prev === null) {
                                     // Iniciamos selección explícita: todas menos esta
-                                    const allSubs = new Set(inventory.map(i => i.variety_type || i.category || i.tipo).filter(Boolean));
+                                    const allSubs = new Set(localInventory.map(i => i.variety_type || i.category || i.tipo).filter(Boolean));
                                     allSubs.delete(sub);
                                     return allSubs;
                                   }
@@ -2587,12 +2819,12 @@ export default function FarmSatelliteMap({
                     style={{ marginRight: 6, accentColor: '#f97316' }}
                   />
                   <span style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: '#f97316', display: 'inline-block', marginRight: 5 }} />
-                  <span style={{ flex: 1, fontWeight: 700, fontSize: '0.78rem' }}>Todos los caminos ({paths.length})</span>
-                  <span style={stylesFilter.countBadge}>{paths.length}</span>
+                  <span style={{ flex: 1, fontWeight: 700, fontSize: '0.78rem' }}>Todos los caminos ({localPaths.length})</span>
+                  <span style={stylesFilter.countBadge}>{localPaths.length}</span>
                 </label>
               </div>
               {PATH_TYPES.map(pt => {
-                const count = paths.filter(p => (p.path_type || 'otro') === pt).length;
+                const count = localPaths.filter(p => (p.path_type || 'otro') === pt).length;
                 const isChecked = showPaths && visiblePathTypes.has(pt);
                 return (
                   <div key={pt} style={stylesFilter.subcatRow}>
@@ -2751,20 +2983,116 @@ export default function FarmSatelliteMap({
                     </div>
                   </div>
 
-                  {/* Único botón superior derecho: Cerrar ✕ */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedTarget(null);
-                      setIsEditingTarget(false);
-                    }}
-                    style={styles.targetCloseBtn}
-                    title="Cerrar ficha"
-                    aria-label="Cerrar ficha"
-                  >
-                    <X size={16} />
-                  </button>
+                  {/* Botones de acción: Editar, Borrar y Cerrar */}
+                  <div style={styles.targetActionsRow}>
+                    {(selectedTarget.type === 'point' || selectedTarget.type === 'path') && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isEditingTarget) {
+                              setIsEditingTarget(false);
+                            } else {
+                              handleStartEditTarget();
+                            }
+                          }}
+                          style={{
+                            ...styles.targetActionBtn,
+                            backgroundColor: isEditingTarget ? '#00979d' : '#f1f5f9',
+                            color: isEditingTarget ? '#ffffff' : '#334155',
+                          }}
+                          title={isEditingTarget ? 'Cerrar edición' : 'Editar datos del elemento'}
+                          aria-label="Editar"
+                        >
+                          <Edit2 size={13} />
+                          <span style={styles.actionBtnLabel}>{isEditingTarget ? 'Editando' : 'Editar'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTarget(e);
+                          }}
+                          style={styles.targetDeleteBtn}
+                          title="Eliminar este elemento del mapa"
+                          aria-label="Eliminar"
+                        >
+                          <Trash2 size={13} />
+                          <span style={styles.actionBtnLabel}>Borrar</span>
+                        </button>
+                      </>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedTarget(null);
+                        setIsEditingTarget(false);
+                      }}
+                      style={styles.targetCloseBtn}
+                      title="Cerrar ficha"
+                      aria-label="Cerrar ficha"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
+
+                {/* Formulario de edición rápida en la misma ficha */}
+                {isEditingTarget && (
+                  <div style={styles.targetEditForm}>
+                    <div style={styles.targetEditRow}>
+                      <input
+                        type="text"
+                        value={targetEditData.name}
+                        onChange={(e) => setTargetEditData((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Nombre o descripción..."
+                        style={styles.targetEditInput}
+                      />
+                      {selectedTarget.type === 'point' && (
+                        <select
+                          value={targetEditData.status}
+                          onChange={(e) => setTargetEditData((prev) => ({ ...prev, status: e.target.value }))}
+                          style={styles.targetEditSelect}
+                        >
+                          <option value="saludable">🟢 Saludable</option>
+                          <option value="clorosis">🟡 Clorosis</option>
+                          <option value="poda_requerida">🟠 Requiere Poda</option>
+                          <option value="enfermo">🔴 Enfermo</option>
+                          <option value="seco">⚫ Seco / Muerto</option>
+                        </select>
+                      )}
+                    </div>
+                    <div style={styles.targetEditRow}>
+                      <input
+                        type="text"
+                        value={targetEditData.variety}
+                        onChange={(e) => setTargetEditData((prev) => ({ ...prev, variety: e.target.value }))}
+                        placeholder="Variedad / Subtipo (ej: Hass, Gotero 4L)..."
+                        style={styles.targetEditInput}
+                      />
+                      <input
+                        type="text"
+                        value={targetEditData.notes}
+                        onChange={(e) => setTargetEditData((prev) => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Notas u observaciones..."
+                        style={styles.targetEditInput}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveTargetEdit}
+                        style={styles.targetSaveBtn}
+                        title="Guardar cambios"
+                      >
+                        <Check size={14} />
+                        <span>Guardar</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Separador sutil */}
                 <div style={{ height: 1, backgroundColor: '#f1f5f9', width: '100%', margin: '1px 0' }} />
@@ -3984,6 +4312,92 @@ const styles = {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
+  },
+  targetActionsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  targetActionBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '4px 8px',
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    cursor: 'pointer',
+    fontSize: '0.74rem',
+    fontWeight: 600,
+    transition: 'all 0.15s ease',
+  },
+  targetDeleteBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '4px 8px',
+    borderRadius: 6,
+    border: '1px solid #fecaca',
+    backgroundColor: '#fef2f2',
+    color: '#dc2626',
+    cursor: 'pointer',
+    fontSize: '0.74rem',
+    fontWeight: 600,
+    transition: 'all 0.15s ease',
+  },
+  actionBtnLabel: {
+    fontSize: '0.74rem',
+    fontWeight: 600,
+  },
+  targetEditForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    padding: '8px 10px',
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    border: '1px solid #e2e8f0',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  targetEditRow: {
+    display: 'flex',
+    gap: 6,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  targetEditInput: {
+    flex: 1,
+    minWidth: 120,
+    padding: '5px 8px',
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    fontSize: '0.78rem',
+    backgroundColor: '#ffffff',
+    color: '#1e293b',
+    outline: 'none',
+  },
+  targetEditSelect: {
+    padding: '5px 8px',
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    fontSize: '0.78rem',
+    backgroundColor: '#ffffff',
+    color: '#1e293b',
+    outline: 'none',
+  },
+  targetSaveBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '5px 10px',
+    borderRadius: 6,
+    border: 'none',
+    backgroundColor: '#00979d',
+    color: '#ffffff',
+    fontSize: '0.76rem',
+    fontWeight: 600,
+    cursor: 'pointer',
   },
   targetCloseBtn: {
     background: 'none',
