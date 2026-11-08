@@ -483,3 +483,292 @@ export function exportInventoryToGeoJSON(items = [], paths = [], filename = null
   triggerFileDownload(blob, finalFilename);
   return finalFilename;
 }
+
+/**
+ * 5. EXPORTACIÓN PERSONALIZADA A PDF DIRECTO DESDE EL CHAT
+ */
+export function generateCustomPDF({
+  title = 'INFORME CAMPITO JOROX',
+  subtitle = null,
+  content = '',
+  table = null,
+  filename = null,
+}) {
+  const dateStr = new Date().toLocaleDateString('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  const fileDate = new Date().toISOString().split('T')[0];
+  const finalFilename = filename || `CAMPITO_JOROX_INFORME_${fileDate}.pdf`;
+
+  const doc = new jsPDF({
+    orientation: table && table.headers && table.headers.length > 5 ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  // Encabezado institucional
+  doc.setFillColor(43, 61, 65); // #2b3d41
+  doc.rect(0, 0, pageWidth, 22, 'F');
+
+  // Franja teal de acento
+  doc.setFillColor(0, 151, 157); // #00979d
+  doc.rect(0, 22, pageWidth, 2, 'F');
+
+  doc.setFontSize(14);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.text('CAMPITO JOROX', 14, 11);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 209, 218); // Teal claro
+  doc.text(String(title || 'INFORME OFICIAL').toUpperCase(), 14, 17);
+
+  doc.setFontSize(8);
+  doc.setTextColor(220, 220, 220);
+  doc.text(`Fecha: ${dateStr}`, pageWidth - 45, 14);
+
+  let currentY = 32;
+
+  // Subtítulo
+  if (subtitle) {
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.setFont('helvetica', 'italic');
+    doc.text(subtitle, 14, currentY);
+    currentY += 7;
+  }
+
+  // Contenido de texto
+  if (content && typeof content === 'string' && content.trim().length > 0) {
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'normal');
+
+    const cleanContent = content
+      .replace(/\[\[.*?\]\]/gs, '')
+      .replace(/```.*?```/gs, '')
+      .replace(/[#*`_]/g, '')
+      .trim();
+
+    const splitText = doc.splitTextToSize(cleanContent, pageWidth - 28);
+    doc.text(splitText, 14, currentY);
+    currentY += splitText.length * 5 + 6;
+  }
+
+  // Tabla estructurada si está presente
+  if (table && Array.isArray(table.headers) && Array.isArray(table.rows) && table.rows.length > 0) {
+    autoTable(doc, {
+      startY: currentY,
+      head: [table.headers],
+      body: table.rows,
+      theme: 'grid',
+      styles: {
+        fontSize: 8,
+        cellPadding: 2.5,
+        valign: 'middle',
+      },
+      headStyles: {
+        fillColor: [0, 151, 157],
+        textColor: 255,
+        fontStyle: 'bold',
+        halign: 'left',
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+      margin: { left: 14, right: 14 },
+      didDrawPage: () => {
+        const str = `Página ${doc.internal.getNumberOfPages()} — Documento Confidencial Campito Jorox`;
+        doc.setFontSize(7.5);
+        doc.setTextColor(140);
+        doc.text(str, 14, pageHeight - 8);
+      },
+    });
+  } else {
+    // Si no hubo tabla, agregar pie de página en la primera página
+    const str = `Página 1 — Documento Confidencial Campito Jorox`;
+    doc.setFontSize(7.5);
+    doc.setTextColor(140);
+    doc.text(str, 14, pageHeight - 8);
+  }
+
+  doc.save(finalFilename);
+  return finalFilename;
+}
+
+/**
+ * 6. EXPORTACIÓN PERSONALIZADA A EXCEL / CSV DIRECTO DESDE EL CHAT
+ */
+export function generateCustomExcel({
+  title = null,
+  headers = [],
+  rows = [],
+  content = '',
+  filename = null,
+}) {
+  const fileDate = new Date().toISOString().split('T')[0];
+  const finalFilename = filename || `CAMPITO_JOROX_EXPORT_${fileDate}.csv`;
+
+  let csvRows = [];
+
+  if (title) {
+    csvRows.push([`"CAMPITO JOROX - ${title.replace(/"/g, '""')}"`]);
+    csvRows.push([`"Fecha: ${fileDate}"`]);
+    csvRows.push([]);
+  }
+
+  if (headers && headers.length > 0) {
+    csvRows.push(headers.map((h) => `"${String(h ?? '').replace(/"/g, '""')}"`));
+  }
+
+  if (rows && rows.length > 0) {
+    rows.forEach((row) => {
+      const formattedRow = (Array.isArray(row) ? row : Object.values(row)).map((cell) =>
+        `"${String(cell ?? '').replace(/"/g, '""')}"`
+      );
+      csvRows.push(formattedRow);
+    });
+  } else if (content) {
+    content.split('\n').forEach((line) => {
+      csvRows.push([`"${line.replace(/"/g, '""')}"`]);
+    });
+  }
+
+  const csvContent = csvRows.map((r) => r.join(';')).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  triggerFileDownload(blob, finalFilename);
+  return finalFilename;
+}
+
+/**
+ * 7. EXPORTACIÓN PERSONALIZADA A TXT DIRECTO DESDE EL CHAT
+ */
+export function generateCustomTXT({
+  title = null,
+  content = '',
+  filename = null,
+}) {
+  const fileDate = new Date().toISOString().split('T')[0];
+  const finalFilename = filename || `CAMPITO_JOROX_NOTAS_${fileDate}.txt`;
+
+  let fullText = '';
+  if (title) {
+    fullText += `===============================================\n`;
+    fullText += `CAMPITO JOROX — ${title}\n`;
+    fullText += `Fecha: ${new Date().toLocaleString('es-ES')}\n`;
+    fullText += `===============================================\n\n`;
+  }
+  fullText += content || '';
+
+  const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8;' });
+  triggerFileDownload(blob, finalFilename);
+  return finalFilename;
+}
+
+/**
+ * 8. EXPORTACIÓN PERSONALIZADA A XML / KML DIRECTO DESDE EL CHAT
+ */
+export function generateCustomXML({
+  title = null,
+  content = '',
+  filename = null,
+}) {
+  const fileDate = new Date().toISOString().split('T')[0];
+  const isKml = filename && filename.toLowerCase().endsWith('.kml');
+  const finalFilename = filename || `CAMPITO_JOROX_${fileDate}.${isKml ? 'kml' : 'xml'}`;
+
+  let xmlContent = (content || '').trim();
+
+  if (!xmlContent.startsWith('<?xml') && !xmlContent.startsWith('<')) {
+    xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<campitoJorox>
+  <metadata>
+    <titulo>${title || 'Exportación'}</titulo>
+    <fecha>${fileDate}</fecha>
+  </metadata>
+  <datos><![CDATA[${xmlContent}]]></datos>
+</campitoJorox>`;
+  } else if (!xmlContent.startsWith('<?xml')) {
+    xmlContent = `<?xml version="1.0" encoding="UTF-8"?>\n${xmlContent}`;
+  }
+
+  const mimeType = isKml
+    ? 'application/vnd.google-earth.kml+xml;charset=utf-8;'
+    : 'application/xml;charset=utf-8;';
+
+  const blob = new Blob([xmlContent], { type: mimeType });
+  triggerFileDownload(blob, finalFilename);
+  return finalFilename;
+}
+
+/**
+ * 9. ENRUTADOR UNIVERSAL DE DESCARGA DIRECTA
+ */
+export function generateCustomFile(exportData) {
+  if (!exportData) return;
+  const rawType = (exportData.type || exportData.format || 'txt').toLowerCase();
+
+  if (rawType === 'pdf') {
+    return generateCustomPDF(exportData);
+  } else if (rawType === 'excel' || rawType === 'csv' || rawType === 'xlsx') {
+    const headers = exportData.table?.headers || exportData.headers || [];
+    const rows = exportData.table?.rows || exportData.rows || [];
+    return generateCustomExcel({
+      title: exportData.title,
+      headers,
+      rows,
+      content: exportData.content,
+      filename: exportData.filename,
+    });
+  } else if (rawType === 'xml' || rawType === 'kml') {
+    return generateCustomXML(exportData);
+  } else if (rawType === 'json' || rawType === 'geojson') {
+    const filename = exportData.filename || `CAMPITO_JOROX_${new Date().toISOString().split('T')[0]}.json`;
+    const jsonStr = typeof exportData.content === 'object'
+      ? JSON.stringify(exportData.content, null, 2)
+      : (exportData.content || JSON.stringify(exportData, null, 2));
+    const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+    triggerFileDownload(blob, filename);
+    return filename;
+  } else {
+    return generateCustomTXT(exportData);
+  }
+}
+
+/**
+ * 10. EXTRAER TABLA DE TEXTO MARKDOWN A FORMATO { headers, rows }
+ */
+export function extractTableFromMarkdown(text) {
+  if (!text || typeof text !== 'string') return null;
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('|') && l.endsWith('|'));
+
+  if (lines.length < 2) return null;
+
+  const parseRow = (line) =>
+    line
+      .slice(1, -1)
+      .split('|')
+      .map((c) => c.trim().replace(/[*`_]/g, ''));
+
+  const headers = parseRow(lines[0]);
+  if (!headers || headers.length === 0) return null;
+
+  const dataLines = lines.slice(1).filter((l) => {
+    const stripped = l.replace(/[|\s-:]/g, '');
+    return stripped.length > 0;
+  });
+
+  const rows = dataLines.map(parseRow);
+  if (rows.length === 0) return null;
+
+  return { headers, rows };
+}

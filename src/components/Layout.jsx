@@ -1,6 +1,6 @@
 import { useState, Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, BarChart2, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle, Bot } from 'lucide-react';
+import { Calendar, Euro, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle, Bot } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -52,11 +52,12 @@ export default function Layout({ session }) {
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
   const isChatIA = location.pathname.startsWith('/chat-ia');
+  const isMapas = location.pathname.startsWith('/mapas');
 
   return (
     <div className="app-container">
-      {/* Top App Bar mimicking AppSheet — se oculta en Chat IA */}
-      {!isChatIA && (
+      {/* Top App Bar mimicking AppSheet — se oculta en Chat IA y Mapas */}
+      {!isChatIA && !isMapas && (
         <header className="app-header" style={{ padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
@@ -417,7 +418,7 @@ export default function Layout({ session }) {
         </div>
       )}
 
-      <main className={`main-content ${isChatIA ? 'no-padding' : ''}`}>
+      <main className={`main-content ${isChatIA || isMapas ? 'no-padding' : ''}`}>
         <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>Cargando página...</div>}>
           <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users, events, transactions, refetchUsers, refetchEvents, refetchTransactions, currentUser }} />
         </Suspense>
@@ -425,21 +426,18 @@ export default function Layout({ session }) {
 
       {/* Bottom Navigation mimicking AppSheet */}
       <nav className="bottom-nav">
-        <NavLink to="/calendario" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Calendar size={32} style={{ display: 'block', margin: '0 auto' }} />
+        <NavLink to="/chat-ia" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <Bot size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
         <NavLink to="/gasto-venta" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Euro size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
-        <NavLink to="/resumen" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <BarChart2 size={32} style={{ display: 'block', margin: '0 auto' }} />
+        <NavLink to="/calendario" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <Calendar size={32} style={{ display: 'block', margin: '0 auto' }} />
         </NavLink>
-        <NavLink to="/chat-ia" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Bot size={32} style={{ display: 'block', margin: '0 auto' }} />
-        </NavLink>
-        <div className="nav-item" style={{ cursor: 'pointer' }} onClick={() => setIsMapasModalOpen(true)}>
+        <NavLink to="/mapas" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Globe size={32} style={{ display: 'block', margin: '0 auto' }} />
-        </div>
+        </NavLink>
       </nav>
     </div>
   );

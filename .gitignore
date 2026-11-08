@@ -19,6 +19,8 @@ dev-dist
 .env
 .env.*
 !.env.example
+CONEXIONES_LOCAL.md
+*.local
 
 # Editor directories and files
 .vscode/*

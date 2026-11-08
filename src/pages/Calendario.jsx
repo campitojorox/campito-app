@@ -471,69 +471,114 @@ export default function Calendario() {
       ), document.body)}
 
       {!(isSearchOpen && searchQuery.trim() !== '') && (
-        <>
-          {/* Calendar Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', marginTop: '1.5rem' }}>
-            <button onClick={prevMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>◀</button>
-            <h2 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '14px',
+          padding: '1.25rem 1rem',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+          marginTop: '1rem',
+          marginBottom: '1.5rem',
+        }}>
+          {/* Calendar Header: Título del mes y navegación DENTRO del div del mes */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <button
+              type="button"
+              onClick={prevMonth}
+              style={{ fontSize: '1.4rem', color: '#666666', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.4rem' }}
+              title="Mes anterior"
+              aria-label="Mes anterior"
+            >
+              ◀
+            </button>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#1e293b', fontWeight: 'bold' }}>
               {format(currentMonth, 'MMMM yyyy', { locale: es }).toUpperCase()}
             </h2>
-            <button onClick={nextMonth} style={{ fontSize: '1.5rem', color: 'var(--text-primary)', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.5rem' }}>▶</button>
+            <button
+              type="button"
+              onClick={nextMonth}
+              style={{ fontSize: '1.4rem', color: '#666666', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.4rem' }}
+              title="Mes siguiente"
+              aria-label="Mes siguiente"
+            >
+              ▶
+            </button>
           </div>
 
-          {/* Calendar Grid */}
-          <div style={{ backgroundColor: 'var(--surface)', borderRadius: '12px', padding: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
-          <div>L</div><div>M</div><div>X</div><div>J</div><div>V</div><div>S</div><div>D</div>
+          {/* Días de la semana */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', fontWeight: '600', fontSize: '0.85rem', marginBottom: '0.6rem' }}>
+            <div style={{ color: '#666666' }}>L</div>
+            <div style={{ color: '#666666' }}>M</div>
+            <div style={{ color: '#666666' }}>X</div>
+            <div style={{ color: '#666666' }}>J</div>
+            <div style={{ color: '#666666' }}>V</div>
+            <div style={{ color: '#999999' }}>S</div>
+            <div style={{ color: '#999999' }}>D</div>
+          </div>
+
+          {/* Grid de días */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+            {days.map((day, i) => {
+              const isSelected = isSameDay(day, selectedDate);
+              const isCurrentMonth = isSameMonth(day, monthStart);
+              const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+              
+              // Comprobar si hay evento en este día
+              const eventsThisDay = events.filter(ev => {
+                if (!ev.Date) return false;
+                const startDate = new Date(ev.Date.split(' ')[0]);
+                startDate.setHours(0, 0, 0, 0);
+                const endDateStr = ev["End Date"] || ev.Date;
+                const endDate = new Date(endDateStr.split(' ')[0]);
+                endDate.setHours(0, 0, 0, 0);
+                const currentDay = new Date(day);
+                currentDay.setHours(0, 0, 0, 0);
+                return currentDay >= startDate && currentDay <= endDate;
+              });
+              const hasEvent = eventsThisDay.length > 0;
+              const isToday = isSameDay(day, new Date());
+
+              // Color del número:
+              // - Días con eventos: verde turquesa (#00979d) igual que el botón más
+              // - Fuera del mes actual: #cccccc
+              // - Sábado y domingo: #999999
+              // - Resto de días (lunes a viernes): #666666
+              let dayColor = '#666666';
+              if (hasEvent) {
+                dayColor = '#00979d';
+              } else if (!isCurrentMonth) {
+                dayColor = '#cccccc';
+              } else if (isWeekend) {
+                dayColor = '#999999';
+              } else {
+                dayColor = '#666666';
+              }
+
+              return (
+                <div 
+                  key={i} 
+                  onClick={() => onDateClick(day)}
+                  style={{
+                    padding: '9px 0',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    borderRadius: '8px',
+                    backgroundColor: isSelected
+                      ? 'rgba(0, 151, 157, 0.28)'
+                      : (isToday ? '#e2e8f0' : 'transparent'),
+                    color: dayColor,
+                    fontWeight: hasEvent ? 'bold' : 'normal',
+                    fontSize: '1rem',
+                    border: '2px solid transparent',
+                    position: 'relative',
+                    transition: 'background-color 0.15s ease',
+                  }}
+                >
+                  {format(day, 'd')}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' }}>
-          {days.map((day, i) => {
-            const isSelected = isSameDay(day, selectedDate);
-            const isCurrentMonth = isSameMonth(day, monthStart);
-            
-            // Check if there's an event this day
-            const eventsThisDay = events.filter(ev => {
-              if(!ev.Date) return false;
-              const startDate = new Date(ev.Date.split(' ')[0]);
-              startDate.setHours(0,0,0,0);
-              const endDateStr = ev["End Date"] || ev.Date;
-              const endDate = new Date(endDateStr.split(' ')[0]);
-              endDate.setHours(0,0,0,0);
-              const currentDay = new Date(day);
-              currentDay.setHours(0,0,0,0);
-              return currentDay >= startDate && currentDay <= endDate;
-            });
-            const hasEvent = eventsThisDay.length > 0;
-            // Get color of first event for the dot
-            const dotColor = hasEvent ? (eventsThisDay[0].Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (eventsThisDay[0].Category?.startsWith('MANTENIMIENTO') ? categoryColors['MANTENIMIENTO'] : (categoryColors[eventsThisDay[0].Category] || 'var(--primary)'))) : 'transparent';
-
-            const isToday = isSameDay(day, new Date());
-
-            return (
-              <div 
-                key={i} 
-                onClick={() => onDateClick(day)}
-                style={{
-                  padding: '10px 0',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  borderRadius: '8px',
-                  backgroundColor: isSelected ? '#9edb9e' : 'transparent',
-                  color: isSelected ? '#1a1a1a' : (hasEvent ? dotColor : (isCurrentMonth ? 'var(--text-primary)' : 'var(--border)')),
-                  fontWeight: hasEvent ? '900' : 'normal',
-                  fontSize: hasEvent ? '1.1rem' : '1rem',
-                  border: isToday ? '2px solid #9edb9e' : '2px solid transparent',
-                  position: 'relative'
-                }}
-              >
-                {format(day, 'd')}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      </>
       )}
 
       {isFormOpen && !editingEvent && renderForm()}
@@ -559,7 +604,7 @@ export default function Calendario() {
                   <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: 'none', borderRadius: '8px', backgroundColor: '#ffffff', color: '#000000', boxShadow: 'none' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: evColor, border: '2px solid #000000', flexShrink: 0 }} />
+                        <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: evColor, flexShrink: 0 }} />
                         <strong style={{ fontSize: '1.1rem', color: '#000000' }}>{ev.Category}</strong>
                       </div>
                     </div>

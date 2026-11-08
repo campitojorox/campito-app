@@ -7,9 +7,9 @@ import Auth from './pages/Auth';
 import './index.css';
 
 const Calendario = lazy(() => import('./pages/Calendario'));
-const Resumen = lazy(() => import('./pages/Resumen'));
 const GastoVenta = lazy(() => import('./pages/GastoVenta'));
 const ChatIA = lazy(() => import('./pages/ChatIA'));
+const MapaFinca = lazy(() => import('./pages/MapaFinca'));
 function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -68,11 +68,12 @@ function App() {
       <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout session={session} />}>
-          <Route index element={<Navigate to="/calendario" replace />} />
-          <Route path="calendario" element={<Calendario />} />
-          <Route path="gasto-venta" element={<GastoVenta />} />
-          <Route path="resumen" element={<Resumen />} />
+          <Route index element={<Navigate to="/chat-ia" replace />} />
           <Route path="chat-ia" element={<ChatIA />} />
+          <Route path="gasto-venta" element={<GastoVenta />} />
+          <Route path="calendario" element={<Calendario />} />
+          <Route path="mapas" element={<MapaFinca />} />
+          <Route path="resumen" element={<Navigate to="/chat-ia" replace />} />
         </Route>
       </Routes>
       </BrowserRouter>

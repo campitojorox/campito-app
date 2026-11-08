@@ -33,7 +33,10 @@ import {
   RotateCcw,
   Compass,
   FileText,
-  Paperclip
+  FileCode,
+  Paperclip,
+  Play,
+  Pause
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
@@ -43,6 +46,12 @@ import {
   exportInventoryToPDF,
   exportInventoryToKML,
   exportInventoryToGeoJSON,
+  generateCustomFile,
+  generateCustomPDF,
+  generateCustomExcel,
+  generateCustomTXT,
+  generateCustomXML,
+  extractTableFromMarkdown,
 } from '../utils/exportTools';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
 
@@ -145,19 +154,38 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
 5. 🎙️ **PROCESAMIENTO DE AUDIO CON GPS E INVENTARIO AUTOMÁTICO**:
 - Escucha atentamente la voz del agricultor y actúa con inteligencia según su intención:
   1. **Si consulta dudas agronómicas, plagas, contabilidad, calendario o generales:** Responde directamente en Markdown con claridad.
-  2. **Si el usuario menciona, describe o cuenta árboles, plantas, arquetas o elementos de riego:**
-     - Confirma en tu texto qué elementos has identificado y ubicado en el catastro.
-     - Incluye OBLIGATORIAMENTE al final de tu respuesta el comando estructurado con el segundo del audio (\`timestamp_audio_s\`):
+  2. **Si el usuario menciona, describe o agrega árboles, plantas, o elementos de infraestructura/riego/mobiliario/herramientas:**
+     - Aplica tanto si habla por audio como si escribe por texto.
+     - Confirma en tu texto qué elementos has identificado y ubicado en el catastro satelital.
+     - Puedes registrar cualquier objeto de la finca:
+       * **Riego**: llaves de agua, goteros, filtros, válvulas, arquetas, tuberías, bombas, contadores, aspersores.
+       * **Árboles y Plantas**: aguacates, limoneros, olivos, cítricos, frutales, plantas, etc.
+       * **Edificios y Mobiliario**: casas, caravanas, taller, almacén, caseta.
+       * **Herramientas**: maquinaria, tractor, aperos de labranza.
+       * **Hitos**: mojones, lindes, cotas.
+     - Incluye OBLIGATORIAMENTE al final de tu respuesta el comando estructurado:
+       Para múltiples puntos o con audio:
        [[REGISTRAR_PUNTOS: [
          {
-           "tipo": "aguacate|limonero|olivo|arqueta|tubería|mojón|otro",
-           "variedad": "Hass|Bacon|Fuerte|etc|null",
+           "name": "Llave de agua Sector 1|Gotero 4L|Filtro de anillas|Aguacate Hass|etc",
+           "category": "riego|arbol|planta|edificio|herramienta|hito|otro",
+           "tipo": "llave_agua|gotero|filtro|valvula|tuberia|arqueta|aguacate|limonero|otro",
+           "variedad": "16mm|autocompensante|anillas|Hass|Bacon|etc|null",
            "estado": "saludable|clorosis|poda_requerida|enfermo|observaciones",
            "timestamp_audio_s": 2.5,
            "observaciones": "Notas u observaciones del agricultor"
          }
        ] ]]
-  3. **Si da una orden de borrado o cancelación por voz:**
+       O para un punto único por texto:
+       [[REGISTRAR_PUNTO: {
+         "name": "Nombre del objeto",
+         "category": "riego|arbol|planta|edificio|herramienta|hito",
+         "tipo": "llave_agua|gotero|filtro|valvula|tuberia|etc",
+         "variety_type": "modelo, calibre o subtipo",
+         "status": "saludable|clorosis|enfermo|observaciones",
+         "notes": "Notas técnicas o de ubicación"
+       }]]
+  3. **Si da una orden de borrado o cancelación:**
      - Confirma qué elemento has eliminado del catastro e incluye:
        [[BORRAR_PUNTO: {"target": "ultimo|especifico", "query": "descripción del punto a borrar"}]]
 
@@ -169,6 +197,29 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
 - El usuario dispone de un botón '+' para adjuntar informes PDF (análisis de suelo, agua, foliares, facturas de abonos/fitosanitarios, certificados catastrales o SIGPAC), hojas de cálculo (CSV, Excel) y notas técnicas, además de fotos con la cámara.
 - Si contiene reglas o pautas agronómicas, guárdalas en la memoria permanente con [[MEMORIA: {...}]].
 - Si contiene coordenadas o inventario de árboles, regístralos con [[REGISTRAR_PUNTOS: [...] ]].
+
+8. 📥 **GENERACIÓN Y EXPORTACIÓN DIRECTA DE ARCHIVOS (PDF, EXCEL, TXT, XML, KML)**:
+- Si el usuario te pide un informe o archivo descargable (ej: "créame un PDF de los gastos", "exporta a Excel", "genera un TXT con las notas", "crea un XML con los datos", "dámelo en PDF descargable", "hazme un documento listo para descargar"):
+  1. Redacta la explicación o resumen en tu respuesta en español.
+  2. Incluye OBLIGATORIAMENTE al final el comando estructurado:
+     [[EXPORTAR_ARCHIVO: {
+       "type": "pdf|excel|txt|xml|kml",
+       "filename": "Nombre_Archivo.pdf|.csv|.txt|.xml|.kml",
+       "title": "Título del Documento",
+       "subtitle": "Subtítulo o detalle opcional",
+       "content": "Texto del documento, informe redactado o código XML/TXT completo",
+       "table": {
+         "headers": ["Columna 1", "Columna 2", "Columna 3"],
+         "rows": [
+           ["Dato 1", "Dato 2", "Dato 3"]
+         ]
+       }
+     }]]
+  - Para PDF: incluye 'title', 'subtitle', 'content' (resumen o detalle) y opcionalmente 'table' si hay columnas tabulares.
+  - Para EXCEL: incluye 'filename' (.csv), 'title' y 'table' con headers y rows.
+  - Para TXT: incluye 'filename' (.txt), 'title' y 'content'.
+  - Para XML o KML: incluye 'filename' (.xml o .kml), 'title' y 'content' con las etiquetas XML/KML correspondientes.
+  La aplicación convertirá este comando en una tarjeta interactiva con botón de descarga directa para el usuario.
 
 🔒 **CONFIDENCIALIDAD**:
 - Toda la información de este chat es ESTRICTAMENTE CONFIDENCIAL de Campito Jorox. Responde siempre en **español**, con rigor y utilidad práctica para el campo.`;
@@ -670,21 +721,130 @@ const styles = {
     transition: 'all 0.2s',
     WebkitTapHighlightColor: 'transparent',
   }),
-  textInput: {
+  inputCapsule: {
     flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: '#fafafa',
     border: '1.5px solid #e0e0e0',
     borderRadius: 22,
-    padding: '9px 14px',
-    fontSize: '0.9rem',
+    padding: '0 6px 0 14px',
+    minHeight: 42,
+    boxSizing: 'border-box',
+    transition: 'border-color 0.2s',
+  },
+  textInput: {
+    flex: 1,
+    border: 'none',
     outline: 'none',
-    backgroundColor: '#fafafa',
+    backgroundColor: 'transparent',
     color: '#1a1a1a',
     resize: 'none',
     lineHeight: 1.4,
+    fontSize: '0.9rem',
     maxHeight: 100,
     overflowY: 'auto',
     fontFamily: 'inherit',
-    transition: 'border-color 0.2s',
+    padding: '9px 0',
+  },
+  capsuleCameraBtn: (active) => ({
+    width: 34,
+    height: 34,
+    borderRadius: '50%',
+    border: 'none',
+    background: active ? '#00979d' : 'transparent',
+    color: active ? '#ffffff' : '#64748b',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    flexShrink: 0,
+    transition: 'all 0.15s',
+  }),
+  audioPreviewCapsule: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    border: '1.5px solid #86efac',
+    borderRadius: 22,
+    padding: '0 10px',
+    height: 42,
+    gap: 8,
+    minWidth: 0,
+    boxSizing: 'border-box',
+  },
+  recordingCapsule: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    border: '1.5px solid #fca5a5',
+    borderRadius: 22,
+    padding: '0 12px',
+    height: 42,
+    gap: 8,
+    minWidth: 0,
+    boxSizing: 'border-box',
+  },
+  previewTrashBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  previewPlayBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+    backgroundColor: '#00979d',
+    border: 'none',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+  },
+  previewTrackContainer: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    gap: 2,
+    minWidth: 0,
+  },
+  previewSlider: {
+    width: '100%',
+    height: 4,
+    accentColor: '#00979d',
+    cursor: 'pointer',
+    margin: 0,
+  },
+  previewTimeRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    lineHeight: 1,
+  },
+  previewTimeText: {
+    fontSize: '0.7rem',
+    color: '#475569',
+    fontWeight: 600,
+  },
+  previewGpsTag: {
+    fontSize: '0.66rem',
+    backgroundColor: '#e0f2fe',
+    color: '#0369a1',
+    padding: '1px 6px',
+    borderRadius: 8,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
   },
   sendBtn: (hasText) => ({
     width: 40,
@@ -926,6 +1086,73 @@ export default function ChatIA() {
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
+
+  // ── Reproductor de preview de audio en la barra de input (estilo WhatsApp) ──
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
+  const [previewDuration, setPreviewDuration] = useState(0);
+  const previewAudioRef = useRef(null);
+
+  const formatAudioTime = (seconds) => {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const togglePlayPreview = () => {
+    if (!previewAudioRef.current) return;
+    if (isPreviewPlaying) {
+      previewAudioRef.current.pause();
+      setIsPreviewPlaying(false);
+    } else {
+      previewAudioRef.current.play().then(() => {
+        setIsPreviewPlaying(true);
+      }).catch((err) => {
+        console.error('Error reproduciendo preview audio:', err);
+      });
+    }
+  };
+
+  const handleSeekPreview = (e) => {
+    const time = parseFloat(e.target.value);
+    setPreviewCurrentTime(time);
+    if (previewAudioRef.current) {
+      previewAudioRef.current.currentTime = time;
+    }
+  };
+
+  const handleDiscardAudio = () => {
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+    }
+    setIsPreviewPlaying(false);
+    setPreviewCurrentTime(0);
+    setPendingAudio(null);
+  };
+
+  const handleCancelRecording = async () => {
+    try {
+      await stopTracking();
+    } catch (e) {
+      console.error('Error cancelando grabación:', e);
+    }
+    setPendingAudio(null);
+    setIsPreviewPlaying(false);
+  };
+
+  useEffect(() => {
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+    }
+    setIsPreviewPlaying(false);
+    setPreviewCurrentTime(0);
+    if (pendingAudio) {
+      setPreviewDuration(pendingAudio.duration || 0);
+    } else {
+      setPreviewDuration(0);
+    }
+  }, [pendingAudio]);
 
   // Auto-scroll
   useEffect(() => {
@@ -1474,15 +1701,16 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 const lng = geo.lng || currentGpsInfo?.lng || -4.89462;
                 const acc = geo.accuracy_m || currentGpsInfo?.accuracy || 3.0;
 
-                const name = item.name || `${item.tipo || 'Árbol'} ${item.variedad || ''}`.trim();
                 const category = item.category || item.tipo || 'arbol';
+                const variety_type = item.variedad || item.variety_type || (item.tipo && item.tipo !== category ? item.tipo : null);
+                const name = item.name || `${item.tipo || category} ${variety_type || ''}`.trim();
 
                 const { data: newRow, error: insErr } = await supabase
                   .from('farm_inventory')
                   .insert({
                     name,
                     category,
-                    variety_type: item.variedad || item.variety_type || null,
+                    variety_type,
                     status: item.estado || item.status || 'saludable',
                     latitude: lat,
                     longitude: lng,
@@ -1519,12 +1747,16 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             const lng = Number(regData.longitude) || (currentGpsInfo ? currentGpsInfo.lng : -4.89462);
             const acc = Number(regData.accuracy_meters) || (currentGpsInfo ? currentGpsInfo.accuracy : 3.0);
 
+            const pointCat = regData.category || regData.tipo || 'arbol';
+            const pointVariety = regData.variety_type || regData.variedad || (regData.tipo && regData.tipo !== pointCat ? regData.tipo : null);
+            const pointName = regData.name || `${regData.tipo || pointCat} ${pointVariety || ''}`.trim();
+
             const { data: newPoint, error: insErr } = await supabase
               .from('farm_inventory')
               .insert({
-                name: regData.name || regData.tipo || 'Punto registrado',
-                category: regData.category || 'arbol',
-                variety_type: regData.variety_type || regData.variedad || null,
+                name: pointName,
+                category: pointCat,
+                variety_type: pointVariety,
                 status: regData.status || regData.estado || 'saludable',
                 latitude: lat,
                 longitude: lng,
@@ -1674,6 +1906,81 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           }
         }
 
+        // 5. Detección y extracción de archivos exportables (PDF, EXCEL, TXT, XML, KML)
+        const exportFiles = [];
+
+        // Coincidencia con [[EXPORTAR_ARCHIVO: { ... }]]
+        const exportMatches = [...successResult.matchAll(/\[\[EXPORTAR_ARCHIVO:\s*(\{.*?\})\s*\]\]/gs)];
+        for (const match of exportMatches) {
+          try {
+            const fileData = JSON.parse(match[1]);
+            exportFiles.push(fileData);
+            displayedContent = displayedContent.replace(match[0], '').trim();
+          } catch (e) {
+            console.warn('Error al procesar bloque EXPORTAR_ARCHIVO:', e);
+          }
+        }
+
+        // Coincidencia alternativa con bloques de código ```export_file { ... } ```
+        const codeExportMatches = [...successResult.matchAll(/```(?:export_file|download_file|export)\s*(\{.*?\})\s*```/gs)];
+        for (const match of codeExportMatches) {
+          try {
+            const fileData = JSON.parse(match[1]);
+            exportFiles.push(fileData);
+            displayedContent = displayedContent.replace(match[0], '').trim();
+          } catch (e) {
+            console.warn('Error al procesar bloque code export_file:', e);
+          }
+        }
+
+        // Heurística de respaldo: si el usuario solicitó explícitamente un PDF, Excel, TXT o XML
+        // pero el modelo no generó el comando estructurado
+        if (exportFiles.length === 0 && text) {
+          const lowerText = text.toLowerCase();
+          const wantsPdf = lowerText.includes('pdf') || lowerText.includes('informe descargable');
+          const wantsExcel = lowerText.includes('excel') || lowerText.includes('csv') || lowerText.includes('hoja de cálculo');
+          const wantsTxt = lowerText.includes('txt') || lowerText.includes('texto plano');
+          const wantsXml = lowerText.includes('xml') || lowerText.includes('kml');
+
+          if (wantsPdf || wantsExcel || wantsTxt || wantsXml) {
+            const parsedTable = extractTableFromMarkdown(displayedContent);
+            const dateStr = new Date().toISOString().split('T')[0];
+
+            if (wantsPdf) {
+              exportFiles.push({
+                type: 'pdf',
+                filename: `CAMPITO_JOROX_INFORME_${dateStr}.pdf`,
+                title: 'Informe Campito Jorox',
+                subtitle: 'Generado a petición del usuario',
+                content: displayedContent,
+                table: parsedTable,
+              });
+            } else if (wantsExcel) {
+              exportFiles.push({
+                type: 'excel',
+                filename: `CAMPITO_JOROX_DATOS_${dateStr}.csv`,
+                title: 'Exportación Campito Jorox',
+                table: parsedTable,
+                content: displayedContent,
+              });
+            } else if (wantsTxt) {
+              exportFiles.push({
+                type: 'txt',
+                filename: `CAMPITO_JOROX_NOTAS_${dateStr}.txt`,
+                title: 'Notas Campito Jorox',
+                content: displayedContent,
+              });
+            } else if (wantsXml) {
+              exportFiles.push({
+                type: 'xml',
+                filename: `CAMPITO_JOROX_${dateStr}.xml`,
+                title: 'Datos Campito Jorox',
+                content: displayedContent,
+              });
+            }
+          }
+        }
+
         // Heurística de respaldo si el usuario pidió recordar algo y el modelo no generó la etiqueta
         if (!learnedMemory && text) {
           const lowerText = text.toLowerCase().trim();
@@ -1703,6 +2010,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             serverUsed: serverThatAnswered,
             learnedMemory: learnedMemory || null,
             inventoryExportBatch: newlyAddedBatch.length > 0 ? newlyAddedBatch : null,
+            exportFiles: exportFiles.length > 0 ? exportFiles : null,
           },
         ]);
 
@@ -3358,6 +3666,204 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                     </button>
                   </div>
                 )}
+
+                {/* ── Tarjetas de Archivos Exportables Generados en el Chat (PDF, EXCEL, TXT, XML, KML) ── */}
+                {msg.exportFiles && msg.exportFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, paddingTop: 8, borderTop: '1px solid #e2e8f0' }}>
+                    {msg.exportFiles.map((file, fIdx) => {
+                      const type = (file.type || 'txt').toLowerCase();
+                      const isPdf = type === 'pdf';
+                      const isExcel = type === 'excel' || type === 'csv' || type === 'xlsx';
+                      const isXml = type === 'xml' || type === 'kml';
+                      const ext = isPdf ? 'pdf' : (isExcel ? 'csv' : (isXml ? (file.filename?.endsWith('.kml') ? 'kml' : 'xml') : 'txt'));
+                      const filename = file.filename || `Documento_Campito_${fIdx + 1}.${ext}`;
+
+                      const cardBg = isPdf ? '#fef2f2' : (isExcel ? '#f0fdf4' : (isXml ? '#f0f9ff' : '#f8fafc'));
+                      const cardBorder = isPdf ? '#fca5a5' : (isExcel ? '#86efac' : (isXml ? '#7dd3fc' : '#cbd5e1'));
+                      const iconColor = isPdf ? '#dc2626' : (isExcel ? '#16a34a' : (isXml ? '#0284c7' : '#475569'));
+                      const badgeText = isPdf ? 'PDF OFICIAL' : (isExcel ? 'HOJA EXCEL' : (isXml ? 'XML / KML' : 'TEXTO'));
+
+                      return (
+                        <div
+                          key={fIdx}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 10,
+                            padding: '10px 12px',
+                            backgroundColor: cardBg,
+                            border: `1.5px solid ${cardBorder}`,
+                            borderRadius: 10,
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                            <div
+                              style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 8,
+                                backgroundColor: '#ffffff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                              }}
+                            >
+                              {isPdf ? (
+                                <FileText size={20} color={iconColor} />
+                              ) : isExcel ? (
+                                <FileSpreadsheet size={20} color={iconColor} />
+                              ) : isXml ? (
+                                <FileCode size={20} color={iconColor} />
+                              ) : (
+                                <FileText size={20} color={iconColor} />
+                              )}
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize: '0.84rem',
+                                  fontWeight: 700,
+                                  color: '#0f172a',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={filename}
+                              >
+                                {filename}
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 700, color: iconColor }}>{badgeText}</span>
+                                {file.title && <span>· {file.title}</span>}
+                                {file.table?.rows && <span>· {file.table.rows.length} registros</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => generateCustomFile(file)}
+                            style={{
+                              padding: '7px 14px',
+                              backgroundColor: '#00979d',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: 8,
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              boxShadow: '0 2px 5px rgba(0, 151, 157, 0.3)',
+                              transition: 'transform 0.15s, background-color 0.15s',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={`Descargar ${filename}`}
+                          >
+                            <Download size={14} />
+                            Descargar
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ── Opciones contextuales de descarga rápida para cualquier tabla del asistente ── */}
+                {!isUser && !msg.exportFiles && msg.content && msg.content.includes('|') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, paddingTop: 6, borderTop: '1px dashed #e2e8f0', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>Descargar datos:</span>
+                    <button
+                      onClick={() => {
+                        const table = extractTableFromMarkdown(msg.content);
+                        const dateStr = new Date().toISOString().split('T')[0];
+                        generateCustomPDF({
+                          title: 'Informe Campito Jorox',
+                          subtitle: 'Exportación directa desde chat',
+                          content: msg.content,
+                          table,
+                          filename: `CAMPITO_JOROX_${dateStr}.pdf`,
+                        });
+                      }}
+                      style={{
+                        padding: '3px 8px',
+                        backgroundColor: '#fee2e2',
+                        color: '#dc2626',
+                        border: '1px solid #fca5a5',
+                        borderRadius: 6,
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                      }}
+                      title="Descargar este contenido en PDF"
+                    >
+                      <FileText size={11} /> PDF
+                    </button>
+                    <button
+                      onClick={() => {
+                        const table = extractTableFromMarkdown(msg.content);
+                        const dateStr = new Date().toISOString().split('T')[0];
+                        generateCustomExcel({
+                          title: 'Exportación Campito Jorox',
+                          headers: table?.headers || [],
+                          rows: table?.rows || [],
+                          content: msg.content,
+                          filename: `CAMPITO_JOROX_${dateStr}.csv`,
+                        });
+                      }}
+                      style={{
+                        padding: '3px 8px',
+                        backgroundColor: '#dcfce7',
+                        color: '#16a34a',
+                        border: '1px solid #86efac',
+                        borderRadius: 6,
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                      }}
+                      title="Descargar esta tabla en Excel / CSV"
+                    >
+                      <FileSpreadsheet size={11} /> Excel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const dateStr = new Date().toISOString().split('T')[0];
+                        generateCustomTXT({
+                          title: 'Campito Jorox - Mensaje',
+                          content: msg.content,
+                          filename: `CAMPITO_JOROX_${dateStr}.txt`,
+                        });
+                      }}
+                      style={{
+                        padding: '3px 8px',
+                        backgroundColor: '#f1f5f9',
+                        color: '#475569',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 6,
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                      }}
+                      title="Descargar como archivo TXT"
+                    >
+                      <FileText size={11} /> TXT
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -3475,74 +3981,6 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         </div>
       )}
 
-      {/* ─── Preview de Audio Grabado Pendiente ───────────────────────────────── */}
-      {pendingAudio && !isRecording && (
-        <div
-          style={{
-            padding: '8px 14px',
-            borderTop: '1px solid #bae6fd',
-            backgroundColor: '#f0f9ff',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              backgroundColor: '#0284c7',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Mic size={16} />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369a1' }}>
-                Nota de voz ({pendingAudio.duration}s)
-              </span>
-              <span style={{ fontSize: '0.7rem', color: '#0369a1' }}>
-                · 📍 {pendingAudio.gpsTrack?.length || 1} lecturas GPS vinculadas
-              </span>
-            </div>
-            <audio
-              src={pendingAudio.dataUrl}
-              controls
-              style={{
-                width: '100%',
-                height: 30,
-                marginTop: 4,
-                outline: 'none',
-              }}
-            />
-          </div>
-
-          <button
-            onClick={() => setPendingAudio(null)}
-            title="Descartar grabación"
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#64748b',
-              cursor: 'pointer',
-              padding: 4,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 4,
-            }}
-          >
-            <X size={18} />
-          </button>
-        </div>
-      )}
 
       {/* ─── Preview de Archivo, Documento o Foto Pendiente ────────────────────── */}
       {pendingAttachment && (
@@ -3604,7 +4042,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         </div>
       )}
 
-      {/* ─── Barra de Input Inferior ─────────────────────────────────────────── */}
+      {/* ─── Barra de Input Inferior Estilo WhatsApp ───────────────────────── */}
       <div style={styles.inputBar}>
         {/* Selector de archivos general (+) */}
         <input
@@ -3625,7 +4063,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           style={{ display: 'none' }}
         />
 
-        {/* Botón Adjuntar Archivo o Documento (+) */}
+        {/* 1. Botón (+) a la izquierda para adjuntar */}
         <button
           className="chatia-iconbtn"
           style={styles.iconBtn(!!pendingAttachment && !pendingAttachment.isImage)}
@@ -3636,72 +4074,215 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           <Plus size={20} />
         </button>
 
-        {/* Botón Cámara */}
-        <button
-          className="chatia-iconbtn"
-          style={styles.iconBtn(!!pendingAttachment?.isImage)}
-          onClick={handleCameraClick}
-          aria-label="Tomar foto con la cámara"
-          title="Tomar foto con la cámara"
-        >
-          <Camera size={18} />
-        </button>
+        {/* 2. Cápsula central (Mismo lugar y dimensiones que TEXT input):
+            - Si hay audio grabado listo: Reproductor Preview WhatsApp con Play/Pause, Scrubber y Papelera
+            - Si está grabando: Indicador con tiempo, GPS y Papelera
+            - Si normal: Campo de texto + icono Cámara a la derecha dentro de la cápsula */}
+        {pendingAudio && !isRecording ? (
+          <div style={styles.audioPreviewCapsule}>
+            {/* Descartar audio */}
+            <button
+              type="button"
+              onClick={handleDiscardAudio}
+              style={styles.previewTrashBtn}
+              title="Descartar nota de voz"
+              aria-label="Descartar nota de voz"
+            >
+              <Trash2 size={18} color="#ef4444" />
+            </button>
 
-        {/* Input Texto */}
-        <textarea
-          ref={inputRef}
-          className="chatia-input"
-          style={styles.textInput}
-          placeholder="Texto..."
-          value={input}
-          onChange={(e) => {
-            const val = e.target.value;
-            setInput(val);
-            if (currentUserId) {
-              try {
-                localStorage.setItem(`campito_chat_draft_${currentUserId}`, val);
-              } catch {
-                // ignore
-              }
-            }
-            e.target.style.height = 'auto';
-            e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
-          }}
-          onKeyDown={handleKeyDown}
-          rows={1}
-          disabled={isLoading}
-          autoComplete="off"
-          autoCorrect="on"
-          spellCheck="true"
-        />
+            {/* Reproducir / Pausar */}
+            <button
+              type="button"
+              onClick={togglePlayPreview}
+              style={styles.previewPlayBtn}
+              title={isPreviewPlaying ? 'Pausar audio' : 'Escuchar audio'}
+              aria-label={isPreviewPlaying ? 'Pausar audio' : 'Escuchar audio'}
+            >
+              {isPreviewPlaying ? (
+                <Pause size={15} color="#ffffff" />
+              ) : (
+                <Play size={15} color="#ffffff" style={{ marginLeft: 2 }} />
+              )}
+            </button>
 
-        {/* Botón Micrófono */}
-        <button
-          type="button"
-          className="chatia-iconbtn"
-          style={{
-            ...styles.iconBtn(isRecording),
-            backgroundColor: isRecording ? '#dc2626' : (pendingAudio ? '#0284c7' : '#f0f0f0'),
-            color: isRecording || pendingAudio ? '#ffffff' : '#555',
-            boxShadow: isRecording ? '0 0 10px rgba(220, 38, 38, 0.6)' : 'none',
-          }}
-          onClick={handleMicClick}
-          aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
-          title={isRecording ? 'Detener grabación' : (pendingAudio ? 'Grabación lista para enviar' : 'Grabar mensaje de voz')}
-        >
-          {isRecording ? <StopCircle size={18} /> : <Mic size={18} />}
-        </button>
+            {/* Slider / Scrubber interactivo */}
+            <div style={styles.previewTrackContainer}>
+              <input
+                type="range"
+                min={0}
+                max={previewDuration || pendingAudio.duration || 1}
+                step="0.05"
+                value={previewCurrentTime}
+                onChange={handleSeekPreview}
+                style={styles.previewSlider}
+                aria-label="Progreso del audio"
+              />
+              <div style={styles.previewTimeRow}>
+                <span style={styles.previewTimeText}>
+                  {formatAudioTime(previewCurrentTime > 0 ? previewCurrentTime : (previewDuration || pendingAudio.duration))}
+                </span>
+                {pendingAudio.gpsTrack?.length > 0 && (
+                  <span style={styles.previewGpsTag} title={`${pendingAudio.gpsTrack.length} lecturas GPS vinculadas`}>
+                    📍 {pendingAudio.gpsTrack.length} pts GPS
+                  </span>
+                )}
+              </div>
+            </div>
 
-        {/* Botón Enviar */}
-        <button
-          className="chatia-iconbtn"
-          style={styles.sendBtn(hasText)}
-          onClick={() => sendMessage()}
-          disabled={!hasText || isLoading}
-          aria-label="Enviar mensaje"
-        >
-          <Send size={17} />
-        </button>
+            <audio
+              ref={previewAudioRef}
+              src={pendingAudio.dataUrl}
+              onTimeUpdate={(e) => setPreviewCurrentTime(e.target.currentTime)}
+              onLoadedMetadata={(e) => {
+                if (e.target.duration && !isNaN(e.target.duration) && isFinite(e.target.duration)) {
+                  setPreviewDuration(Math.round(e.target.duration));
+                }
+              }}
+              onEnded={() => {
+                setIsPreviewPlaying(false);
+                setPreviewCurrentTime(0);
+              }}
+              style={{ display: 'none' }}
+            />
+          </div>
+        ) : isRecording ? (
+          <div style={styles.recordingCapsule}>
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                backgroundColor: '#ef4444',
+                display: 'inline-block',
+                animation: 'chatPulseRed 1.2s infinite ease-in-out',
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
+              {formatAudioTime(recordingSeconds)}
+            </span>
+            {currentGps ? (
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  color: accuracyWarning ? '#b45309' : '#047857',
+                  backgroundColor: accuracyWarning ? '#fef3c7' : '#d1fae5',
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  marginLeft: 'auto',
+                }}
+              >
+                📍 ±{currentGps.accuracy?.toFixed(1)}m
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 'auto' }}>
+                📍 Conectando GPS...
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleCancelRecording}
+              style={styles.previewTrashBtn}
+              title="Cancelar grabación"
+              aria-label="Cancelar grabación"
+            >
+              <Trash2 size={17} color="#64748b" />
+            </button>
+          </div>
+        ) : (
+          <div style={styles.inputCapsule}>
+            <textarea
+              ref={inputRef}
+              className="chatia-input"
+              style={styles.textInput}
+              placeholder="Mensaje..."
+              value={input}
+              onChange={(e) => {
+                const val = e.target.value;
+                setInput(val);
+                if (currentUserId) {
+                  try {
+                    localStorage.setItem(`campito_chat_draft_${currentUserId}`, val);
+                  } catch {
+                    // ignore
+                  }
+                }
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
+              }}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              disabled={isLoading}
+              autoComplete="off"
+              autoCorrect="on"
+              spellCheck="true"
+            />
+
+            {/* Cámara dentro de la cápsula a la derecha del input de texto */}
+            <button
+              className="chatia-iconbtn"
+              style={styles.capsuleCameraBtn(!!pendingAttachment?.isImage)}
+              onClick={handleCameraClick}
+              aria-label="Tomar foto con la cámara"
+              title="Tomar foto con la cámara"
+            >
+              <Camera size={19} />
+            </button>
+          </div>
+        )}
+
+        {/* 3. Botón de Acción a la derecha (estilo WhatsApp):
+            - Si está grabando: Stop (rojo) para detener y crear preview
+            - Si hay audio listo o texto escrito: Send (#00979d)
+            - Si está vacío: Micrófono (#00979d) para iniciar grabación */}
+        {isRecording ? (
+          <button
+            type="button"
+            className="chatia-iconbtn"
+            style={{
+              ...styles.iconBtn(true),
+              backgroundColor: '#dc2626',
+              color: '#ffffff',
+              boxShadow: '0 0 10px rgba(220, 38, 38, 0.6)',
+            }}
+            onClick={handleMicClick}
+            aria-label="Detener grabación y escuchar preview"
+            title="Detener grabación y escuchar preview"
+          >
+            <StopCircle size={20} />
+          </button>
+        ) : hasText ? (
+          <button
+            type="button"
+            className="chatia-iconbtn"
+            style={styles.sendBtn(true)}
+            onClick={() => sendMessage()}
+            disabled={isLoading}
+            aria-label="Enviar mensaje"
+            title="Enviar mensaje"
+          >
+            <Send size={18} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="chatia-iconbtn"
+            style={{
+              ...styles.iconBtn(false),
+              backgroundColor: '#00979d',
+              color: '#ffffff',
+            }}
+            onClick={handleMicClick}
+            disabled={isLoading}
+            aria-label="Grabar mensaje de voz"
+            title="Grabar mensaje de voz"
+          >
+            <Mic size={20} />
+          </button>
+        )}
       </div>
     </div>
   );
