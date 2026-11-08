@@ -4,8 +4,8 @@
 // al componente FarmSatelliteMap en modo página completa.
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../supabaseClient';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
+import { loadFarmInventory, loadFarmPaths } from '../services/farmInventoryStorage';
 
 export default function MapaFinca() {
   const [inventory, setInventory] = useState([]);
@@ -13,30 +13,20 @@ export default function MapaFinca() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Carga del inventario desde Supabase
+  // Carga del inventario (Supabase con fallback automático a localStorage)
   const loadInventory = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('farm_inventory')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
+      const data = await loadFarmInventory();
       setInventory(data || []);
     } catch (err) {
       console.error('Error cargando inventario:', err);
-      // No bloqueamos la pantalla, mostramos mapa vacío
     }
   }, []);
 
-  // Carga de caminos y trazados desde Supabase
+  // Carga de caminos y trazados (Supabase con fallback a localStorage)
   const loadPaths = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('farm_paths')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
+      const data = await loadFarmPaths();
       setPaths(data || []);
     } catch (err) {
       console.error('Error cargando caminos:', err);

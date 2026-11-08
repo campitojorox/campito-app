@@ -54,6 +54,7 @@ import {
   extractTableFromMarkdown,
 } from '../utils/exportTools';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
+import { getLocalInventory, getLocalPaths } from '../services/farmInventoryStorage';
 
 // ─── Configuración de Modelos de Gemini (Ordenados de más a menos potente) ─────
 const GEMINI_SERVERS = [
@@ -1349,8 +1350,12 @@ export default function ChatIA() {
 
         const liveEvents = eventsRes.status === 'fulfilled' && eventsRes.value.data ? eventsRes.value.data : outletEvents;
         const liveTransactions = transRes.status === 'fulfilled' && transRes.value.data ? transRes.value.data : outletTransactions;
-        const liveInventory = invRes.status === 'fulfilled' && invRes.value.data ? invRes.value.data : [];
-        const livePaths = pathRes.status === 'fulfilled' && pathRes.value.data ? pathRes.value.data : [];
+        const liveInventory = (invRes.status === 'fulfilled' && Array.isArray(invRes.value.data) && invRes.value.data.length > 0)
+          ? invRes.value.data
+          : getLocalInventory();
+        const livePaths = (pathRes.status === 'fulfilled' && Array.isArray(pathRes.value.data) && pathRes.value.data.length > 0)
+          ? pathRes.value.data
+          : getLocalPaths();
         const liveUsers = usersRes.status === 'fulfilled' && usersRes.value.data ? usersRes.value.data : outletUsers;
 
         // Recuperar y consolidar la memoria permanente (local + nube + mensajes)
@@ -1598,13 +1603,19 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           currentKnowledge = kRes.value.data;
           setFarmKnowledge(kRes.value.data);
         }
-        if (iRes.status === 'fulfilled' && iRes.value.data) {
+        if (iRes.status === 'fulfilled' && Array.isArray(iRes.value.data) && iRes.value.data.length > 0) {
           currentInventory = iRes.value.data;
           setFarmInventory(iRes.value.data);
+        } else if (!currentInventory || currentInventory.length === 0) {
+          currentInventory = getLocalInventory();
+          setFarmInventory(currentInventory);
         }
-        if (pRes.status === 'fulfilled' && pRes.value.data) {
+        if (pRes.status === 'fulfilled' && Array.isArray(pRes.value.data) && pRes.value.data.length > 0) {
           currentPaths = pRes.value.data;
           setFarmPaths(pRes.value.data);
+        } else if (!currentPaths || currentPaths.length === 0) {
+          currentPaths = getLocalPaths();
+          setFarmPaths(currentPaths);
         }
       } catch (fErr) {
         console.warn('[ChatIA] Contexto en memoria utilizado:', fErr);

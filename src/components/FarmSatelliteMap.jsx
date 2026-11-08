@@ -51,6 +51,14 @@ import {
 import { supabase } from '../supabaseClient';
 import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
 import {
+  insertFarmInventoryItem,
+  updateFarmInventoryItem,
+  deleteFarmInventoryItem,
+  insertFarmPath,
+  updateFarmPath,
+  deleteFarmPath,
+} from '../services/farmInventoryStorage';
+import {
   exportInventoryToExcel,
   exportInventoryToPDF,
   exportInventoryToKML,
@@ -79,9 +87,13 @@ const COLOR_PALETTE = [
 // ─── Sistema de categorías para filtros ──────────────────────────────────────
 // Mapa: categoría padre → array de subcategorías (keywords)
 const CATEGORY_MAP = {
+  'Casas / Edificios': [
+    'casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta',
+    'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza',
+    'domo', 'habitacion', 'construccion'
+  ],
   'Árboles': ['aguacate', 'olivo', 'limonero', 'naranjo', 'citrico', 'arbol', 'frutales', 'algarrobo', 'granado'],
   'Plantas': ['planta', 'hierba', 'arbusto', 'herbaceo', 'vegetal', 'palmera', 'bambu'],
-  'Edificios': ['casa', 'caravana', 'taller', 'almacen', 'edificio', 'nave', 'cobertizo', 'caseta'],
   'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario'],
   'Riego / Agua': ['riego', 'llave', 'gotero', 'filtro', 'valvula', 'contador', 'arqueta', 'pozo', 'deposito', 'cisterna', 'grifo', 'tuberia', 'manguera', 'aspersor', 'bomba', 'caudal'],
   'Hitos': ['mojon', 'linde', 'piedra', 'marca', 'señal', 'cota', 'limite'],
@@ -90,13 +102,14 @@ const CATEGORY_MAP = {
 
 // Color por categoría padre para los markers
 const CATEGORY_COLORS = {
-  'Árboles': '#16a34a',       // Verde oscuro
-  'Plantas': '#4ade80',       // Verde claro
-  'Edificios': '#eab308',     // Amarillo
-  'Herramientas': '#f97316',  // Naranja
-  'Riego / Agua': '#0284c7',  // Azul
-  'Hitos': '#64748b',         // Pizarra
-  'Otros': '#94a3b8',         // Gris
+  'Casas / Edificios': '#eab308', // Amarillo
+  'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
+  'Árboles': '#16a34a',           // Verde oscuro
+  'Plantas': '#4ade80',           // Verde claro
+  'Herramientas': '#f97316',      // Naranja
+  'Riego / Agua': '#0284c7',      // Azul
+  'Hitos': '#64748b',             // Pizarra
+  'Otros': '#94a3b8',             // Gris
 };
 
 // Color de línea por tipo de camino
@@ -110,35 +123,48 @@ const PATH_TYPE_COLORS = {
 };
 
 /**
- * Determina la categoría padre de un item del inventario
+ * Determina la categoría padre de un item del inventario.
+ * Examina categoría, subtipo y también el nombre para garantizar clasificación correcta.
  */
 function getItemCategory(item) {
-  const cat = (item.category || item.tipo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (!item) return 'Otros';
+  const text = [item.category, item.tipo, item.variety_type, item.name, item.title]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
   for (const [parent, keywords] of Object.entries(CATEGORY_MAP)) {
     if (parent === 'Otros') continue;
-    if (keywords.some(k => cat.includes(k))) return parent;
+    if (keywords.some(k => text.includes(k))) return parent;
   }
   return 'Otros';
 }
 
 /**
  * Genera lista de subcategorías únicas dentro de una categoría padre,
- * extrayendo del campo category/tipo de los items reales.
+ * extrayendo de variety_type, name o category de los items reales.
  */
 function getSubcategoriesForParent(inventory, parent) {
   const keywords = CATEGORY_MAP[parent] || [];
   const subs = new Set();
   inventory.forEach(item => {
-    const cat = (item.category || item.tipo || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const subLabel = item.variety_type || item.category || item.tipo || parent;
+    const text = [item.category, item.tipo, item.variety_type, item.name, item.title]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const subLabel = item.variety_type || item.name || item.category || parent;
     if (parent === 'Otros') {
       const isOther = !Object.entries(CATEGORY_MAP).some(([p, kws]) =>
-        p !== 'Otros' && kws.some(k => cat.includes(k))
+        p !== 'Otros' && kws.some(k => text.includes(k))
       );
       if (isOther) {
         subs.add(subLabel);
       }
-    } else if (keywords.some(k => cat.includes(k))) {
+    } else if (keywords.some(k => text.includes(k))) {
       subs.add(subLabel);
     }
   });
@@ -504,10 +530,14 @@ export default function FarmSatelliteMap({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   // visibleCategories: Set de categorías padre activas
   const [visibleCategories, setVisibleCategories] = useState(() => {
+    const all = new Set(Object.keys(CATEGORY_MAP));
     if (initialMapSettings?.visibleCategories && Array.isArray(initialMapSettings.visibleCategories)) {
-      return new Set(initialMapSettings.visibleCategories);
+      const saved = new Set(initialMapSettings.visibleCategories);
+      if (saved.has('Edificios')) saved.add('Casas / Edificios');
+      saved.add('Casas / Edificios');
+      return saved;
     }
-    return new Set(Object.keys(CATEGORY_MAP));
+    return all;
   });
   // visibleSubcats: Set de subcategorías (valores reales de item.category) activas
   const [visibleSubcats, setVisibleSubcats] = useState(() => {
@@ -1138,13 +1168,7 @@ export default function FarmSatelliteMap({
         is_active: true,
       };
 
-      const { data, error } = await supabase.from('farm_paths').insert(payload).select().single();
-
-      if (error) {
-        console.error('Error insertando en farm_paths:', error);
-        alert(`Error al guardar en base de datos: ${error.message}`);
-        return;
-      }
+      const data = await insertFarmPath(payload);
 
       // Limpiar estado
       setIsDrawing(false);
@@ -1189,18 +1213,12 @@ export default function FarmSatelliteMap({
     if (!selectedPath) return;
 
     try {
-      const { error } = await supabase
-        .from('farm_paths')
-        .update({
-          name: editPathData.name,
-          color: editPathData.color,
-          stroke_width: Number(editPathData.stroke_width) || 4,
-          notes: editPathData.notes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedPath.id);
-
-      if (error) throw error;
+      await updateFarmPath(selectedPath.id, {
+        name: editPathData.name,
+        color: editPathData.color,
+        stroke_width: Number(editPathData.stroke_width) || 4,
+        notes: editPathData.notes,
+      });
 
       setIsEditingPath(false);
       setSelectedPath(null);
@@ -1215,8 +1233,7 @@ export default function FarmSatelliteMap({
     if (!window.confirm('¿Seguro que deseas eliminar este camino o sendero del mapa?')) return;
 
     try {
-      const { error } = await supabase.from('farm_paths').delete().eq('id', id);
-      if (error) throw error;
+      await deleteFarmPath(id);
       setSelectedPath(null);
       if (onReloadPaths) onReloadPaths();
     } catch (err) {
@@ -1229,8 +1246,7 @@ export default function FarmSatelliteMap({
     if (!window.confirm('¿Seguro que deseas eliminar este punto del inventario?')) return;
 
     try {
-      const { error } = await supabase.from('farm_inventory').delete().eq('id', id);
-      if (error) throw error;
+      await deleteFarmInventoryItem(id);
       setSelectedPoint(null);
       if (onReloadInventory) onReloadInventory();
     } catch (err) {
@@ -1243,20 +1259,12 @@ export default function FarmSatelliteMap({
     if (!selectedPoint) return;
 
     try {
-      const { data, error } = await supabase
-        .from('farm_inventory')
-        .update({
-          name: editPointData.name,
-          variety_type: editPointData.variety_type,
-          status: editPointData.status,
-          notes: editPointData.notes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedPoint.id)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await updateFarmInventoryItem(selectedPoint.id, {
+        name: editPointData.name,
+        variety_type: editPointData.variety_type,
+        status: editPointData.status,
+        notes: editPointData.notes,
+      });
 
       setIsEditingPoint(false);
       setSelectedPoint(data || { ...selectedPoint, ...editPointData });
@@ -1427,10 +1435,8 @@ export default function FarmSatelliteMap({
           variety_type: targetEditData.variety.trim() || null,
           status: targetEditData.status || 'saludable',
           notes: targetEditData.notes.trim() || null,
-          updated_at: new Date().toISOString(),
         };
-        const { error } = await supabase.from('farm_inventory').update(updatePayload).eq('id', selectedTarget.id);
-        if (error) throw error;
+        await updateFarmInventoryItem(selectedTarget.id, updatePayload);
         setSelectedTarget((prev) => ({
           ...prev,
           title: updatePayload.name,
@@ -1447,10 +1453,8 @@ export default function FarmSatelliteMap({
           path_type: targetEditData.path_type || 'sendero',
           color: targetEditData.color || '#f97316',
           notes: targetEditData.notes.trim() || null,
-          updated_at: new Date().toISOString(),
         };
-        const { error } = await supabase.from('farm_paths').update(updatePayload).eq('id', selectedTarget.id);
-        if (error) throw error;
+        await updateFarmPath(selectedTarget.id, updatePayload);
         setSelectedTarget((prev) => ({
           ...prev,
           title: updatePayload.name,
@@ -1463,25 +1467,31 @@ export default function FarmSatelliteMap({
         if (onReloadPaths) onReloadPaths();
       } else if (selectedTarget.type === 'catastro' || selectedTarget.type === 'coord') {
         // Guardar cota catastral o coordenada libre en farm_inventory
+        const cleanName = targetEditData.name.trim() || selectedTarget.title;
+        const lower = cleanName.toLowerCase();
+        let cat = selectedTarget.type === 'catastro' ? 'hito' : 'riego';
+        if (lower.includes('casa') || lower.includes('casita') || lower.includes('cueva') || lower.includes('edificio') || lower.includes('caseta') || lower.includes('taller')) {
+          cat = 'edificio';
+        } else if (lower.includes('aguacate') || lower.includes('olivo') || lower.includes('limon') || lower.includes('arbol')) {
+          cat = 'arbol';
+        }
+
         const newItem = {
-          name: targetEditData.name.trim() || selectedTarget.title,
-          category: selectedTarget.type === 'catastro' ? 'hito' : 'riego',
+          name: cleanName,
+          category: cat,
           variety_type: targetEditData.variety.trim() || (selectedTarget.type === 'catastro' ? 'Cota Catastral' : null),
           status: targetEditData.status || 'saludable',
           latitude: selectedTarget.lat,
           longitude: selectedTarget.lng,
           notes: targetEditData.notes.trim() || null,
           is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         };
-        const { data: inserted, error } = await supabase.from('farm_inventory').insert([newItem]).select().single();
-        if (error) throw error;
+        const inserted = await insertFarmInventoryItem(newItem);
         setSelectedTarget({
           type: 'point',
           id: inserted.id,
           title: inserted.name,
-          category: inserted.category,
+          category: getItemCategory(inserted),
           variety: inserted.variety_type,
           status: inserted.status,
           notes: inserted.notes,
@@ -1507,14 +1517,12 @@ export default function FarmSatelliteMap({
     setIsProcessingIa(true);
     try {
       if (selectedTarget.type === 'point') {
-        const { error } = await supabase.from('farm_inventory').delete().eq('id', selectedTarget.id);
-        if (error) throw error;
+        await deleteFarmInventoryItem(selectedTarget.id);
         setIaFeedback({ type: 'success', text: `🗑️ Elemento eliminado: ${selectedTarget.title}` });
         setSelectedTarget(null);
         if (onReloadInventory) onReloadInventory();
       } else if (selectedTarget.type === 'path') {
-        const { error } = await supabase.from('farm_paths').delete().eq('id', selectedTarget.id);
-        if (error) throw error;
+        await deleteFarmPath(selectedTarget.id);
         setIaFeedback({ type: 'success', text: `🗑️ Trazado eliminado: ${selectedTarget.title}` });
         setSelectedTarget(null);
         if (onReloadPaths) onReloadPaths();
@@ -1799,60 +1807,47 @@ export default function FarmSatelliteMap({
             updatePayload.notes = prevItem?.notes ? `${prevItem.notes}\n${noteToAdd}` : noteToAdd;
           }
 
-          const { error: directUpdErr } = await supabase
-            .from('farm_inventory')
-            .update(updatePayload)
-            .eq('id', selectedTarget.id);
+          await updateFarmInventoryItem(selectedTarget.id, updatePayload);
 
-          if (!directUpdErr) {
-            setUndoStack((prev) => [
-              ...prev,
-              {
-                description: `Actualizado ${selectedTarget.title}`,
-                reverts: [
-                  {
-                    type: 'UPDATE_POINT',
-                    target_id: selectedTarget.id,
-                    prevData: {
-                      photo_url: prevItem?.photo_url || null,
-                      notes: prevItem?.notes || '',
-                    },
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Actualizado ${selectedTarget.title}`,
+              reverts: [
+                {
+                  type: 'UPDATE_POINT',
+                  target_id: selectedTarget.id,
+                  prevData: {
+                    photo_url: prevItem?.photo_url || null,
+                    notes: prevItem?.notes || '',
                   },
-                ],
-                timestamp: Date.now(),
-              },
-            ]);
-            setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
-            setIaFeedback({ type: 'success', text: `✨ Datos guardados en ${selectedTarget.title}` });
-            if (onReloadInventory) await onReloadInventory();
-            setIsProcessingIa(false);
-            return;
-          }
+                },
+              ],
+              timestamp: Date.now(),
+            },
+          ]);
+          setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
+          setIaFeedback({ type: 'success', text: `✨ Datos guardados en ${selectedTarget.title}` });
+          if (onReloadInventory) await onReloadInventory();
+          setIsProcessingIa(false);
+          return;
         }
 
         // 2. Si el usuario añadió una nota sobre una polilínea / camino seleccionado
         if (selectedTarget?.type === 'path' && (uploadedPhotoUrl || textOrder || audioOrder)) {
           const prevPath = paths.find(p => p.id === selectedTarget.id);
-          const updatePayload = {
-            updated_at: new Date().toISOString()
-          };
+          const updatePayload = {};
           const noteToAdd = textOrder || (result.transcription ? `Audio: "${result.transcription}"` : null);
           if (noteToAdd) {
             updatePayload.notes = prevPath?.notes ? `${prevPath.notes}\n${noteToAdd}` : noteToAdd;
           }
 
-          const { error: directUpdErr } = await supabase
-            .from('farm_paths')
-            .update(updatePayload)
-            .eq('id', selectedTarget.id);
-
-          if (!directUpdErr) {
-            setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
-            setIaFeedback({ type: 'success', text: `✨ Notas actualizadas en ${selectedTarget.title}` });
-            if (onReloadPaths) await onReloadPaths();
-            setIsProcessingIa(false);
-            return;
-          }
+          await updateFarmPath(selectedTarget.id, updatePayload);
+          setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
+          setIaFeedback({ type: 'success', text: `✨ Notas actualizadas en ${selectedTarget.title}` });
+          if (onReloadPaths) await onReloadPaths();
+          setIsProcessingIa(false);
+          return;
         }
 
         // 3. Si el usuario pinchó en una coordenada del mapa o cota catastral
@@ -1874,7 +1869,7 @@ export default function FarmSatelliteMap({
 
           let category = selectedTarget.type === 'catastro' ? 'hito' : 'riego';
           const lowerName = formattedName.toLowerCase();
-          if (lowerName.includes('casa') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('caseta') || lowerName.includes('taller') || lowerName.includes('caravana')) {
+          if (lowerName.includes('casa') || lowerName.includes('casita') || lowerName.includes('cueva') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('caseta') || lowerName.includes('taller') || lowerName.includes('caravana')) {
             category = 'edificio';
           } else if (lowerName.includes('arbol') || lowerName.includes('aguacate') || lowerName.includes('olivo') || lowerName.includes('limon') || lowerName.includes('naranjo')) {
             category = 'arbol';
@@ -1896,11 +1891,9 @@ export default function FarmSatelliteMap({
             notes,
             photo_url: uploadedPhotoUrl || null,
             is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
           };
-          const { data: inserted, error: insErr } = await supabase.from('farm_inventory').insert([newItem]).select().single();
-          if (!insErr && inserted) {
+          const inserted = await insertFarmInventoryItem(newItem);
+          if (inserted) {
             setSelectedTarget({
               type: 'point',
               id: inserted.id,
@@ -1944,24 +1937,20 @@ export default function FarmSatelliteMap({
           const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
           const item = inventory.find((i) => i.id === targetId);
           if (item) {
-            const { error: delErr } = await supabase.from('farm_inventory').delete().eq('id', targetId);
-            if (!delErr) {
-              undoAction.reverts.push({ type: 'RESTORE_POINT', itemData: item });
-              if (selectedTarget?.id === targetId) {
-                setSelectedTarget(null);
-              }
+            await deleteFarmInventoryItem(targetId);
+            undoAction.reverts.push({ type: 'RESTORE_POINT', itemData: item });
+            if (selectedTarget?.id === targetId) {
+              setSelectedTarget(null);
             }
           }
         } else if (actType === 'DELETE_PATH' || actType === 'REMOVE_PATH') {
           const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
           const path = paths.find((p) => p.id === targetId);
           if (path) {
-            const { error: delErr } = await supabase.from('farm_paths').delete().eq('id', targetId);
-            if (!delErr) {
-              undoAction.reverts.push({ type: 'RESTORE_PATH', pathData: path });
-              if (selectedTarget?.id === targetId) {
-                setSelectedTarget(null);
-              }
+            await deleteFarmPath(targetId);
+            undoAction.reverts.push({ type: 'RESTORE_PATH', pathData: path });
+            if (selectedTarget?.id === targetId) {
+              setSelectedTarget(null);
             }
           }
         } else if (actType === 'UPDATE_POINT' || actType === 'EDIT_POINT' || actType === 'MODIFY_POINT') {
@@ -1977,15 +1966,10 @@ export default function FarmSatelliteMap({
             }
             const prevData = {};
             Object.keys(updatePayload).forEach((k) => { prevData[k] = item[k]; });
-            const { error: updErr } = await supabase
-              .from('farm_inventory')
-              .update({ ...updatePayload, updated_at: new Date().toISOString() })
-              .eq('id', targetId);
-            if (!updErr) {
-              undoAction.reverts.push({ type: 'UPDATE_POINT', target_id: targetId, prevData });
-              if (selectedTarget?.id === targetId) {
-                setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
-              }
+            await updateFarmInventoryItem(targetId, updatePayload);
+            undoAction.reverts.push({ type: 'UPDATE_POINT', target_id: targetId, prevData });
+            if (selectedTarget?.id === targetId) {
+              setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
             }
           }
         } else if (actType === 'UPDATE_PATH' || actType === 'EDIT_PATH') {
@@ -1994,15 +1978,10 @@ export default function FarmSatelliteMap({
           if (path && actData) {
             const prevData = {};
             Object.keys(actData).forEach((k) => { prevData[k] = path[k]; });
-            const { error: updErr } = await supabase
-              .from('farm_paths')
-              .update({ ...actData, updated_at: new Date().toISOString() })
-              .eq('id', targetId);
-            if (!updErr) {
-              undoAction.reverts.push({ type: 'UPDATE_PATH', target_id: targetId, prevData });
-              if (selectedTarget?.id === targetId) {
-                setSelectedTarget((prev) => ({ ...prev, ...actData }));
-              }
+            await updateFarmPath(targetId, actData);
+            undoAction.reverts.push({ type: 'UPDATE_PATH', target_id: targetId, prevData });
+            if (selectedTarget?.id === targetId) {
+              setSelectedTarget((prev) => ({ ...prev, ...actData }));
             }
           }
         } else if (actType === 'ADD_POINT' || actType === 'CREATE_POINT' || actType === 'INSERT_POINT' || actType === 'NEW_POINT') {
@@ -2026,7 +2005,7 @@ export default function FarmSatelliteMap({
           let category = actData.category || act.category;
           if (!category || category === 'Otros') {
             const lowerName = formattedName.toLowerCase();
-            if (lowerName.includes('casa') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('taller') || lowerName.includes('caseta') || lowerName.includes('caravana')) {
+            if (lowerName.includes('casa') || lowerName.includes('casita') || lowerName.includes('cueva') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('taller') || lowerName.includes('caseta') || lowerName.includes('caravana')) {
               category = 'edificio';
             } else if (lowerName.includes('aguacate') || lowerName.includes('limon') || lowerName.includes('olivo') || lowerName.includes('arbol') || lowerName.includes('naranjo')) {
               category = 'arbol';
@@ -2053,11 +2032,8 @@ export default function FarmSatelliteMap({
             updated_at: new Date().toISOString(),
           };
 
-          const { data: inserted, error: insErr } = await supabase.from('farm_inventory').insert([newItem]).select().single();
-          if (insErr) {
-            console.error('[MapAI] Error insertando punto en Supabase:', insErr);
-            setIaFeedback({ type: 'error', text: `Error al guardar en inventario: ${insErr.message}` });
-          } else if (inserted) {
+          const inserted = await insertFarmInventoryItem(newItem);
+          if (inserted) {
             undoAction.reverts.push({ type: 'DELETE_POINT', target_id: inserted.id });
             setSelectedTarget({
               type: 'point',
@@ -2110,17 +2086,17 @@ export default function FarmSatelliteMap({
     try {
       for (const rev of lastAction.reverts) {
         if (rev.type === 'RESTORE_POINT') {
-          await supabase.from('farm_inventory').insert([rev.itemData]);
+          await insertFarmInventoryItem(rev.itemData);
         } else if (rev.type === 'RESTORE_PATH') {
-          await supabase.from('farm_paths').insert([rev.pathData]);
+          await insertFarmPath(rev.pathData);
         } else if (rev.type === 'UPDATE_POINT') {
-          await supabase.from('farm_inventory').update({ ...rev.prevData, updated_at: new Date().toISOString() }).eq('id', rev.target_id);
+          await updateFarmInventoryItem(rev.target_id, rev.prevData);
         } else if (rev.type === 'UPDATE_PATH') {
-          await supabase.from('farm_paths').update({ ...rev.prevData, updated_at: new Date().toISOString() }).eq('id', rev.target_id);
+          await updateFarmPath(rev.target_id, rev.prevData);
         } else if (rev.type === 'DELETE_POINT') {
-          await supabase.from('farm_inventory').delete().eq('id', rev.target_id);
+          await deleteFarmInventoryItem(rev.target_id);
         } else if (rev.type === 'DELETE_PATH') {
-          await supabase.from('farm_paths').delete().eq('id', rev.target_id);
+          await deleteFarmPath(rev.target_id);
         }
       }
 
@@ -2333,7 +2309,7 @@ export default function FarmSatelliteMap({
               </div>
               <div style={styles.legendItem}>
                 <span style={{ ...styles.colorCircle, backgroundColor: '#eab308' }} />
-                <span>Edificios</span>
+                <span>Casas / Edificios</span>
               </div>
               <div style={styles.legendItem}>
                 <span style={{ ...styles.colorCircle, backgroundColor: '#0284c7' }} />

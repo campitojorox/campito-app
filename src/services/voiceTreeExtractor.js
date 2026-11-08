@@ -7,6 +7,7 @@
 
 import { interpolateTreeEntities, treesToGeoJSON } from '../utils/geoAudioInterpolation';
 import { supabase } from '../supabaseClient';
+import { insertFarmInventoryItem } from './farmInventoryStorage';
 
 /**
  * Esquema JSON estricto para Structured Outputs de Gemini
@@ -339,6 +340,8 @@ export async function processVoiceGeoSession({
             ? 'riego_linea'
             : t.tipo.toLowerCase().includes('piedra') || t.tipo.toLowerCase().includes('linde')
             ? 'piedra_linde'
+            : (t.tipo.toLowerCase().includes('casa') || t.tipo.toLowerCase().includes('casita') || t.tipo.toLowerCase().includes('cueva') || t.tipo.toLowerCase().includes('edificio'))
+            ? 'edificio'
             : 'arbol',
           variety_type: t.variedad || null,
           latitude: t.coordenadas.lat,
@@ -355,18 +358,17 @@ export async function processVoiceGeoSession({
         }));
 
       if (rowsToInsert.length > 0) {
-        const { error: insertErr } = await supabase
-          .from('farm_inventory')
-          .insert(rowsToInsert);
-
-        if (!insertErr) {
-          savedCount = rowsToInsert.length;
-        } else {
-          console.warn('[VoiceTreeExtractor] Aviso guardando en Supabase:', insertErr.message);
+        for (const row of rowsToInsert) {
+          try {
+            await insertFarmInventoryItem(row);
+            savedCount++;
+          } catch (e) {
+            console.warn('[VoiceTreeExtractor] Error insertando item local/remoto:', e);
+          }
         }
       }
     } catch (dbErr) {
-      console.warn('[VoiceTreeExtractor] Error al persistir en Supabase:', dbErr.message);
+      console.warn('[VoiceTreeExtractor] Error al persistir en inventario:', dbErr.message);
     }
   }
 
