@@ -77,6 +77,61 @@ export async function removeOfflineTrack(id) {
   }
 }
 
+// ─── Stream de audio persistente compartido (evita pedir permisos en cada audio) ─
+let globalAudioStream = null;
+
+async function getOrCreateAudioStream() {
+  if (globalAudioStream) {
+    const tracks = globalAudioStream.getAudioTracks();
+    const allLive = tracks.length > 0 && tracks.every((t) => t.readyState === 'live');
+    if (allLive) {
+      // Reactivar el micrófono silenciado para comenzar la grabación
+      tracks.forEach((t) => {
+        t.enabled = true;
+      });
+      return globalAudioStream;
+    }
+    // Si alguna pista murió (ej: llamada entrante o suspensión del SO), limpiar
+    tracks.forEach((t) => {
+      try { t.stop(); } catch {}
+    });
+    globalAudioStream = null;
+  }
+
+  // Primera solicitud de permisos: el navegador pedirá confirmación solo esta primera vez
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+
+  globalAudioStream = stream;
+  return stream;
+}
+
+function muteAudioStream() {
+  if (globalAudioStream) {
+    // Silencia la captura de audio sin destruir el stream para que iOS y Android
+    // NO vuelvan a mostrar el diálogo de confirmación de permisos en el siguiente audio
+    globalAudioStream.getAudioTracks().forEach((track) => {
+      track.enabled = false;
+    });
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (globalAudioStream) {
+      globalAudioStream.getTracks().forEach((t) => {
+        try { t.stop(); } catch {}
+      });
+      globalAudioStream = null;
+    }
+  });
+}
+
 // ─── Hook useVoiceGeoTracker ──────────────────────────────────────────────────
 export function useVoiceGeoTracker({
   gpsSampleIntervalMs = 1500, // Muestreo GPS cada 1.5s
@@ -132,14 +187,8 @@ export function useVoiceGeoTracker({
     }
 
     try {
-      // 2. Solicitar permisos de micrófono
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      // 2. Obtener stream de micrófono (reutiliza el autorizado sin pedir permisos)
+      const stream = await getOrCreateAudioStream();
       streamRef.current = stream;
 
       // 3. Seleccionar mejor codec soportado
@@ -260,13 +309,7 @@ export function useVoiceGeoTracker({
       timerIntervalRef.current = null;
     }
 
-    // 2. Detener stream de audio
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
-    // 3. Esperar finalización del MediaRecorder
+    // 2. Esperar finalización del MediaRecorder antes de silenciar el stream
     const audioBlob = await new Promise((resolve) => {
       const recorder = mediaRecorderRef.current;
       if (!recorder || recorder.state === 'inactive') {
@@ -283,18 +326,31 @@ export function useVoiceGeoTracker({
       recorder.stop();
     });
 
+    // 3. Silenciar stream de audio sin destruirlo (evita volver a pedir permisos)
+    muteAudioStream();
+    streamRef.current = null;
+
     const t0 = t0Ref.current;
     const tEnd = Date.now();
     const durationSeconds = (tEnd - t0) / 1000;
     const finalGpsTrack = [...gpsTrackRef.current];
+
+    // Convertir audio a dataUrl inmediatamente para reproductores de preview y APIs
+    const dataUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(audioBlob);
+    });
 
     const result = {
       id: `voice_track_${t0}_${Math.random().toString(36).substring(7)}`,
       t0,
       tEnd,
       durationSeconds,
+      duration: Math.max(1, Math.round(durationSeconds)),
       audioBlob,
-      mimeType: audioBlob.type,
+      dataUrl,
+      mimeType: audioBlob.type || 'audio/webm',
       gpsTrack: finalGpsTrack,
       totalGpsSamples: finalGpsTrack.length,
       averageAccuracy: finalGpsTrack.length > 0
@@ -323,9 +379,7 @@ export function useVoiceGeoTracker({
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
+      muteAudioStream();
     };
   }, []);
 

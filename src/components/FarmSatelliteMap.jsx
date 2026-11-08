@@ -247,8 +247,8 @@ async function callGeminiForMapAction({
     notes: p.notes || '',
   }));
 
-  const centerLat = selectedTarget?.lat || currentGps?.lat || mapCenter?.[0] || DEFAULT_CENTER[0];
-  const centerLng = selectedTarget?.lng || currentGps?.lng || mapCenter?.[1] || DEFAULT_CENTER[1];
+  const centerLat = selectedTarget?.lat || (audio?.gpsTrack && audio.gpsTrack[0]?.lat) || currentGps?.lat || mapCenter?.[0] || DEFAULT_CENTER[0];
+  const centerLng = selectedTarget?.lng || (audio?.gpsTrack && audio.gpsTrack[0]?.lng) || currentGps?.lng || mapCenter?.[1] || DEFAULT_CENTER[1];
 
   const targetInfoStr = selectedTarget ? `
 🎯 ELEMENTO ACTUALMENTE SELECCIONADO / PINCHADO EN EL MAPA:
@@ -269,8 +269,10 @@ REGLAS CRÍTICAS DE ELEMENTO SELECCIONADO:
    - "renómbralo como ...", "cambia su nombre a ..." -> UPDATE_POINT o UPDATE_PATH con {"name": "..."}
    - "cambia su color a ..." -> UPDATE_PATH o UPDATE_POINT con {"color": "#hex"}
    - "elimínalo / bórralo" -> DELETE_POINT o DELETE_PATH con su target_id '${selectedTarget.id}'
-3. Si el elemento seleccionado es de tipo 'coord' o 'catastro' (una coordenada del mapa o linde de parcela) y el usuario dice "añade aquí una llave / arqueta / aguacate / gotero / mojón":
+3. Si el elemento seleccionado es de tipo 'coord' o 'catastro' (una coordenada del mapa o linde de parcela) y el usuario dice o describe cualquier elemento (ej: "mi casa", "casa", "llave", "arqueta", "aguacate", "gotero", "mojón", "depósito", "taller", "edificio"):
    - Genera acción "ADD_POINT" en esas coordenadas exactas (lat: ${selectedTarget.lat}, lng: ${selectedTarget.lng}).
+   - Asigna como "name" el nombre indicado (ej: "Mi Casa", "Casa", "Arqueta de Riego").
+   - Asigna "category": 'edificio' (para casa, almacén, caravana, nave, caseta), 'arbol', 'planta', 'riego', 'herramienta' o 'hito'.
 4. Si el usuario adjunta una foto, asocia los hallazgos en las notas de este elemento.` : '';
 
   const systemInstruction = `Eres el motor de control IA del mapa satelital de Campito Jorox (Parcelas 195 y 196).
@@ -279,7 +281,7 @@ ${targetInfoStr}
 
 Coordenadas de referencia actuales:
 - GPS Usuario: ${currentGps ? `${currentGps.lat.toFixed(6)}, ${currentGps.lng.toFixed(6)} (precisión: ±${currentGps.accuracy}m)` : 'No disponible'}
-- Centro del mapa: ${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}
+- Centro del mapa / Coordenada activa: ${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}
 
 Elementos actualmente visibles en el mapa:
 PUNTOS DE INVENTARIO (${inventoryContext.length}):
@@ -292,10 +294,11 @@ INSTRUCCIONES SUPREMAS:
 - Devuelve ÚNICAMENTE un JSON válido sin texto Markdown adicional, sin comillas triples \`\`\`json, sin saludos ni explicaciones.
 - Estructura JSON requerida:
 {
-  "description": "Resumen conciso en español de la acción ejecutada (ej: 'Actualizado estado de Aguacate a clorosis y nota añadida' o 'Eliminados 2 limoneros')",
+  "description": "Resumen conciso en español de la acción ejecutada (ej: 'Registrada Mi Casa en las coordenadas indicadas' o 'Actualizado estado...')",
+  "transcription": "Texto transcrito del mensaje de voz del agricultor si hubo grabación de audio",
   "actions": [
     {
-      "type": "DELETE_POINT" | "DELETE_PATH" | "UPDATE_POINT" | "UPDATE_PATH" | "ADD_POINT",
+      "type": "ADD_POINT" | "CREATE_POINT" | "DELETE_POINT" | "DELETE_PATH" | "UPDATE_POINT" | "UPDATE_PATH",
       "target_id": "uuid del elemento afectado si es delete o update",
       "data": { ... }
     }
@@ -306,9 +309,21 @@ Reglas generales:
 1. "borrar / eliminar / quitar": Encuentra los elementos coincidentes o usa el elemento seleccionado y genera DELETE_POINT o DELETE_PATH.
 2. "editar / cambiar estado / cambiar nota": Actualiza el pin con UPDATE_POINT (status, variety_type, notes, name).
 3. "cambiar color": Genera UPDATE_PATH o UPDATE_POINT con {"color": "#hex"}.
-4. "añadir / colocar / poner": Genera "ADD_POINT" con {"name": "...", "category": "riego"|"arbol"|"planta"|"edificio"|"herramienta"|"hito", "variety_type": "...", "status": "saludable", "latitude": ${centerLat}, "longitude": ${centerLng}, "notes": "..."}.
+4. "añadir / colocar / poner / registrar / guardar / nuevo / o mención de un elemento (ej: 'mi casa', 'casa', 'arqueta', 'limonero', 'depósito')": Genera "ADD_POINT" con:
+   {
+     "name": "Nombre claro del elemento (ej: 'Mi Casa', 'Arqueta Principal', 'Aguacate Hass')",
+     "category": "edificio"|"arbol"|"planta"|"riego"|"herramienta"|"hito",
+     "variety_type": "variedad o subtipo si aplica",
+     "status": "saludable",
+     "latitude": ${centerLat},
+     "longitude": ${centerLng},
+     "notes": "observaciones del agricultor o transcripción"
+   }
+   * Si el usuario dice "mi casa" o "casa", category DEBE ser "edificio".
+   * Si dice "aguacate", "limonero", "olivo", category DEBE ser "arbol".
+   * Si dice "arqueta", "llave", "gotero", "pozo", category DEBE ser "riego".
 5. Si no hay elementos coincidentes ni órdenes claras, devuelve:
-   {"description": "No se encontraron elementos coincidentes con la orden", "actions": []}
+   {"description": "No se encontraron elementos coincidentes con la orden", "transcription": "", "actions": []}
 `;
 
   const userParts = [];
@@ -362,7 +377,14 @@ Reglas generales:
     }
   }
 
-  if (userParts.length === 0) {
+  // Si se envió un audio sin texto de prompt, añadir instrucción explícita a Gemini
+  if (!prompt && audio) {
+    userParts.push({
+      text: selectedTarget
+        ? `Por favor escucha atentamente este mensaje de voz del agricultor para el elemento seleccionado "${selectedTarget.title}" (${selectedTarget.type} en lat ${selectedTarget.lat}, lng ${selectedTarget.lng}). Transcribe lo que dice en "transcription", interpreta la orden (añadir pin, renombrar, cambiar estado, notas o borrar) y genera el JSON con la acción correspondiente (ej: ADD_POINT si pide registrar un elemento como 'mi casa', 'arqueta', etc.).`
+        : `Por favor escucha atentamente este mensaje de voz del agricultor para el mapa de Campito Jorox. Transcribe lo que dice en "transcription", interpreta la orden y devuelve el JSON con la acción requerida (ej: "ADD_POINT" en lat ${centerLat}, lng ${centerLng} si nombra un elemento como 'mi casa', 'árbol', 'arqueta', etc.).`,
+    });
+  } else if (userParts.length === 0) {
     userParts.push({ text: selectedTarget ? `Analizar y actualizar elemento seleccionado: ${selectedTarget.title}` : 'Interpretar orden del mapa' });
   }
 
@@ -376,9 +398,11 @@ Reglas generales:
   };
 
   const MAP_GEMINI_MODELS = [
-    'gemini-3.1-pro-preview',
     'gemini-3.5-flash',
+    'gemini-3.1-pro-preview',
     'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
     'gemini-3.1-flash-lite',
   ];
 
@@ -407,8 +431,18 @@ Reglas generales:
       const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) throw new Error('Respuesta vacía del modelo');
 
-      const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
+      let parsed;
+      try {
+        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(cleanJson);
+      } catch (parseErr) {
+        const match = rawText.match(/\{[\s\S]*\}/);
+        if (match) {
+          parsed = JSON.parse(match[0]);
+        } else {
+          throw parseErr;
+        }
+      }
       return parsed;
     } catch (err) {
       console.warn(`[MapAI] Falló ${modelId}:`, err.message);
@@ -1568,12 +1602,26 @@ export default function FarmSatelliteMap({
   const handleStopVoiceRecording = async () => {
     try {
       const audioResult = await stopVoiceTracking();
-      if (audioResult && audioResult.dataUrl) {
-        setPendingVoiceAudio(audioResult);
-        setPreviewDuration(audioResult.duration || 0);
+      if (audioResult) {
+        let dataUrl = audioResult.dataUrl;
+        if (!dataUrl && audioResult.audioBlob) {
+          dataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(audioResult.audioBlob);
+          });
+        }
+        const voiceObj = {
+          ...audioResult,
+          dataUrl,
+          duration: Math.max(1, Math.round(audioResult.durationSeconds || audioResult.duration || 0)),
+        };
+        setPendingVoiceAudio(voiceObj);
+        setPreviewDuration(voiceObj.duration);
       }
     } catch (err) {
       console.error('Error deteniendo grabación:', err);
+      setIaFeedback({ type: 'error', text: 'Error al procesar la grabación de voz.' });
     }
   };
 
@@ -1739,15 +1787,16 @@ export default function FarmSatelliteMap({
       setIsPreviewPlaying(false);
 
       if (!result.actions || result.actions.length === 0) {
-        // 1. Si el usuario adjuntó una foto o nota sobre un punto de inventario seleccionado
-        if (selectedTarget?.type === 'point' && (uploadedPhotoUrl || textOrder)) {
+        // 1. Si el usuario adjuntó una foto, nota o audio sobre un punto de inventario seleccionado
+        if (selectedTarget?.type === 'point' && (uploadedPhotoUrl || textOrder || audioOrder)) {
           const prevItem = inventory.find(i => i.id === selectedTarget.id);
           const updatePayload = {
             updated_at: new Date().toISOString()
           };
           if (uploadedPhotoUrl) updatePayload.photo_url = uploadedPhotoUrl;
-          if (textOrder) {
-            updatePayload.notes = prevItem?.notes ? `${prevItem.notes}\n${textOrder}` : textOrder;
+          const noteToAdd = textOrder || (result.transcription ? `Audio: "${result.transcription}"` : null);
+          if (noteToAdd) {
+            updatePayload.notes = prevItem?.notes ? `${prevItem.notes}\n${noteToAdd}` : noteToAdd;
           }
 
           const { error: directUpdErr } = await supabase
@@ -1774,21 +1823,22 @@ export default function FarmSatelliteMap({
               },
             ]);
             setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
-            setIaFeedback({ type: 'success', text: `✨ Datos y foto guardados en ${selectedTarget.title}` });
-            if (onReloadInventory) onReloadInventory();
+            setIaFeedback({ type: 'success', text: `✨ Datos guardados en ${selectedTarget.title}` });
+            if (onReloadInventory) await onReloadInventory();
             setIsProcessingIa(false);
             return;
           }
         }
 
         // 2. Si el usuario añadió una nota sobre una polilínea / camino seleccionado
-        if (selectedTarget?.type === 'path' && (uploadedPhotoUrl || textOrder)) {
+        if (selectedTarget?.type === 'path' && (uploadedPhotoUrl || textOrder || audioOrder)) {
           const prevPath = paths.find(p => p.id === selectedTarget.id);
           const updatePayload = {
             updated_at: new Date().toISOString()
           };
-          if (textOrder) {
-            updatePayload.notes = prevPath?.notes ? `${prevPath.notes}\n${textOrder}` : textOrder;
+          const noteToAdd = textOrder || (result.transcription ? `Audio: "${result.transcription}"` : null);
+          if (noteToAdd) {
+            updatePayload.notes = prevPath?.notes ? `${prevPath.notes}\n${noteToAdd}` : noteToAdd;
           }
 
           const { error: directUpdErr } = await supabase
@@ -1799,22 +1849,51 @@ export default function FarmSatelliteMap({
           if (!directUpdErr) {
             setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
             setIaFeedback({ type: 'success', text: `✨ Notas actualizadas en ${selectedTarget.title}` });
-            if (onReloadPaths) onReloadPaths();
+            if (onReloadPaths) await onReloadPaths();
             setIsProcessingIa(false);
             return;
           }
         }
 
-        // 3. Si el usuario añadió foto o nota sobre una cota catastral o coordenada
-        if ((selectedTarget?.type === 'catastro' || selectedTarget?.type === 'coord') && (uploadedPhotoUrl || textOrder)) {
+        // 3. Si el usuario pinchó en una coordenada del mapa o cota catastral
+        if ((selectedTarget?.type === 'catastro' || selectedTarget?.type === 'coord') && (uploadedPhotoUrl || textOrder || audioOrder)) {
+          let rawName = textOrder;
+          if (!rawName && result.transcription) {
+            rawName = result.transcription;
+          }
+          if (!rawName && result.description && !result.description.toLowerCase().includes('no se')) {
+            rawName = result.description;
+          }
+          if (!rawName) {
+            rawName = selectedTarget.title || 'Punto registrado';
+          }
+          if (rawName.length > 35) {
+            rawName = rawName.slice(0, 32) + '...';
+          }
+          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
+          let category = selectedTarget.type === 'catastro' ? 'hito' : 'riego';
+          const lowerName = formattedName.toLowerCase();
+          if (lowerName.includes('casa') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('caseta') || lowerName.includes('taller') || lowerName.includes('caravana')) {
+            category = 'edificio';
+          } else if (lowerName.includes('arbol') || lowerName.includes('aguacate') || lowerName.includes('olivo') || lowerName.includes('limon') || lowerName.includes('naranjo')) {
+            category = 'arbol';
+          } else if (lowerName.includes('riego') || lowerName.includes('llave') || lowerName.includes('arqueta') || lowerName.includes('pozo') || lowerName.includes('deposito')) {
+            category = 'riego';
+          }
+
+          const notes = textOrder
+            ? (selectedTarget.notes ? `${selectedTarget.notes}\n${textOrder}` : textOrder)
+            : (result.transcription ? `Audio: "${result.transcription}"` : (selectedTarget.notes || 'Registrado con Agente IA'));
+
           const newItem = {
-            name: selectedTarget.title || 'Punto registrado',
-            category: selectedTarget.type === 'catastro' ? 'hito' : 'riego',
+            name: formattedName,
+            category,
             variety_type: selectedTarget.type === 'catastro' ? 'Cota Catastral' : null,
             status: 'saludable',
             latitude: selectedTarget.lat,
             longitude: selectedTarget.lng,
-            notes: textOrder ? (selectedTarget.notes ? `${selectedTarget.notes}\n${textOrder}` : textOrder) : selectedTarget.notes,
+            notes,
             photo_url: uploadedPhotoUrl || null,
             is_active: true,
             created_at: new Date().toISOString(),
@@ -1826,7 +1905,7 @@ export default function FarmSatelliteMap({
               type: 'point',
               id: inserted.id,
               title: inserted.name,
-              category: inserted.category,
+              category: getItemCategory(inserted),
               variety: inserted.variety_type,
               status: inserted.status,
               notes: inserted.notes,
@@ -1835,8 +1914,11 @@ export default function FarmSatelliteMap({
               photo_url: inserted.photo_url,
               raw: inserted,
             });
+            if (mapInstanceRef.current) {
+              mapInstanceRef.current.panTo([inserted.latitude, inserted.longitude]);
+            }
             setIaFeedback({ type: 'success', text: `✨ Registrado en inventario: ${inserted.name}` });
-            if (onReloadInventory) onReloadInventory();
+            if (onReloadInventory) await onReloadInventory();
             setIsProcessingIa(false);
             return;
           }
@@ -1855,32 +1937,41 @@ export default function FarmSatelliteMap({
       };
 
       for (const act of result.actions) {
-        if (act.type === 'DELETE_POINT') {
-          const item = inventory.find((i) => i.id === act.target_id);
+        const actType = (act.type || '').toUpperCase();
+        const actData = act.data || act;
+
+        if (actType === 'DELETE_POINT' || actType === 'REMOVE_POINT') {
+          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
+          const item = inventory.find((i) => i.id === targetId);
           if (item) {
-            const { error: delErr } = await supabase.from('farm_inventory').delete().eq('id', act.target_id);
+            const { error: delErr } = await supabase.from('farm_inventory').delete().eq('id', targetId);
             if (!delErr) {
               undoAction.reverts.push({ type: 'RESTORE_POINT', itemData: item });
-              if (selectedTarget?.id === act.target_id) {
+              if (selectedTarget?.id === targetId) {
                 setSelectedTarget(null);
               }
             }
           }
-        } else if (act.type === 'DELETE_PATH') {
-          const path = paths.find((p) => p.id === act.target_id);
+        } else if (actType === 'DELETE_PATH' || actType === 'REMOVE_PATH') {
+          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
+          const path = paths.find((p) => p.id === targetId);
           if (path) {
-            const { error: delErr } = await supabase.from('farm_paths').delete().eq('id', act.target_id);
+            const { error: delErr } = await supabase.from('farm_paths').delete().eq('id', targetId);
             if (!delErr) {
               undoAction.reverts.push({ type: 'RESTORE_PATH', pathData: path });
-              if (selectedTarget?.id === act.target_id) {
+              if (selectedTarget?.id === targetId) {
                 setSelectedTarget(null);
               }
             }
           }
-        } else if (act.type === 'UPDATE_POINT') {
-          const item = inventory.find((i) => i.id === act.target_id);
-          if (item && act.data) {
-            const updatePayload = { ...act.data };
+        } else if (actType === 'UPDATE_POINT' || actType === 'EDIT_POINT' || actType === 'MODIFY_POINT') {
+          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
+          const item = inventory.find((i) => i.id === targetId);
+          if (item && actData) {
+            const updatePayload = { ...actData };
+            delete updatePayload.type;
+            delete updatePayload.target_id;
+            delete updatePayload.id;
             if (uploadedPhotoUrl) {
               updatePayload.photo_url = uploadedPhotoUrl;
             }
@@ -1889,52 +1980,90 @@ export default function FarmSatelliteMap({
             const { error: updErr } = await supabase
               .from('farm_inventory')
               .update({ ...updatePayload, updated_at: new Date().toISOString() })
-              .eq('id', act.target_id);
+              .eq('id', targetId);
             if (!updErr) {
-              undoAction.reverts.push({ type: 'UPDATE_POINT', target_id: act.target_id, prevData });
-              if (selectedTarget?.id === act.target_id) {
+              undoAction.reverts.push({ type: 'UPDATE_POINT', target_id: targetId, prevData });
+              if (selectedTarget?.id === targetId) {
                 setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
               }
             }
           }
-        } else if (act.type === 'UPDATE_PATH') {
-          const path = paths.find((p) => p.id === act.target_id);
-          if (path && act.data) {
+        } else if (actType === 'UPDATE_PATH' || actType === 'EDIT_PATH') {
+          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
+          const path = paths.find((p) => p.id === targetId);
+          if (path && actData) {
             const prevData = {};
-            Object.keys(act.data).forEach((k) => { prevData[k] = path[k]; });
+            Object.keys(actData).forEach((k) => { prevData[k] = path[k]; });
             const { error: updErr } = await supabase
               .from('farm_paths')
-              .update({ ...act.data, updated_at: new Date().toISOString() })
-              .eq('id', act.target_id);
+              .update({ ...actData, updated_at: new Date().toISOString() })
+              .eq('id', targetId);
             if (!updErr) {
-              undoAction.reverts.push({ type: 'UPDATE_PATH', target_id: act.target_id, prevData });
-              if (selectedTarget?.id === act.target_id) {
-                setSelectedTarget((prev) => ({ ...prev, ...act.data }));
+              undoAction.reverts.push({ type: 'UPDATE_PATH', target_id: targetId, prevData });
+              if (selectedTarget?.id === targetId) {
+                setSelectedTarget((prev) => ({ ...prev, ...actData }));
               }
             }
           }
-        } else if (act.type === 'ADD_POINT') {
+        } else if (actType === 'ADD_POINT' || actType === 'CREATE_POINT' || actType === 'INSERT_POINT' || actType === 'NEW_POINT') {
+          const lat = Number(
+            actData.latitude ?? actData.lat ?? act.latitude ?? act.lat ??
+            selectedTarget?.lat ??
+            audioOrder?.gpsTrack?.[0]?.lat ??
+            voiceCurrentGps?.lat ??
+            center[0]
+          );
+          const lng = Number(
+            actData.longitude ?? actData.lng ?? act.longitude ?? act.lng ??
+            selectedTarget?.lng ??
+            audioOrder?.gpsTrack?.[0]?.lng ??
+            voiceCurrentGps?.lng ??
+            center[1]
+          );
+          const rawName = actData.name || actData.title || act.title || (result.transcription && result.transcription.length < 35 ? result.transcription : 'Punto registrado');
+          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
+          let category = actData.category || act.category;
+          if (!category || category === 'Otros') {
+            const lowerName = formattedName.toLowerCase();
+            if (lowerName.includes('casa') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('taller') || lowerName.includes('caseta') || lowerName.includes('caravana')) {
+              category = 'edificio';
+            } else if (lowerName.includes('aguacate') || lowerName.includes('limon') || lowerName.includes('olivo') || lowerName.includes('arbol') || lowerName.includes('naranjo')) {
+              category = 'arbol';
+            } else if (lowerName.includes('riego') || lowerName.includes('llave') || lowerName.includes('arqueta') || lowerName.includes('pozo') || lowerName.includes('deposito')) {
+              category = 'riego';
+            } else {
+              category = 'edificio';
+            }
+          }
+
+          const notes = actData.notes || act.notes || (textOrder ? textOrder : (result.transcription ? `Audio: "${result.transcription}"` : (result.description || 'Registrado con Agente IA')));
+
           const newItem = {
-            name: act.data.name || 'Nuevo elemento',
-            category: act.data.category || 'riego',
-            variety_type: act.data.variety_type || null,
-            status: act.data.status || 'saludable',
-            latitude: act.data.latitude || (selectedTarget?.lat || center[0]),
-            longitude: act.data.longitude || (selectedTarget?.lng || center[1]),
-            notes: act.data.notes || (textOrder ? `Registrado con Chat IA: ${textOrder}` : 'Registrado con Chat IA'),
+            name: formattedName,
+            category,
+            variety_type: actData.variety_type || actData.variety || null,
+            status: actData.status || 'saludable',
+            latitude: lat,
+            longitude: lng,
+            notes,
             photo_url: uploadedPhotoUrl || null,
             is_active: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
+
           const { data: inserted, error: insErr } = await supabase.from('farm_inventory').insert([newItem]).select().single();
-          if (!insErr && inserted) {
+          if (insErr) {
+            console.error('[MapAI] Error insertando punto en Supabase:', insErr);
+            setIaFeedback({ type: 'error', text: `Error al guardar en inventario: ${insErr.message}` });
+          } else if (inserted) {
             undoAction.reverts.push({ type: 'DELETE_POINT', target_id: inserted.id });
             setSelectedTarget({
               type: 'point',
               id: inserted.id,
               title: inserted.name,
-              category: inserted.category,
+              category: getItemCategory(inserted),
               variety: inserted.variety_type,
               status: inserted.status,
               notes: inserted.notes,
@@ -1943,6 +2072,9 @@ export default function FarmSatelliteMap({
               photo_url: inserted.photo_url,
               raw: inserted,
             });
+            if (mapInstanceRef.current) {
+              mapInstanceRef.current.panTo([inserted.latitude, inserted.longitude]);
+            }
           }
         }
       }
@@ -1957,8 +2089,8 @@ export default function FarmSatelliteMap({
         setIaFeedback({ type: 'info', text: result.description || 'No se realizaron modificaciones.' });
       }
 
-      if (onReloadInventory) onReloadInventory();
-      if (onReloadPaths) onReloadPaths();
+      if (onReloadInventory) await onReloadInventory();
+      if (onReloadPaths) await onReloadPaths();
     } catch (err) {
       console.error('[MapAI] Error procesando orden:', err);
       setIaFeedback({ type: 'error', text: `Error al ejecutar: ${err.message}` });
@@ -2188,7 +2320,7 @@ export default function FarmSatelliteMap({
 
         {/* Leyenda de colores flotante (div de referencias - controlado por Capas) */}
         {showLegend && (
-          <div style={{ ...styles.legendBox, bottom: selectedTarget ? 140 : 12 }}>
+          <div style={{ ...styles.legendBox, bottom: selectedTarget ? 150 : 76 }}>
             <span style={styles.legendTitle}>Referencias (Puntos y Líneas)</span>
             <div style={styles.legendGrid}>
               <div style={styles.legendItem}>
@@ -2229,7 +2361,7 @@ export default function FarmSatelliteMap({
 
         {/* ── Widget Flotante de Navegación, Zoom y Centrador GPS ──────────── */}
         {showNavControls && (
-          <div style={{ ...styles.navWidget, bottom: selectedTarget ? 140 : 24 }}>
+          <div style={{ ...styles.navWidget, bottom: selectedTarget ? 150 : 76 }}>
             <button
               onClick={() => mapInstanceRef.current?.zoomIn()}
               style={styles.navWidgetBtn}
@@ -2555,107 +2687,113 @@ export default function FarmSatelliteMap({
         )}
 
         {/* ── Módulo de Control por Chat IA Integrado en el Preview de Coordenada / Pin / Línea ── */}
-        {selectedTarget && (
-          <div style={styles.mapIaControlWrapper}>
-            {/* Contenedor único unificado: Información del pin + Módulo Chat IA abajo */}
-            <div style={styles.selectedTargetCard}>
-              {/* Fila Superior: Info del Pin y Botón Cerrar ✕ */}
-              <div style={styles.targetHeaderRow}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                  {selectedTarget.photo_url ? (
-                    <img
-                      src={selectedTarget.photo_url}
-                      alt="Foto pin"
-                      style={styles.targetThumbnail}
-                      onClick={() => window.open(selectedTarget.photo_url, '_blank')}
-                      title="Ver foto completa"
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        ...styles.targetIconCircle,
-                        backgroundColor:
-                          selectedTarget.type === 'point'
-                            ? (CATEGORY_COLORS[selectedTarget.category] || '#16a34a')
-                            : selectedTarget.type === 'path'
-                            ? (selectedTarget.color || '#f97316')
-                            : '#00979d',
-                      }}
-                    >
-                      {selectedTarget.type === 'point' ? (
-                        <MapPin size={16} color="#ffffff" />
-                      ) : selectedTarget.type === 'path' ? (
-                        <Navigation size={15} color="#ffffff" />
-                      ) : (
-                        <Compass size={15} color="#ffffff" />
-                      )}
-                    </div>
-                  )}
+        <div style={styles.mapIaControlWrapper}>
+          {/* Contenedor único unificado: Información del pin + Módulo Chat IA abajo */}
+          <div style={styles.selectedTargetCard}>
+            {/* Fila Superior: Info del Pin y Botón Cerrar ✕ (solo si hay elemento seleccionado) */}
+            {selectedTarget && (
+              <>
+                <div style={styles.targetHeaderRow}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                    {selectedTarget.photo_url ? (
+                      <img
+                        src={selectedTarget.photo_url}
+                        alt="Foto pin"
+                        style={styles.targetThumbnail}
+                        onClick={() => window.open(selectedTarget.photo_url, '_blank')}
+                        title="Ver foto completa"
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          ...styles.targetIconCircle,
+                          backgroundColor:
+                            selectedTarget.type === 'point'
+                              ? (CATEGORY_COLORS[selectedTarget.category] || '#16a34a')
+                              : selectedTarget.type === 'path'
+                              ? (selectedTarget.color || '#f97316')
+                              : '#00979d',
+                        }}
+                      >
+                        {selectedTarget.type === 'point' ? (
+                          <MapPin size={16} color="#ffffff" />
+                        ) : selectedTarget.type === 'path' ? (
+                          <Navigation size={15} color="#ffffff" />
+                        ) : (
+                          <Compass size={15} color="#ffffff" />
+                        )}
+                      </div>
+                    )}
 
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={styles.targetTitle}>{selectedTarget.title}</span>
-                      {selectedTarget.status && (
-                        <span
-                          style={{
-                            ...styles.targetBadge,
-                            backgroundColor:
-                              selectedTarget.status === 'enfermo' || selectedTarget.status === 'seco'
-                                ? '#fee2e2'
-                                : selectedTarget.status === 'clorosis'
-                                ? '#fef3c7'
-                                : selectedTarget.status === 'poda_requerida'
-                                ? '#ffedd5'
-                                : '#dcfce7',
-                            color:
-                              selectedTarget.status === 'enfermo' || selectedTarget.status === 'seco'
-                                ? '#dc2626'
-                                : selectedTarget.status === 'clorosis'
-                                ? '#b45309'
-                                : selectedTarget.status === 'poda_requerida'
-                                ? '#c2410c'
-                                : '#15803d',
-                          }}
-                        >
-                          {selectedTarget.status}
-                        </span>
-                      )}
-                      {selectedTarget.variety && (
-                        <span style={styles.targetSubtypeBadge}>{selectedTarget.variety}</span>
-                      )}
-                      {selectedTarget.subtitle && (
-                        <span style={styles.targetSubtypeBadge}>{selectedTarget.subtitle}</span>
-                      )}
-                    </div>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={styles.targetTitle}>{selectedTarget.title}</span>
+                        {selectedTarget.status && (
+                          <span
+                            style={{
+                              ...styles.targetBadge,
+                              backgroundColor:
+                                selectedTarget.status === 'enfermo' || selectedTarget.status === 'seco'
+                                  ? '#fee2e2'
+                                  : selectedTarget.status === 'clorosis'
+                                  ? '#fef3c7'
+                                  : selectedTarget.status === 'poda_requerida'
+                                  ? '#ffedd5'
+                                  : '#dcfce7',
+                              color:
+                                selectedTarget.status === 'enfermo' || selectedTarget.status === 'seco'
+                                  ? '#dc2626'
+                                  : selectedTarget.status === 'clorosis'
+                                  ? '#b45309'
+                                  : selectedTarget.status === 'poda_requerida'
+                                  ? '#c2410c'
+                                  : '#15803d',
+                            }}
+                          >
+                            {selectedTarget.status}
+                          </span>
+                        )}
+                        {selectedTarget.variety && (
+                          <span style={styles.targetSubtypeBadge}>{selectedTarget.variety}</span>
+                        )}
+                        {selectedTarget.subtitle && (
+                          <span style={styles.targetSubtypeBadge}>{selectedTarget.subtitle}</span>
+                        )}
+                      </div>
 
-                    <div style={styles.targetMetaRow}>
-                      {selectedTarget.lat && selectedTarget.lng && (
-                        <span>📍 {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}</span>
-                      )}
-                      {selectedTarget.length_meters && (
-                        <span>📏 {Number(selectedTarget.length_meters).toFixed(0)} m</span>
-                      )}
-                      {selectedTarget.notes && (
-                        <span style={styles.targetNotesText}>"{selectedTarget.notes}"</span>
-                      )}
+                      <div style={styles.targetMetaRow}>
+                        {selectedTarget.lat && selectedTarget.lng && (
+                          <span>📍 {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}</span>
+                        )}
+                        {selectedTarget.length_meters && (
+                          <span>📏 {Number(selectedTarget.length_meters).toFixed(0)} m</span>
+                        )}
+                        {selectedTarget.notes && (
+                          <span style={styles.targetNotesText}>"{selectedTarget.notes}"</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  {/* Único botón superior derecho: Cerrar ✕ */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTarget(null);
+                      setIsEditingTarget(false);
+                    }}
+                    style={styles.targetCloseBtn}
+                    title="Cerrar ficha"
+                    aria-label="Cerrar ficha"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
 
-                {/* Único botón superior derecho: Cerrar ✕ */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedTarget(null);
-                    setIsEditingTarget(false);
-                  }}
-                  style={styles.targetCloseBtn}
-                  title="Cerrar ficha"
-                  aria-label="Cerrar ficha"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+                {/* Separador sutil */}
+                <div style={{ height: 1, backgroundColor: '#f1f5f9', width: '100%', margin: '1px 0' }} />
+              </>
+            )}
 
               {/* Vista previa de fotografía o documento adjunto */}
               {pendingAttachment && (
@@ -2714,9 +2852,6 @@ export default function FarmSatelliteMap({
                   </button>
                 </div>
               )}
-
-              {/* Separador sutil */}
-              <div style={{ height: 1, backgroundColor: '#f1f5f9', width: '100%', margin: '1px 0' }} />
 
               {/* Módulo Chat IA integrado abajo */}
               <div style={styles.chatIaInputBar}>
@@ -2859,7 +2994,15 @@ export default function FarmSatelliteMap({
                           handleSendMapIaOrder();
                         }
                       }}
-                      placeholder="Texto..."
+                      placeholder={
+                        selectedTarget?.type === 'coord'
+                          ? 'Nombrar punto o hablar con IA (ej: "Mi casa", "Arqueta")...'
+                          : selectedTarget?.type === 'point'
+                          ? `Nota o cambio para ${selectedTarget.title}...`
+                          : selectedTarget?.type === 'path'
+                          ? `Nota o cambio para ${selectedTarget.title}...`
+                          : 'Toca el mapa para ubicar o habla aquí con IA...'
+                      }
                       style={styles.chatIaTextInput}
                       disabled={isProcessingIa}
                     />
@@ -2958,8 +3101,7 @@ export default function FarmSatelliteMap({
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
 
       {/* ── Modal para Guardar Nuevo Camino Trazado ──────────────────────────── */}
       {showSaveModal && (
