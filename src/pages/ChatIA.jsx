@@ -54,7 +54,7 @@ import {
   extractTableFromMarkdown,
 } from '../utils/exportTools';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
-import { getLocalInventory, getLocalPaths } from '../services/farmInventoryStorage';
+import { getLocalInventory, getLocalPaths, insertFarmInventoryItem, deleteFarmInventoryItem } from '../services/farmInventoryStorage';
 
 // ─── Configuración de Modelos de Gemini (Ordenados de más a menos potente) ─────
 const GEMINI_SERVERS = [
@@ -1716,25 +1716,22 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 const variety_type = item.variedad || item.variety_type || (item.tipo && item.tipo !== category ? item.tipo : null);
                 const name = item.name || `${item.tipo || category} ${variety_type || ''}`.trim();
 
-                const { data: newRow, error: insErr } = await supabase
-                  .from('farm_inventory')
-                  .insert({
-                    name,
-                    category,
-                    variety_type,
-                    status: item.estado || item.status || 'saludable',
-                    latitude: lat,
-                    longitude: lng,
-                    accuracy_meters: acc,
-                    notes: item.observaciones || item.notes || 'Registrado por voz en Campito Jorox',
-                    is_active: true,
-                  })
-                  .select()
-                  .single();
+                const newRow = await insertFarmInventoryItem({
+                  name,
+                  category,
+                  variety_type,
+                  status: item.estado || item.status || 'saludable',
+                  latitude: lat,
+                  longitude: lng,
+                  accuracy_meters: acc,
+                  notes: item.observaciones || item.notes || 'Registrado por voz en Campito Jorox',
+                  is_active: true,
+                });
 
-                if (!insErr && newRow) {
+                if (newRow) {
                   newlyAddedBatch.push(newRow);
                   contextDataRef.current += `\n- [${(newRow.category || 'arbol').toUpperCase()}] ${newRow.name} (${newRow.variety_type || ''}) | Lat/Lng: ${newRow.latitude}, ${newRow.longitude}`;
+                  window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: newRow }));
                 }
               }
 
@@ -1762,26 +1759,23 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             const pointVariety = regData.variety_type || regData.variedad || (regData.tipo && regData.tipo !== pointCat ? regData.tipo : null);
             const pointName = regData.name || `${regData.tipo || pointCat} ${pointVariety || ''}`.trim();
 
-            const { data: newPoint, error: insErr } = await supabase
-              .from('farm_inventory')
-              .insert({
-                name: pointName,
-                category: pointCat,
-                variety_type: pointVariety,
-                status: regData.status || regData.estado || 'saludable',
-                latitude: lat,
-                longitude: lng,
-                accuracy_meters: acc,
-                notes: regData.notes || regData.observaciones || 'Registrado con GPS desde Chat IA',
-                is_active: true,
-              })
-              .select()
-              .single();
+            const newPoint = await insertFarmInventoryItem({
+              name: pointName,
+              category: pointCat,
+              variety_type: pointVariety,
+              status: regData.status || regData.estado || 'saludable',
+              latitude: lat,
+              longitude: lng,
+              accuracy_meters: acc,
+              notes: regData.notes || regData.observaciones || 'Registrado con GPS desde Chat IA',
+              is_active: true,
+            });
 
-            if (!insErr && newPoint) {
+            if (newPoint) {
               newlyAddedBatch.push(newPoint);
               setFarmInventory((prev) => [newPoint, ...prev]);
               contextDataRef.current += `\n- [${(newPoint.category || 'arbol').toUpperCase()}] ${newPoint.name} (${newPoint.variety_type || ''}) | Estado: ${newPoint.status} | Lat/Lng: ${newPoint.latitude}, ${newPoint.longitude}`;
+              window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: newPoint }));
             }
           } catch (e) {
             console.warn('Error al procesar orden de registro de punto:', e);
@@ -1798,8 +1792,9 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             if (delData.target === 'ultimo') {
               const target = farmInventoryRef.current[0];
               if (target) {
-                await supabase.from('farm_inventory').update({ is_active: false }).eq('id', target.id);
-                setFarmInventory((prev) => prev.filter((p) => p.id !== target.id));
+                await deleteFarmInventoryItem(target.id);
+                setFarmInventory((prev) => prev.filter((p) => String(p.id) !== String(target.id)));
+                window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: target.id, deleted: true } }));
               }
             } else if (delData.query) {
               const q = delData.query.toLowerCase().trim();
@@ -1809,8 +1804,9 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                 (p.category && p.category.toLowerCase().includes(q))
               );
               if (target) {
-                await supabase.from('farm_inventory').update({ is_active: false }).eq('id', target.id);
-                setFarmInventory((prev) => prev.filter((p) => p.id !== target.id));
+                await deleteFarmInventoryItem(target.id);
+                setFarmInventory((prev) => prev.filter((p) => String(p.id) !== String(target.id)));
+                window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: target.id, deleted: true } }));
               }
             }
           } catch (e) {
@@ -1832,8 +1828,9 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           if (isDeleteLast && farmInventoryRef.current.length > 0) {
             const target = farmInventoryRef.current[0];
             try {
-              supabase.from('farm_inventory').update({ is_active: false }).eq('id', target.id);
-              setFarmInventory((prev) => prev.filter((p) => p.id !== target.id));
+              await deleteFarmInventoryItem(target.id);
+              setFarmInventory((prev) => prev.filter((p) => String(p.id) !== String(target.id)));
+              window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: target.id, deleted: true } }));
             } catch (err) {
               console.warn('Error en heurística de borrado:', err);
             }

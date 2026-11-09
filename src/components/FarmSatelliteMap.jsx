@@ -46,11 +46,14 @@ import {
   Pause,
   RotateCcw,
   Sparkles,
-  Loader2
+  Loader2,
+  Route
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
 import {
+  getLocalInventory,
+  getLocalPaths,
   insertFarmInventoryItem,
   updateFarmInventoryItem,
   deleteFarmInventoryItem,
@@ -58,6 +61,7 @@ import {
   updateFarmPath,
   deleteFarmPath,
 } from '../services/farmInventoryStorage';
+import { interpolateGpsAtAudioTime } from '../utils/geoAudioInterpolation';
 import {
   exportInventoryToExcel,
   exportInventoryToPDF,
@@ -84,50 +88,90 @@ const COLOR_PALETTE = [
   { name: 'Gris Pizarra', hex: '#64748b' },
 ];
 
-// ─── Sistema de categorías para filtros ──────────────────────────────────────
-// Mapa: categoría padre → array de subcategorías (keywords)
-const CATEGORY_MAP = {
-  'Casas / Edificios': [
-    'casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta',
-    'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza',
-    'domo', 'habitacion', 'construccion'
-  ],
-  'Árboles': ['aguacate', 'olivo', 'limonero', 'naranjo', 'citrico', 'arbol', 'frutales', 'algarrobo', 'granado'],
-  'Plantas': ['planta', 'hierba', 'arbusto', 'herbaceo', 'vegetal', 'palmera', 'bambu'],
-  'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario'],
-  'Riego / Agua': ['riego', 'llave', 'gotero', 'filtro', 'valvula', 'contador', 'arqueta', 'pozo', 'deposito', 'cisterna', 'grifo', 'tuberia', 'manguera', 'aspersor', 'bomba', 'caudal'],
+// ─── Sistema Dinámico de Categorías y Filtros ─────────────────────────────────
+// Categorías base oficiales de Campito Jorox con sus palabras clave de clasificación
+export const BASE_CATEGORY_MAP = {
+  'Árboles': ['aguacate', 'olivo', 'limonero', 'naranjo', 'citrico', 'arbol', 'frutales', 'algarrobo', 'granado', 'mango', 'higuera', 'frutal'],
+  'Plantas': ['planta', 'hierba', 'arbusto', 'herbaceo', 'vegetal', 'palmera', 'bambu', 'huerta'],
+  'Riego / Agua': ['riego', 'llave', 'gotero', 'filtro', 'valvula', 'contador', 'arqueta', 'pozo', 'deposito', 'cisterna', 'grifo', 'tuberia', 'manguera', 'aspersor', 'bomba', 'caudal', 'acequia'],
+  'Casas / Edificios': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
+  'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario', 'apero'],
   'Hitos': ['mojon', 'linde', 'piedra', 'marca', 'señal', 'cota', 'limite'],
   'Otros': [],
 };
 
-// Color por categoría padre para los markers
-const CATEGORY_COLORS = {
-  'Casas / Edificios': '#eab308', // Amarillo
-  'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
+// Colores por defecto para las categorías base
+export const BASE_CATEGORY_COLORS = {
   'Árboles': '#16a34a',           // Verde oscuro
   'Plantas': '#4ade80',           // Verde claro
-  'Herramientas': '#f97316',      // Naranja
   'Riego / Agua': '#0284c7',      // Azul
-  'Hitos': '#64748b',             // Pizarra
-  'Otros': '#94a3b8',             // Gris
+  'Casas / Edificios': '#eab308', // Amarillo
+  'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
+  'Herramientas': '#f97316',      // Naranja
+  'Hitos': '#8b5cf6',             // Púrpura
+  'Otros': '#64748b',             // Pizarra
 };
+
+// Paleta de colores vivos asignables deterministamente a nuevas categorías dinámicas
+export const DYNAMIC_PALETTE = [
+  '#06b6d4', // Cian
+  '#ec4899', // Rosa fucsia
+  '#14b8a6', // Teal esmeralda
+  '#f43f5e', // Coral
+  '#a855f7', // Púrpura
+  '#6366f1', // Índigo
+  '#84cc16', // Lima
+  '#d97706', // Ámbar tostado
+  '#0d9488', // Verde azulado
+  '#e11d48', // Rubí
+];
+
+/**
+ * Obtiene el color visual asociado a una categoría (base o dinámica)
+ */
+export function getCategoryColor(categoryName) {
+  if (!categoryName) return '#64748b';
+  if (BASE_CATEGORY_COLORS[categoryName]) return BASE_CATEGORY_COLORS[categoryName];
+
+  // Hash determinista para asignar color consistente a cualquier nueva categoría
+  let hash = 0;
+  for (let i = 0; i < categoryName.length; i++) {
+    hash = categoryName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % DYNAMIC_PALETTE.length;
+  return DYNAMIC_PALETTE[index];
+}
+
+// Aliases para retrocompatibilidad
+const CATEGORY_MAP = BASE_CATEGORY_MAP;
+const CATEGORY_COLORS = BASE_CATEGORY_COLORS;
 
 // Color de línea por tipo de camino
 const PATH_TYPE_COLORS = {
   'camino': '#92400e',        // Marrón
+  'carril': '#a16207',        // Ocre / tierra
   'sendero': '#b45309',       // Marrón claro
-  'linea_riego': '#38bdf8',   // Azul claro
+  'vereda': '#d97706',        // Ámbar
   'acequia': '#1d4ed8',       // Azul marino
+  'linea_riego': '#38bdf8',   // Azul claro
   'linde': '#ef4444',         // Rojo
   'otro': '#64748b',          // Pizarra
 };
 
 /**
- * Determina la categoría padre de un item del inventario.
- * Examina categoría, subtipo y también el nombre para garantizar clasificación correcta.
+ * Determina la categoría de un elemento del inventario.
+ * Si coincide con palabras clave de una categoría base, la asigna;
+ * si contiene una categoría personalizada (ej: "invernadero", "fauna"),
+ * la promueve a categoría dinámica propia en lugar de agruparla en 'Otros'.
  */
-function getItemCategory(item) {
+export function getItemCategory(item) {
   if (!item) return 'Otros';
+
+  // 1. Coincidencia directa con clave base existente
+  if (item.category && BASE_CATEGORY_MAP[item.category]) {
+    return item.category;
+  }
+
   const text = [item.category, item.tipo, item.variety_type, item.name, item.title]
     .filter(Boolean)
     .join(' ')
@@ -135,49 +179,98 @@ function getItemCategory(item) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  for (const [parent, keywords] of Object.entries(CATEGORY_MAP)) {
+  for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
     if (parent === 'Otros') continue;
     if (keywords.some(k => text.includes(k))) return parent;
   }
+
+  // 2. Si el item tiene una categoría explícita no contemplada en las base, se convierte en categoría dinámica
+  const explicitCat = (item.category || item.tipo || '').trim();
+  if (explicitCat && explicitCat.toLowerCase() !== 'otros' && explicitCat.toLowerCase() !== 'otro') {
+    return explicitCat.charAt(0).toUpperCase() + explicitCat.slice(1);
+  }
+
   return 'Otros';
 }
 
 /**
- * Genera lista de subcategorías únicas dentro de una categoría padre,
- * extrayendo de variety_type, name o category de los items reales.
+ * Genera lista de subcategorías únicas dentro de una categoría,
+ * extrayendo de variety_type, name o tipo de los items reales.
  */
-function getSubcategoriesForParent(inventory, parent) {
-  const keywords = CATEGORY_MAP[parent] || [];
+export function getSubcategoriesForParent(inventory, parent) {
   const subs = new Set();
-  inventory.forEach(item => {
-    const text = [item.category, item.tipo, item.variety_type, item.name, item.title]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-    const subLabel = item.variety_type || item.name || item.category || parent;
-    if (parent === 'Otros') {
-      const isOther = !Object.entries(CATEGORY_MAP).some(([p, kws]) =>
-        p !== 'Otros' && kws.some(k => text.includes(k))
-      );
-      if (isOther) {
+  (inventory || []).forEach(item => {
+    const itemParent = getItemCategory(item);
+    if (itemParent === parent) {
+      const subLabel = item.variety_type || item.tipo || item.name;
+      if (subLabel && subLabel !== parent) {
         subs.add(subLabel);
       }
-    } else if (keywords.some(k => text.includes(k))) {
-      subs.add(subLabel);
     }
   });
   return [...subs];
 }
 
+/**
+ * Analizador universal de comandos estructurados emitidos por el agente IA o ingresados por el usuario:
+ * - [[REGISTRAR_PUNTOS: [ { ... } ] ]]
+ * - [[REGISTRAR_PUNTO: { ... } ]]
+ * - [[BORRAR_PUNTO: { ... } ]]
+ */
+export function parseRegisterPointsCommands(rawText) {
+  if (!rawText || typeof rawText !== 'string') return [];
+  const results = [];
+
+  // 1. Extraer bloques de múltiples puntos: [[REGISTRAR_PUNTOS: [...] ]]
+  const batchRegex = /\[\[REGISTRAR_PUNTOS:\s*(\[[\s\S]*?\])\s*\]\]/gi;
+  let batchMatch;
+  while ((batchMatch = batchRegex.exec(rawText)) !== null) {
+    try {
+      const cleanJson = batchMatch[1].replace(/,\s*([\]}])/g, '$1');
+      const items = JSON.parse(cleanJson);
+      if (Array.isArray(items)) {
+        results.push(...items);
+      }
+    } catch (err) {
+      console.warn('[Parser] Error parseando bloque REGISTRAR_PUNTOS:', err);
+      const objMatches = batchMatch[1].match(/\{[\s\S]*?\}/g);
+      if (objMatches) {
+        for (const om of objMatches) {
+          try {
+            results.push(JSON.parse(om.replace(/,\s*([\]}])/g, '$1')));
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  // 2. Extraer puntos individuales: [[REGISTRAR_PUNTO: {...} ]]
+  const singleRegex = /\[\[REGISTRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi;
+  let singleMatch;
+  while ((singleMatch = singleRegex.exec(rawText)) !== null) {
+    try {
+      const cleanJson = singleMatch[1].replace(/,\s*([\]}])/g, '$1');
+      const item = JSON.parse(cleanJson);
+      if (item && typeof item === 'object') {
+        results.push(item);
+      }
+    } catch (err) {
+      console.warn('[Parser] Error parseando bloque REGISTRAR_PUNTO:', err);
+    }
+  }
+
+  return results;
+}
+
 // Tipos de camino para filtros
-const PATH_TYPES = ['camino', 'sendero', 'linea_riego', 'acequia', 'linde', 'otro'];
+const PATH_TYPES = ['camino', 'carril', 'sendero', 'vereda', 'acequia', 'linea_riego', 'linde', 'otro'];
 const PATH_TYPE_LABELS = {
   'camino': 'Caminos',
+  'carril': 'Carriles',
   'sendero': 'Senderos',
-  'linea_riego': 'Líneas de Riego',
+  'vereda': 'Veredas',
   'acequia': 'Acequias',
+  'linea_riego': 'Líneas de Riego',
   'linde': 'Lindes',
   'otro': 'Otros trazados',
 };
@@ -225,7 +318,7 @@ function calculatePathMeters(coordinates) {
   return total;
 }
 
-// Determinación del color del punto (sin iconos) — usa sistema de categorías unificado
+// Determinación del color del punto (sin iconos) — usa sistema de categorías dinámico
 function getPointColor(item) {
   const status = (item.status || item.estado || '').toLowerCase();
   if (status === 'enfermo' || status === 'seco' || status === 'muerto') return '#ef4444'; // Rojo
@@ -233,7 +326,7 @@ function getPointColor(item) {
   if (status === 'poda_requerida') return '#f97316'; // Naranja poda
 
   const parent = getItemCategory(item);
-  return CATEGORY_COLORS[parent] || '#94a3b8';
+  return getCategoryColor(parent);
 }
 
 // ─── Arquitectura Familiar de Pines (Mismas Dimensiones y Comportamientos) ───
@@ -270,9 +363,11 @@ function getPinStatusSlug(item) {
  * Generador de Icono DivIcon para todos los puntos de inventario.
  * Garantiza idénticas dimensiones físicas (38px touch box, 20px cuerpo visible,
  * núcleo blanco reflectante de 6px y borde blanco de 2.5px),
- * con diferenciación cromática gestionada estrictamente mediante clases CSS.
+ * con diferenciación cromática gestionada estrictamente mediante clases CSS y colores dinámicos por categoría.
  */
 function createFamilyPinIcon({ item, isSelected = false, hasWarning = false }) {
+  const parentCat = getItemCategory(item);
+  const catColor = getCategoryColor(parentCat);
   const familySlug = getPinFamilySlug(item);
   const statusSlug = getPinStatusSlug(item);
   const selectedClass = isSelected ? 'is-selected' : '';
@@ -283,8 +378,8 @@ function createFamilyPinIcon({ item, isSelected = false, hasWarning = false }) {
     html: `
       <div class="farm-pin-container ${selectedClass} ${warningClass}">
         <div class="farm-pin farm-pin--family-${familySlug} farm-pin--status-${statusSlug}">
-          <div class="farm-pin__halo"></div>
-          <div class="farm-pin__body">
+          <div class="farm-pin__halo" style="background-color: ${catColor};"></div>
+          <div class="farm-pin__body" style="background-color: ${catColor};">
             <div class="farm-pin__core"></div>
           </div>
         </div>
@@ -420,15 +515,33 @@ TRAZADOS Y CAMINOS (${pathsContext.length}):
 ${JSON.stringify(pathsContext)}
 
 INSTRUCCIONES SUPREMAS:
-- Devuelve ÚNICAMENTE un JSON válido sin texto Markdown adicional, sin comillas triples \`\`\`json, sin saludos ni explicaciones.
-- Estructura JSON requerida:
+- Devuelve un JSON estructurado o los comandos oficiales:
+Para registrar puntos (árboles, arquetas, tuberías, edificios, casas o cualquier elemento de la finca):
+[[REGISTRAR_PUNTOS: [
+  {
+    "name": "Nombre claro del elemento (ej: 'Aguacate Hass 3', 'Arqueta Principal')",
+    "category": "arbol|riego|edificio|planta|herramienta|hito|o categoría nueva",
+    "tipo": "especie o tipo de elemento",
+    "variedad": "variedad botánica o subtipo si aplica",
+    "estado": "saludable|clorosis|poda_requerida|enfermo|seco",
+    "observaciones": "observaciones del agricultor o notas",
+    "latitude": ${centerLat},
+    "longitude": ${centerLng},
+    "timestamp_audio_s": 0.0
+  }
+] ]]
+O para un único punto:
+[[REGISTRAR_PUNTO: { ... } ]]
+O para borrar:
+[[BORRAR_PUNTO: { "target": "ultimo|especifico", "query": "..." } ]]
+O esquema JSON estándar:
 {
-  "description": "Resumen conciso en español de la acción ejecutada (ej: 'Registrada Mi Casa en las coordenadas indicadas' o 'Actualizado estado...')",
-  "transcription": "Texto transcrito del mensaje de voz del agricultor si hubo grabación de audio",
+  "description": "Resumen conciso en español...",
+  "transcription": "Texto transcrito del audio...",
   "actions": [
     {
       "type": "ADD_POINT" | "CREATE_POINT" | "DELETE_POINT" | "DELETE_PATH" | "UPDATE_POINT" | "UPDATE_PATH",
-      "target_id": "uuid del elemento afectado si es delete o update",
+      "target_id": "uuid si es update/delete",
       "data": { ... }
     }
   ]
@@ -560,6 +673,51 @@ Reglas generales:
       const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) throw new Error('Respuesta vacía del modelo');
 
+      // 1. Extraer bloques de comando estructurado [[REGISTRAR_PUNTOS]] / [[REGISTRAR_PUNTO]] si están presentes
+      const parsedPoints = parseRegisterPointsCommands(rawText);
+      const delMatches = rawText.match(/\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/i);
+
+      if (parsedPoints.length > 0 || delMatches) {
+        const actions = [];
+        for (const p of parsedPoints) {
+          actions.push({
+            type: 'ADD_POINT',
+            data: {
+              name: p.name || p.nombre || p.tipo || 'Punto registrado',
+              category: p.category || p.categoria || p.tipo || 'arbol',
+              variety_type: p.variedad || p.variety_type || p.variety || null,
+              status: p.estado || p.status || 'saludable',
+              notes: p.observaciones || p.notes || p.observacion || '',
+              latitude: p.latitude !== undefined ? Number(p.latitude) : p.lat !== undefined ? Number(p.lat) : undefined,
+              longitude: p.longitude !== undefined ? Number(p.longitude) : p.lng !== undefined ? Number(p.lng) : undefined,
+              timestamp_audio_s: p.timestamp_audio_s !== undefined ? Number(p.timestamp_audio_s) : undefined,
+            },
+          });
+        }
+        if (delMatches) {
+          try {
+            const delData = JSON.parse(delMatches[1].replace(/,\s*([\]}])/g, '$1'));
+            actions.push({
+              type: 'DELETE_POINT',
+              target: delData.target,
+              query: delData.query,
+            });
+          } catch (_) {}
+        }
+
+        const cleanDescription = rawText
+          .replace(/\[\[REGISTRAR_PUNTOS:[\s\S]*?\]\]/gi, '')
+          .replace(/\[\[REGISTRAR_PUNTO:[\s\S]*?\]\]/gi, '')
+          .replace(/\[\[BORRAR_PUNTO:[\s\S]*?\]\]/gi, '')
+          .trim();
+
+        return {
+          description: cleanDescription || `Registrados ${parsedPoints.length} punto(s) en el mapa`,
+          transcription: audio?.transcription || '',
+          actions,
+        };
+      }
+
       let parsed;
       try {
         const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -597,21 +755,67 @@ export default function FarmSatelliteMap({
   const mapInstanceRef = useRef(null);
   const markersLayerRef = useRef(null);
   const pathsLayerRef = useRef(null);
+  const pathNodesLayerRef = useRef(null);
   const drawingLayerRef = useRef(null);
   const catastroLayerRef = useRef(null);
   const navigate = isPageMode ? useNavigate() : () => null;
 
   // ─── Estados locales optimistas (0ms latency, respuesta inmediata en mapa) ──
-  const [localInventory, setLocalInventory] = useState(inventory);
-  const [localPaths, setLocalPaths] = useState(paths);
+  const [localInventory, setLocalInventory] = useState(() => {
+    if (Array.isArray(inventory) && inventory.length > 0) return inventory;
+    return getLocalInventory();
+  });
+  const [localPaths, setLocalPaths] = useState(() => {
+    if (Array.isArray(paths) && paths.length > 0) return paths;
+    return getLocalPaths();
+  });
 
   useEffect(() => {
-    setLocalInventory(inventory);
+    if (Array.isArray(inventory) && inventory.length > 0) {
+      setLocalInventory(inventory);
+    } else {
+      setLocalInventory(getLocalInventory());
+    }
   }, [inventory]);
 
   useEffect(() => {
-    setLocalPaths(paths);
+    if (Array.isArray(paths) && paths.length > 0) {
+      setLocalPaths(paths);
+    } else {
+      setLocalPaths(getLocalPaths());
+    }
   }, [paths]);
+
+  // Escucha activa de sincronización de inventario emitida por Chat IA o herramientas de voz
+  useEffect(() => {
+    const handleInvUpdated = (e) => {
+      if (e?.detail) {
+        if (e.detail.deleted && e.detail.id) {
+          setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(e.detail.id)));
+        } else {
+          setLocalInventory((prev) => [e.detail, ...prev.filter((i) => String(i.id) !== String(e.detail.id))]);
+        }
+      } else {
+        setLocalInventory(getLocalInventory());
+      }
+    };
+    window.addEventListener('farm-inventory-updated', handleInvUpdated);
+    return () => window.removeEventListener('farm-inventory-updated', handleInvUpdated);
+  }, []);
+
+  // ─── Descubrimiento Dinámico de Categorías (Base + Nuevas Creadas por IA/Usuario) ──
+  const allCategories = useMemo(() => {
+    const baseOrder = ['Árboles', 'Plantas', 'Riego / Agua', 'Casas / Edificios', 'Herramientas', 'Hitos'];
+    const found = new Set(baseOrder);
+
+    (localInventory || []).forEach((item) => {
+      const cat = getItemCategory(item);
+      if (cat && cat !== 'Otros') found.add(cat);
+    });
+
+    found.add('Otros');
+    return Array.from(found);
+  }, [localInventory]);
 
   // ─── Inicialización de Capas y Filtros desde caché local (localStorage) ───
   const initialMapSettings = useMemo(() => loadMapSettingsFromCache(), []);
@@ -643,9 +847,9 @@ export default function FarmSatelliteMap({
   // ─── Estados de búsqueda y filtros ───────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  // visibleCategories: Set de categorías padre activas
+  // visibleCategories: Set de categorías activas (base y dinámicas)
   const [visibleCategories, setVisibleCategories] = useState(() => {
-    const all = new Set(Object.keys(CATEGORY_MAP));
+    const all = new Set(Object.keys(BASE_CATEGORY_MAP));
     if (initialMapSettings?.visibleCategories && Array.isArray(initialMapSettings.visibleCategories)) {
       const saved = new Set(initialMapSettings.visibleCategories);
       if (saved.has('Edificios')) saved.add('Casas / Edificios');
@@ -654,6 +858,21 @@ export default function FarmSatelliteMap({
     }
     return all;
   });
+
+  // Auto-activar nuevas categorías dinámicas en visibleCategories para que NUNCA queden invisibles
+  useEffect(() => {
+    setVisibleCategories((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      allCategories.forEach((cat) => {
+        if (!next.has(cat)) {
+          next.add(cat);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [allCategories]);
   // visibleSubcats: Set de subcategorías (valores reales de item.category) activas
   const [visibleSubcats, setVisibleSubcats] = useState(() => {
     if (initialMapSettings?.visibleSubcats && Array.isArray(initialMapSettings.visibleSubcats)) {
@@ -823,6 +1042,7 @@ export default function FarmSatelliteMap({
     // Crear grupos de capas vectoriales
     catastroLayerRef.current = L.featureGroup().addTo(map);
     pathsLayerRef.current = L.featureGroup().addTo(map);
+    pathNodesLayerRef.current = L.featureGroup().addTo(map);
     markersLayerRef.current = L.featureGroup().addTo(map);
     drawingLayerRef.current = L.featureGroup().addTo(map);
     userLocationLayerRef.current = L.featureGroup().addTo(map);
@@ -1033,9 +1253,10 @@ export default function FarmSatelliteMap({
 
       // Tooltip informativo estructurado
       const parentCat = getItemCategory(item);
+      const catColor = getCategoryColor(parentCat);
       const tooltipHtml = `
         <div class="farm-pin-tooltip">
-          <span class="farm-pin-tooltip__badge farm-pin-tooltip__badge--${familySlug}">${parentCat}</span>
+          <span class="farm-pin-tooltip__badge farm-pin-tooltip__badge--${familySlug}" style="background-color: ${catColor}; color: #ffffff;">${parentCat}</span>
           <span class="farm-pin-tooltip__title">${item.name || item.tipo || 'Punto'}</span>
           ${item.variety_type ? `<span class="farm-pin-tooltip__sub">${item.variety_type}</span>` : ''}
           ${item.status ? `<span class="farm-pin-tooltip__status farm-pin-tooltip__status--${statusSlug}">${item.status}</span>` : ''}
@@ -1107,6 +1328,132 @@ export default function FarmSatelliteMap({
       poly.addTo(layer);
     });
   }, [filteredPaths, showPaths]);
+
+  // ─── 5a. Nodos Interactivos y Editables del Recorrido Seleccionado ────────────
+  useEffect(() => {
+    const layer = pathNodesLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    if (!selectedTarget) return;
+
+    let activePath = null;
+    let selectedNodeIdx = null;
+
+    if (selectedTarget.type === 'path') {
+      activePath = localPaths.find((p) => String(p.id) === String(selectedTarget.id)) || selectedTarget.raw;
+    } else if (selectedTarget.type === 'node') {
+      activePath = localPaths.find((p) => String(p.id) === String(selectedTarget.pathId)) || selectedTarget.raw;
+      selectedNodeIdx = selectedTarget.nodeIndex;
+    }
+
+    if (!activePath || !Array.isArray(activePath.coordinates) || activePath.coordinates.length < 2) {
+      return;
+    }
+
+    const coords = activePath.coordinates;
+    const pathColor = activePath.color || PATH_TYPE_COLORS[activePath.path_type] || '#f97316';
+
+    coords.forEach((coord, idx) => {
+      const isSelected = selectedNodeIdx === idx;
+      const nodeIcon = L.divIcon({
+        className: 'farm-path-node-marker',
+        html: `<div style="
+          width: ${isSelected ? 20 : 14}px;
+          height: ${isSelected ? 20 : 14}px;
+          border-radius: 50%;
+          background-color: ${isSelected ? '#00979d' : '#ffffff'};
+          border: 2.5px solid ${pathColor};
+          box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+          cursor: grab;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: ${isSelected ? '#ffffff' : '#475569'};
+          font-size: 8px;
+          font-weight: 700;
+          user-select: none;
+        ">${idx + 1}</div>`,
+        iconSize: [isSelected ? 20 : 14, isSelected ? 20 : 14],
+        iconAnchor: [isSelected ? 10 : 7, isSelected ? 10 : 7],
+      });
+
+      const marker = L.marker([coord.lat, coord.lng], {
+        icon: nodeIcon,
+        draggable: true,
+        zIndexOffset: isSelected ? 2000 : 800,
+      });
+
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        if (e.originalEvent) e.originalEvent.stopPropagation();
+        lastLayerClickedTimeRef.current = Date.now();
+        setSelectedTarget({
+          type: 'node',
+          id: `${activePath.id}-node-${idx}`,
+          pathId: activePath.id,
+          pathName: activePath.name || 'Recorrido',
+          pathType: activePath.path_type || 'sendero',
+          nodeIndex: idx,
+          totalNodes: coords.length,
+          lat: coord.lat,
+          lng: coord.lng,
+          color: pathColor,
+          raw: activePath,
+        });
+      });
+
+      marker.on('drag', (e) => {
+        const newPos = e.target.getLatLng();
+        const updated = coords.map((c, i) =>
+          i === idx ? { lat: Number(newPos.lat.toFixed(6)), lng: Number(newPos.lng.toFixed(6)) } : c
+        );
+        if (highlightLayerRef.current) {
+          highlightLayerRef.current.clearLayers();
+          L.polyline(updated.map((c) => [c.lat, c.lng]), {
+            color: pathColor,
+            weight: 5,
+            opacity: 0.9,
+            dashArray: '4, 4',
+          }).addTo(highlightLayerRef.current);
+        }
+      });
+
+      marker.on('dragend', async (e) => {
+        const newPos = e.target.getLatLng();
+        const updated = coords.map((c, i) =>
+          i === idx ? { lat: Number(newPos.lat.toFixed(6)), lng: Number(newPos.lng.toFixed(6)) } : c
+        );
+        const newLength = calculatePathMeters(updated);
+
+        setLocalPaths((prev) =>
+          prev.map((p) =>
+            String(p.id) === String(activePath.id)
+              ? { ...p, coordinates: updated, length_meters: newLength }
+              : p
+          )
+        );
+        await updateFarmPath(activePath.id, { coordinates: updated, length_meters: newLength });
+
+        if (selectedTarget?.type === 'node' && selectedTarget.nodeIndex === idx) {
+          setSelectedTarget((prev) => ({
+            ...prev,
+            lat: Number(newPos.lat.toFixed(6)),
+            lng: Number(newPos.lng.toFixed(6)),
+          }));
+        } else if (selectedTarget?.type === 'path') {
+          setSelectedTarget((prev) => ({
+            ...prev,
+            coordinates: updated,
+            length_meters: newLength,
+          }));
+        }
+        if (onReloadPaths) onReloadPaths();
+      });
+
+      marker.addTo(layer);
+    });
+  }, [selectedTarget, localPaths, onReloadPaths]);
 
   // ─── 5b. Renderizado del Catastro Oficial Registrado (Parcelas 195 y 196) ───
   useEffect(() => {
@@ -1323,11 +1670,26 @@ export default function FarmSatelliteMap({
 
       const data = await insertFarmPath(payload);
 
-      // Limpiar estado
+      // Limpiar estado de dibujo
       setIsDrawing(false);
       setDrawPoints([]);
       setShowSaveModal(false);
       setNewPathData({ name: '', path_type: 'sendero', color: '#f97316', stroke_width: 4, notes: '' });
+
+      if (data) {
+        setSelectedTarget({
+          type: 'path',
+          id: data.id,
+          title: data.name,
+          path_type: data.path_type,
+          color: data.color,
+          length_meters: data.length_meters,
+          notes: data.notes,
+          coordinates: data.coordinates,
+          raw: data,
+        });
+        setIaFeedback({ type: 'success', text: `✨ Recorrido guardado: ${data.name}` });
+      }
 
       if (onReloadPaths) onReloadPaths();
       if (onPathCreated) onPathCreated(data);
@@ -1506,7 +1868,7 @@ export default function FarmSatelliteMap({
   };
 
   const selectAllFilters = () => {
-    setVisibleCategories(new Set(Object.keys(CATEGORY_MAP)));
+    setVisibleCategories(new Set(allCategories));
     setVisibleSubcats(null);
     setVisiblePathTypes(new Set(PATH_TYPES));
     setShowCatastro(true);
@@ -1731,6 +2093,115 @@ export default function FarmSatelliteMap({
     }
   };
 
+  // ─── Control de Trazado de Polilíneas ─────────────────────────────────────────
+  const handleToggleDraw = () => {
+    if (isDrawing) {
+      setIsDrawing(false);
+      setDrawPoints([]);
+    } else {
+      setIsDrawing(true);
+      setDrawPoints([]);
+      setSelectedTarget(null);
+      setSelectedPoint(null);
+      setSelectedPath(null);
+    }
+  };
+
+  // ─── Edición Directa de Campos en la Ficha del Elemento (0ms optimista) ─────
+  const handleDirectFieldUpdate = async (field, value) => {
+    if (!selectedTarget) return;
+
+    if (selectedTarget.type === 'point') {
+      const targetId = selectedTarget.id;
+      const updateObj = {};
+      if (field === 'title' || field === 'name') updateObj.name = value;
+      else if (field === 'variety_type' || field === 'variety') updateObj.variety_type = value;
+      else if (field === 'status') updateObj.status = value;
+      else if (field === 'notes') updateObj.notes = value;
+
+      setSelectedTarget((prev) => ({
+        ...prev,
+        ...updateObj,
+        ...(updateObj.name ? { title: updateObj.name } : {}),
+        ...(updateObj.variety_type ? { variety: updateObj.variety_type } : {}),
+      }));
+
+      setLocalInventory((prev) =>
+        prev.map((item) =>
+          String(item.id) === String(targetId) ? { ...item, ...updateObj } : item
+        )
+      );
+
+      try {
+        await updateFarmInventoryItem(targetId, updateObj);
+        window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: targetId, ...updateObj } }));
+      } catch (err) {
+        console.warn('Error guardando cambio directo en inventario:', err);
+      }
+    } else if (selectedTarget.type === 'path') {
+      const targetId = selectedTarget.id;
+      const updateObj = {};
+      if (field === 'title' || field === 'name') updateObj.name = value;
+      else if (field === 'path_type') {
+        updateObj.path_type = value;
+        updateObj.color = PATH_TYPE_COLORS[value] || selectedTarget.color;
+      } else if (field === 'color') updateObj.color = value;
+      else if (field === 'notes') updateObj.notes = value;
+
+      setSelectedTarget((prev) => ({
+        ...prev,
+        ...updateObj,
+        ...(updateObj.name ? { title: updateObj.name } : {}),
+      }));
+
+      setLocalPaths((prev) =>
+        prev.map((p) =>
+          String(p.id) === String(targetId) ? { ...p, ...updateObj } : p
+        )
+      );
+
+      try {
+        await updateFarmPath(targetId, updateObj);
+      } catch (err) {
+        console.warn('Error guardando cambio directo en camino:', err);
+      }
+    }
+  };
+
+  // ─── Eliminación de un Nodo Individual de una Polilínea ──────────────────────
+  const handleDeleteNode = async (pathId, nodeIndex) => {
+    const path = localPaths.find((p) => String(p.id) === String(pathId));
+    if (!path || !Array.isArray(path.coordinates) || path.coordinates.length <= 2) {
+      alert('Un recorrido debe tener al menos 2 nodos. Si deseas eliminar el recorrido completo, usa el botón de borrar recorrido.');
+      return;
+    }
+    const updatedCoords = path.coordinates.filter((_, i) => i !== nodeIndex);
+    const newLength = calculatePathMeters(updatedCoords);
+
+    setLocalPaths((prev) =>
+      prev.map((p) =>
+        String(p.id) === String(pathId)
+          ? { ...p, coordinates: updatedCoords, length_meters: newLength }
+          : p
+      )
+    );
+    await updateFarmPath(pathId, { coordinates: updatedCoords, length_meters: newLength });
+
+    setSelectedTarget({
+      type: 'path',
+      id: path.id,
+      title: path.name,
+      path_type: path.path_type,
+      color: path.color,
+      length_meters: newLength,
+      notes: path.notes,
+      coordinates: updatedCoords,
+      raw: { ...path, coordinates: updatedCoords, length_meters: newLength },
+    });
+    setIaFeedback({ type: 'success', text: `🗑️ Nodo ${nodeIndex + 1} eliminado de ${path.name}` });
+    if (onReloadPaths) onReloadPaths();
+  };
+
   const [mapIaInput, setMapIaInput] = useState('');
   const [isProcessingIa, setIsProcessingIa] = useState(false);
   const [iaFeedback, setIaFeedback] = useState(null); // { type: 'success'|'error'|'info', text: string }
@@ -1945,6 +2416,86 @@ export default function FarmSatelliteMap({
       return;
     }
 
+    // ─── 0b. Detección directa de comandos estructurados [[REGISTRAR_PUNTOS]] en texto ──
+    const directParsedPoints = parseRegisterPointsCommands(textOrder);
+    if (directParsedPoints.length > 0) {
+      setMapIaInput('');
+      setPendingVoiceAudio(null);
+      setPendingAttachment(null);
+      setIsPreviewPlaying(false);
+      setIsProcessingIa(true);
+      setIaFeedback({ type: 'info', text: `📍 Procesando comando estructurado (${directParsedPoints.length} punto(s))...` });
+
+      try {
+        const addedItems = [];
+        const center = mapInstanceRef.current ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng] : DEFAULT_CENTER;
+
+        for (const p of directParsedPoints) {
+          const lat = Number(p.latitude ?? p.lat ?? selectedTarget?.lat ?? voiceCurrentGps?.lat ?? center[0]);
+          const lng = Number(p.longitude ?? p.lng ?? selectedTarget?.lng ?? voiceCurrentGps?.lng ?? center[1]);
+          const rawName = p.name || p.nombre || p.tipo || 'Punto registrado';
+          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+          let category = p.category || p.categoria || p.tipo;
+          if (!category || category === 'Otros' || category === 'otro') {
+            category = getItemCategory({ name: formattedName, ...p });
+          }
+
+          const newItem = {
+            name: formattedName,
+            category,
+            variety_type: p.variedad || p.variety_type || p.variety || null,
+            status: p.estado || p.status || 'saludable',
+            latitude: lat,
+            longitude: lng,
+            notes: p.observaciones || p.notes || 'Registrado por comando [[REGISTRAR_PUNTOS]]',
+            photo_url: uploadedPhotoUrl || null,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          const inserted = await insertFarmInventoryItem(newItem);
+          if (inserted) {
+            addedItems.push(inserted);
+            setLocalInventory((prev) => [inserted, ...prev.filter((i) => String(i.id) !== String(inserted.id))]);
+            const parentCat = getItemCategory(inserted);
+            setVisibleCategories((prev) => new Set([...prev, parentCat]));
+            window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: inserted }));
+          }
+        }
+
+        if (addedItems.length > 0) {
+          const lastOne = addedItems[addedItems.length - 1];
+          if (mapInstanceRef.current && lastOne.latitude && lastOne.longitude) {
+            mapInstanceRef.current.panTo([lastOne.latitude, lastOne.longitude]);
+          }
+          setSelectedTarget({
+            type: 'point',
+            id: lastOne.id,
+            title: lastOne.name,
+            category: getItemCategory(lastOne),
+            variety: lastOne.variety_type,
+            status: lastOne.status,
+            notes: lastOne.notes,
+            lat: lastOne.latitude,
+            lng: lastOne.longitude,
+            photo_url: lastOne.photo_url,
+            raw: lastOne,
+          });
+          setIaFeedback({
+            type: 'success',
+            text: `✨ Registrado(s) ${addedItems.length} punto(s) en el mapa`,
+          });
+          if (onReloadInventory) await onReloadInventory();
+        }
+      } catch (err) {
+        setIaFeedback({ type: 'error', text: `Error registrando puntos: ${err.message}` });
+      } finally {
+        setIsProcessingIa(false);
+      }
+      return;
+    }
+
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
       setIaFeedback({ type: 'error', text: 'API Key de Gemini no configurada en las variables de entorno.' });
@@ -2137,11 +2688,27 @@ export default function FarmSatelliteMap({
         const actData = act.data || act;
 
         if (actType === 'DELETE_POINT' || actType === 'REMOVE_POINT') {
-          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
+          let targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
+          if (!targetId && (act.query || act.target === 'ultimo' || actData.query || actData.target === 'ultimo')) {
+            const isLast = act.target === 'ultimo' || actData.target === 'ultimo';
+            const q = (act.query || actData.query || '').toLowerCase().trim();
+            let matched = null;
+            if (isLast) {
+              matched = localInventory[0];
+            } else if (q) {
+              matched = localInventory.find(i =>
+                (i.name && i.name.toLowerCase().includes(q)) ||
+                (i.variety_type && i.variety_type.toLowerCase().includes(q)) ||
+                (i.category && i.category.toLowerCase().includes(q))
+              );
+            }
+            if (matched) targetId = matched.id;
+          }
           if (targetId) {
             const item = localInventory.find((i) => String(i.id) === String(targetId)) || selectedTarget?.raw;
             setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(targetId)));
             await deleteFarmInventoryItem(targetId);
+            window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: targetId, deleted: true } }));
             if (item) {
               undoAction.reverts.push({ type: 'RESTORE_POINT', itemData: item });
             }
@@ -2206,44 +2773,45 @@ export default function FarmSatelliteMap({
             }
           }
         } else if (actType === 'ADD_POINT' || actType === 'CREATE_POINT' || actType === 'INSERT_POINT' || actType === 'NEW_POINT') {
-          const lat = Number(
-            actData.latitude ?? actData.lat ?? act.latitude ?? act.lat ??
-            selectedTarget?.lat ??
-            audioOrder?.gpsTrack?.[0]?.lat ??
-            voiceCurrentGps?.lat ??
-            center[0]
+          let lat = Number(
+            actData.latitude ?? actData.lat ?? act.latitude ?? act.lat
           );
-          const lng = Number(
-            actData.longitude ?? actData.lng ?? act.longitude ?? act.lng ??
-            selectedTarget?.lng ??
-            audioOrder?.gpsTrack?.[0]?.lng ??
-            voiceCurrentGps?.lng ??
-            center[1]
+          let lng = Number(
+            actData.longitude ?? actData.lng ?? act.longitude ?? act.lng
           );
-          const rawName = actData.name || actData.title || act.title || (result.transcription && result.transcription.length < 35 ? result.transcription : 'Punto registrado');
-          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
-          let category = actData.category || act.category;
-          if (!category || category === 'Otros') {
-            const lowerName = formattedName.toLowerCase();
-            if (lowerName.includes('casa') || lowerName.includes('casita') || lowerName.includes('cueva') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('taller') || lowerName.includes('caseta') || lowerName.includes('caravana')) {
-              category = 'edificio';
-            } else if (lowerName.includes('aguacate') || lowerName.includes('limon') || lowerName.includes('olivo') || lowerName.includes('arbol') || lowerName.includes('naranjo')) {
-              category = 'arbol';
-            } else if (lowerName.includes('riego') || lowerName.includes('llave') || lowerName.includes('arqueta') || lowerName.includes('pozo') || lowerName.includes('deposito')) {
-              category = 'riego';
-            } else {
-              category = 'edificio';
+          // Interpolación temporal con GPS si provino de audio continuo
+          if ((isNaN(lat) || !lat) && audioOrder?.gpsTrack && audioOrder.gpsTrack.length > 0 && actData.timestamp_audio_s !== undefined) {
+            const t0 = audioOrder.t0 || Date.now() - (audioOrder.duration || 1) * 1000;
+            const interpolated = interpolateGpsAtAudioTime({
+              t0,
+              gpsTrack: audioOrder.gpsTrack,
+              timestampAudioSec: Number(actData.timestamp_audio_s) || 0,
+            });
+            if (interpolated.lat && interpolated.lng) {
+              lat = interpolated.lat;
+              lng = interpolated.lng;
             }
           }
 
-          const notes = actData.notes || act.notes || (textOrder ? textOrder : (result.transcription ? `Audio: "${result.transcription}"` : (result.description || 'Registrado con Agente IA')));
+          lat = Number(lat || selectedTarget?.lat || audioOrder?.gpsTrack?.[0]?.lat || voiceCurrentGps?.lat || center[0] || DEFAULT_CENTER[0]);
+          lng = Number(lng || selectedTarget?.lng || audioOrder?.gpsTrack?.[0]?.lng || voiceCurrentGps?.lng || center[1] || DEFAULT_CENTER[1]);
+
+          const rawName = actData.name || actData.title || act.title || actData.tipo || (result.transcription && result.transcription.length < 35 ? result.transcription : 'Punto registrado');
+          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
+          let category = actData.category || act.category || actData.categoria || actData.tipo;
+          if (!category || category === 'Otros' || category === 'otro') {
+            category = getItemCategory({ name: formattedName, ...actData });
+          }
+
+          const notes = actData.notes || act.notes || actData.observaciones || (textOrder ? textOrder : (result.transcription ? `Audio: "${result.transcription}"` : (result.description || 'Registrado con Agente IA')));
 
           const newItem = {
             name: formattedName,
             category,
-            variety_type: actData.variety_type || actData.variety || null,
-            status: actData.status || 'saludable',
+            variety_type: actData.variety_type || actData.variety || actData.variedad || null,
+            status: actData.status || actData.estado || 'saludable',
             latitude: lat,
             longitude: lng,
             notes,
@@ -2257,6 +2825,11 @@ export default function FarmSatelliteMap({
           if (inserted) {
             setLocalInventory((prev) => [inserted, ...prev.filter((i) => String(i.id) !== String(inserted.id))]);
             undoAction.reverts.push({ type: 'DELETE_POINT', target_id: inserted.id });
+
+            // Auto-activar categoría para visibilidad inmediata en mapa y panel
+            const parentCat = getItemCategory(inserted);
+            setVisibleCategories((prev) => new Set([...prev, parentCat]));
+
             setSelectedTarget({
               type: 'point',
               id: inserted.id,
@@ -2270,9 +2843,10 @@ export default function FarmSatelliteMap({
               photo_url: inserted.photo_url,
               raw: inserted,
             });
-            if (mapInstanceRef.current) {
+            if (mapInstanceRef.current && inserted.latitude && inserted.longitude) {
               mapInstanceRef.current.panTo([inserted.latitude, inserted.longitude]);
             }
+            window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: inserted }));
           }
         }
       }
@@ -2385,6 +2959,22 @@ export default function FarmSatelliteMap({
           <Filter size={18} />
         </button>
 
+        {/* 2b. Trazar Recorrido (Polilínea: Sendero, Carril, Camino, Vereda, Acequia) */}
+        <button
+          type="button"
+          onClick={handleToggleDraw}
+          style={{
+            ...styles.topBarIconBtn,
+            color: isDrawing ? '#00979d' : '#475569',
+            backgroundColor: isDrawing ? 'rgba(0, 151, 157, 0.14)' : 'transparent',
+            borderRadius: 6,
+          }}
+          title={isDrawing ? 'Salir del modo trazado' : 'Trazar nuevo recorrido (sendero, carril, camino, vereda, acequia)'}
+          aria-label="Trazar recorrido"
+        >
+          <Route size={18} />
+        </button>
+
         {/* 3. Capas (Solo icono, sin recuadro exterior, con dropdown) */}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
           <button
@@ -2480,20 +3070,44 @@ export default function FarmSatelliteMap({
         {/* Banner flotante de dibujo activo */}
         {isDrawing && (
           <div style={styles.drawingBanner}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div style={styles.pulseDot} />
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>
-                  Modo Trazado Activo: Haz clic en el satélite para colocar puntos
+                  Modo Trazado Activo: Haz clic en el satélite para colocar nodos
                 </span>
                 <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                  Vértices: <b>{drawPoints.length}</b> | Distancia acumulada: <b>{liveDrawDistance.toFixed(1)} m</b>
+                  Nodos: <b>{drawPoints.length}</b> | Longitud: <b>{liveDrawDistance.toFixed(1)} m</b>
                 </span>
               </div>
+
+              {/* Selector directo de tipo de trazado */}
+              <select
+                value={newPathData.path_type}
+                onChange={(e) => {
+                  const pt = e.target.value;
+                  setNewPathData((prev) => ({
+                    ...prev,
+                    path_type: pt,
+                    color: PATH_TYPE_COLORS[pt] || '#f97316',
+                  }));
+                }}
+                style={styles.drawTypeSelect}
+              >
+                <option value="sendero">Sendero</option>
+                <option value="carril">Carril</option>
+                <option value="camino">Camino</option>
+                <option value="vereda">Vereda</option>
+                <option value="acequia">Acequia</option>
+                <option value="linea_riego">Línea de Riego</option>
+                <option value="linde">Linde</option>
+                <option value="otro">Otro</option>
+              </select>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <button
+                type="button"
                 onClick={() => setDrawPoints((prev) => prev.slice(0, -1))}
                 disabled={drawPoints.length === 0}
                 style={{
@@ -2502,13 +3116,29 @@ export default function FarmSatelliteMap({
                   backgroundColor: '#ffffff',
                   color: '#475569',
                 }}
-                title="Deshacer último punto"
+                title="Deshacer último nodo"
               >
                 <Undo2 size={13} />
-                Deshacer
+                Deshacer nodo
               </button>
 
               <button
+                type="button"
+                onClick={() => {
+                  setIsDrawing(false);
+                  setDrawPoints([]);
+                }}
+                style={{
+                  ...styles.drawActionBtn,
+                  backgroundColor: '#f1f5f9',
+                  color: '#64748b',
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setShowSaveModal(true)}
                 disabled={drawPoints.length < 2}
                 style={{
@@ -2520,33 +3150,23 @@ export default function FarmSatelliteMap({
                 }}
               >
                 <Check size={13} />
-                Finalizar y Guardar
+                Guardar Recorrido
               </button>
             </div>
           </div>
         )}
 
-        {/* Leyenda de colores flotante (div de referencias - controlado por Capas) */}
+        {/* Leyenda de colores flotante (div de referencias dinámico - controlado por Capas) */}
         {showLegend && (
-          <div style={{ ...styles.legendBox, bottom: selectedTarget ? 150 : 76 }}>
+          <div style={{ ...styles.legendBox, bottom: selectedTarget ? 270 : 75 }}>
             <span style={styles.legendTitle}>Referencias (Puntos y Líneas)</span>
             <div style={styles.legendGrid}>
-              <div style={styles.legendItem}>
-                <span style={{ ...styles.colorCircle, backgroundColor: '#16a34a' }} />
-                <span>Árboles</span>
-              </div>
-              <div style={styles.legendItem}>
-                <span style={{ ...styles.colorCircle, backgroundColor: '#4ade80' }} />
-                <span>Plantas</span>
-              </div>
-              <div style={styles.legendItem}>
-                <span style={{ ...styles.colorCircle, backgroundColor: '#eab308' }} />
-                <span>Casas / Edificios</span>
-              </div>
-              <div style={styles.legendItem}>
-                <span style={{ ...styles.colorCircle, backgroundColor: '#0284c7' }} />
-                <span>Riego / Agua</span>
-              </div>
+              {allCategories.filter(cat => cat !== 'Otros' || localInventory.some(i => getItemCategory(i) === 'Otros')).map(cat => (
+                <div key={cat} style={styles.legendItem}>
+                  <span style={{ ...styles.colorCircle, backgroundColor: getCategoryColor(cat) }} />
+                  <span>{cat}</span>
+                </div>
+              ))}
               <div style={styles.legendItem}>
                 <span style={{ ...styles.colorCircle, backgroundColor: '#ef4444' }} />
                 <span>Poda/Seco</span>
@@ -2554,6 +3174,18 @@ export default function FarmSatelliteMap({
               <div style={styles.legendItem}>
                 <span style={{ ...styles.colorLine, backgroundColor: '#92400e' }} />
                 <span>Camino</span>
+              </div>
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorLine, backgroundColor: '#a16207' }} />
+                <span>Carril</span>
+              </div>
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorLine, backgroundColor: '#b45309' }} />
+                <span>Sendero</span>
+              </div>
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorLine, backgroundColor: '#1d4ed8' }} />
+                <span>Acequia</span>
               </div>
               <div style={styles.legendItem}>
                 <span style={{ ...styles.colorLine, backgroundColor: '#38bdf8', borderTop: '2px dashed #38bdf8', height: 0 }} />
@@ -2569,7 +3201,7 @@ export default function FarmSatelliteMap({
 
         {/* ── Widget Flotante de Navegación, Zoom y Centrador GPS ──────────── */}
         {showNavControls && (
-          <div style={{ ...styles.navWidget, bottom: selectedTarget ? 150 : 76 }}>
+          <div style={{ ...styles.navWidget, bottom: selectedTarget ? 270 : 75 }}>
             <button
               onClick={() => mapInstanceRef.current?.zoomIn()}
               style={styles.navWidgetBtn}
@@ -2733,13 +3365,14 @@ export default function FarmSatelliteMap({
                 <button onClick={clearAllFilters} style={stylesFilter.actionBtn}>⬜ Ninguno</button>
               </div>
 
-              {/* Categorías de puntos */}
+              {/* Categorías de puntos (Dinámicas y reactivas) */}
               <div style={stylesFilter.sectionLabel}>PUNTOS DE INVENTARIO</div>
-              {Object.keys(CATEGORY_MAP).map(parent => {
+              {allCategories.map(parent => {
                 const subcats = getSubcategoriesForParent(localInventory, parent);
                 const count = localInventory.filter(i => getItemCategory(i) === parent).length;
                 const isActive = visibleCategories.has(parent);
                 const isExpanded = expandedParents.has(parent);
+                const color = getCategoryColor(parent);
                 return (
                   <div key={parent}>
                     <div style={stylesFilter.catRow}>
@@ -2750,7 +3383,7 @@ export default function FarmSatelliteMap({
                           onChange={() => toggleParentCategory(parent)}
                           style={{ marginRight: 6 }}
                         />
-                        <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: CATEGORY_COLORS[parent], display: 'inline-block', marginRight: 5 }} />
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: color, display: 'inline-block', marginRight: 5 }} />
                         <span style={{ flex: 1, fontWeight: 600, fontSize: '0.78rem' }}>{parent}</span>
                         <span style={stylesFilter.countBadge}>{count}</span>
                       </label>
@@ -2894,518 +3527,535 @@ export default function FarmSatelliteMap({
           </div>
         )}
 
-        {/* ── Módulo de Control por Chat IA Integrado en el Preview de Coordenada / Pin / Línea ── */}
-        <div style={styles.mapIaControlWrapper}>
-          {/* Contenedor único unificado: Información del pin + Módulo Chat IA abajo */}
-          <div style={styles.selectedTargetCard}>
-            {/* Fila Superior: Info del Pin y Botón Cerrar ✕ (solo si hay elemento seleccionado) */}
-            {selectedTarget && (
-              <>
-                <div style={styles.targetHeaderRow}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                    {selectedTarget.photo_url ? (
-                      <img
-                        src={selectedTarget.photo_url}
-                        alt="Foto pin"
-                        style={styles.targetThumbnail}
-                        onClick={() => window.open(selectedTarget.photo_url, '_blank')}
-                        title="Ver foto completa"
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          ...styles.targetIconCircle,
-                          backgroundColor:
-                            selectedTarget.type === 'point'
-                              ? (CATEGORY_COLORS[selectedTarget.category] || '#16a34a')
-                              : selectedTarget.type === 'path'
-                              ? (selectedTarget.color || '#f97316')
-                              : '#00979d',
-                        }}
-                      >
-                        {selectedTarget.type === 'point' ? (
-                          <MapPin size={16} color="#ffffff" />
-                        ) : selectedTarget.type === 'path' ? (
-                          <Navigation size={15} color="#ffffff" />
-                        ) : (
-                          <Compass size={15} color="#ffffff" />
-                        )}
-                      </div>
-                    )}
+        {/* ── MÓDULO FIJO CHAT IA INFERIOR SOBRE EL MENÚ DE LA APP (IDÉNTICO A CHAT IA) ── */}
+        <div style={styles.fixedBottomChatWrapper}>
+          {/* Ficha limpia del elemento seleccionado (PIN, NODO, LÍNEA o COORD) por encima de los inputs (con margen) */}
+          {selectedTarget && (
+            <div style={styles.cleanTargetCard}>
+              {/* Fila Superior: Título a la izquierda, Categoría en gris claro a la derecha + Botón Cerrar (X) */}
+              <div style={styles.cardHeaderRow}>
+                <input
+                  type="text"
+                  value={selectedTarget.title || selectedTarget.name || ''}
+                  onChange={(e) => handleDirectFieldUpdate('name', e.target.value)}
+                  placeholder="Título..."
+                  style={styles.cardTitleInput}
+                />
 
-                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span style={styles.targetTitle}>{selectedTarget.title}</span>
-                        {selectedTarget.status && (
-                          <span
-                            style={{
-                              ...styles.targetBadge,
-                              backgroundColor:
-                                selectedTarget.status === 'enfermo' || selectedTarget.status === 'seco'
-                                  ? '#fee2e2'
-                                  : selectedTarget.status === 'clorosis'
-                                  ? '#fef3c7'
-                                  : selectedTarget.status === 'poda_requerida'
-                                  ? '#ffedd5'
-                                  : '#dcfce7',
-                              color:
-                                selectedTarget.status === 'enfermo' || selectedTarget.status === 'seco'
-                                  ? '#dc2626'
-                                  : selectedTarget.status === 'clorosis'
-                                  ? '#b45309'
-                                  : selectedTarget.status === 'poda_requerida'
-                                  ? '#c2410c'
-                                  : '#15803d',
-                            }}
-                          >
-                            {selectedTarget.status}
-                          </span>
-                        )}
-                        {selectedTarget.variety && (
-                          <span style={styles.targetSubtypeBadge}>{selectedTarget.variety}</span>
-                        )}
-                        {selectedTarget.subtitle && (
-                          <span style={styles.targetSubtypeBadge}>{selectedTarget.subtitle}</span>
-                        )}
-                      </div>
+                <div style={styles.cardHeaderRight}>
+                  <span style={styles.cardCategoryGray}>
+                    {selectedTarget.type === 'point'
+                      ? (selectedTarget.category || 'Inventario')
+                      : selectedTarget.type === 'path'
+                      ? (PATH_TYPE_LABELS[selectedTarget.path_type] || selectedTarget.path_type || 'Recorrido')
+                      : selectedTarget.type === 'node'
+                      ? `Vértice · ${PATH_TYPE_LABELS[selectedTarget.pathType] || 'Recorrido'}`
+                      : selectedTarget.type === 'catastro'
+                      ? 'Catastro Oficial'
+                      : 'Punto Satelital'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTarget(null);
+                      setSelectedPoint(null);
+                      setSelectedPath(null);
+                    }}
+                    style={styles.cardCloseBtn}
+                    title="Cerrar ficha"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
 
-                      <div style={styles.targetMetaRow}>
-                        {selectedTarget.lat && selectedTarget.lng && (
-                          <span>📍 {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}</span>
-                        )}
-                        {selectedTarget.length_meters && (
-                          <span>📏 {Number(selectedTarget.length_meters).toFixed(0)} m</span>
-                        )}
-                        {selectedTarget.notes && (
-                          <span style={styles.targetNotesText}>"{selectedTarget.notes}"</span>
-                        )}
-                      </div>
-                    </div>
+              {/* Contenido y definiciones con un orden lógico a su clasificación e información de inventario */}
+              {selectedTarget.type === 'point' && (
+                <div style={styles.cardBodyColumn}>
+                  {/* Clasificación y Estado */}
+                  <div style={styles.cardFieldsRow}>
+                    <input
+                      type="text"
+                      value={selectedTarget.variety || selectedTarget.variety_type || ''}
+                      onChange={(e) => handleDirectFieldUpdate('variety_type', e.target.value)}
+                      placeholder="Subtipo / Variedad (ej: Hass, Gotero 4L, 16mm)..."
+                      style={styles.cleanFieldInput}
+                    />
+                    <select
+                      value={selectedTarget.status || 'saludable'}
+                      onChange={(e) => handleDirectFieldUpdate('status', e.target.value)}
+                      style={styles.cleanFieldSelect}
+                    >
+                      <option value="saludable">🟢 Saludable</option>
+                      <option value="clorosis">🟡 Clorosis</option>
+                      <option value="poda_requerida">🟠 Requiere Poda</option>
+                      <option value="enfermo">🔴 Enfermo</option>
+                      <option value="seco">⚫ Seco / Muerto</option>
+                    </select>
                   </div>
 
-                  {/* Botones de acción: Editar, Borrar y Cerrar */}
-                  <div style={styles.targetActionsRow}>
-                    {(selectedTarget.type === 'point' || selectedTarget.type === 'path') && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isEditingTarget) {
-                              setIsEditingTarget(false);
-                            } else {
-                              handleStartEditTarget();
-                            }
-                          }}
-                          style={{
-                            ...styles.targetActionBtn,
-                            backgroundColor: isEditingTarget ? '#00979d' : '#f1f5f9',
-                            color: isEditingTarget ? '#ffffff' : '#334155',
-                          }}
-                          title={isEditingTarget ? 'Cerrar edición' : 'Editar datos del elemento'}
-                          aria-label="Editar"
-                        >
-                          <Edit2 size={13} />
-                          <span style={styles.actionBtnLabel}>{isEditingTarget ? 'Editando' : 'Editar'}</span>
-                        </button>
+                  {/* Contenido / Observaciones / Definición */}
+                  <textarea
+                    rows={2}
+                    value={selectedTarget.notes || ''}
+                    onChange={(e) => handleDirectFieldUpdate('notes', e.target.value)}
+                    placeholder="Definición, contenido o notas de inventario..."
+                    style={styles.cleanFieldTextarea}
+                  />
 
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteTarget(e);
-                          }}
-                          style={styles.targetDeleteBtn}
-                          title="Eliminar este elemento del mapa"
-                          aria-label="Eliminar"
-                        >
-                          <Trash2 size={13} />
-                          <span style={styles.actionBtnLabel}>Borrar</span>
-                        </button>
-                      </>
+                  {/* Información de inventario y metadatos */}
+                  <div style={styles.cardMetaRow}>
+                    <span style={styles.cardMetaText}>
+                      📍 {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}
+                      {selectedTarget.accuracy ? ` · ±${Number(selectedTarget.accuracy).toFixed(1)}m` : ''}
+                    </span>
+                    {selectedTarget.photo_url && (
+                      <a
+                        href={selectedTarget.photo_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={styles.cardPhotoLink}
+                        title="Ver fotografía adjunta"
+                      >
+                        📷 Ver foto
+                      </a>
                     )}
-
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedTarget(null);
-                        setIsEditingTarget(false);
-                      }}
-                      style={styles.targetCloseBtn}
-                      title="Cerrar ficha"
-                      aria-label="Cerrar ficha"
+                      onClick={handleDeleteTarget}
+                      style={styles.cardTrashBtn}
+                      title="Eliminar este punto del inventario"
                     >
-                      <X size={16} />
+                      <Trash2 size={13} color="#94a3b8" />
                     </button>
                   </div>
                 </div>
+              )}
 
-                {/* Formulario de edición rápida en la misma ficha */}
-                {isEditingTarget && (
-                  <div style={styles.targetEditForm}>
-                    <div style={styles.targetEditRow}>
-                      <input
-                        type="text"
-                        value={targetEditData.name}
-                        onChange={(e) => setTargetEditData((prev) => ({ ...prev, name: e.target.value }))}
-                        placeholder="Nombre o descripción..."
-                        style={styles.targetEditInput}
-                      />
-                      {selectedTarget.type === 'point' && (
-                        <select
-                          value={targetEditData.status}
-                          onChange={(e) => setTargetEditData((prev) => ({ ...prev, status: e.target.value }))}
-                          style={styles.targetEditSelect}
-                        >
-                          <option value="saludable">🟢 Saludable</option>
-                          <option value="clorosis">🟡 Clorosis</option>
-                          <option value="poda_requerida">🟠 Requiere Poda</option>
-                          <option value="enfermo">🔴 Enfermo</option>
-                          <option value="seco">⚫ Seco / Muerto</option>
-                        </select>
-                      )}
-                    </div>
-                    <div style={styles.targetEditRow}>
-                      <input
-                        type="text"
-                        value={targetEditData.variety}
-                        onChange={(e) => setTargetEditData((prev) => ({ ...prev, variety: e.target.value }))}
-                        placeholder="Variedad / Subtipo (ej: Hass, Gotero 4L)..."
-                        style={styles.targetEditInput}
-                      />
-                      <input
-                        type="text"
-                        value={targetEditData.notes}
-                        onChange={(e) => setTargetEditData((prev) => ({ ...prev, notes: e.target.value }))}
-                        placeholder="Notas u observaciones..."
-                        style={styles.targetEditInput}
-                      />
+              {selectedTarget.type === 'path' && (
+                <div style={styles.cardBodyColumn}>
+                  {/* Clasificación de tipo de recorrido */}
+                  <div style={styles.cardFieldsRow}>
+                    <select
+                      value={selectedTarget.path_type || 'sendero'}
+                      onChange={(e) => handleDirectFieldUpdate('path_type', e.target.value)}
+                      style={{ ...styles.cleanFieldSelect, flex: 1 }}
+                    >
+                      <option value="sendero">Sendero peatonal</option>
+                      <option value="carril">Carril agrícola</option>
+                      <option value="camino">Camino principal</option>
+                      <option value="vereda">Vereda</option>
+                      <option value="acequia">Acequia / Canal</option>
+                      <option value="linea_riego">Línea de Riego</option>
+                      <option value="linde">Linde</option>
+                      <option value="otro">Otro trazado</option>
+                    </select>
+                    <span style={styles.cardLengthBadge}>
+                      📏 {Math.round(selectedTarget.length_meters || 0)} m
+                    </span>
+                  </div>
+
+                  {/* Contenido y Definición */}
+                  <textarea
+                    rows={2}
+                    value={selectedTarget.notes || ''}
+                    onChange={(e) => handleDirectFieldUpdate('notes', e.target.value)}
+                    placeholder="Definición del recorrido, firme, acceso o contenido..."
+                    style={styles.cleanFieldTextarea}
+                  />
+
+                  {/* Metadatos y Nodos */}
+                  <div style={styles.cardMetaRow}>
+                    <span style={styles.cardMetaText}>
+                      📍 {selectedTarget.coordinates?.length || 0} nodos interactivos (arrástralos en el satélite)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleDeleteTarget}
+                      style={styles.cardTrashBtn}
+                      title="Eliminar este recorrido"
+                    >
+                      <Trash2 size={13} color="#94a3b8" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {selectedTarget.type === 'node' && (
+                <div style={styles.cardBodyColumn}>
+                  <div style={styles.cardMetaRow}>
+                    <span style={styles.cardMetaText}>
+                      Recorrido: <b>{selectedTarget.pathName}</b> (Nodo {selectedTarget.nodeIndex + 1} de {selectedTarget.totalNodes})
+                    </span>
+                  </div>
+                  <div style={styles.cardMetaRow}>
+                    <span style={styles.cardMetaText}>
+                      📍 Posición: {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: '#00979d', fontStyle: 'italic' }}>
+                      Arrastra el nodo en el satélite para ajustar el trazado
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const path = localPaths.find((p) => String(p.id) === String(selectedTarget.pathId));
+                        if (path) {
+                          setSelectedTarget({
+                            type: 'path',
+                            id: path.id,
+                            title: path.name,
+                            path_type: path.path_type,
+                            color: path.color,
+                            length_meters: path.length_meters,
+                            notes: path.notes,
+                            coordinates: path.coordinates,
+                            raw: path,
+                          });
+                        }
+                      }}
+                      style={styles.cleanLinkBtn}
+                    >
+                      ⬅️ Ver recorrido completo
+                    </button>
+                    {selectedTarget.totalNodes > 2 && (
                       <button
                         type="button"
-                        onClick={handleSaveTargetEdit}
-                        style={styles.targetSaveBtn}
-                        title="Guardar cambios"
+                        onClick={() => handleDeleteNode(selectedTarget.pathId, selectedTarget.nodeIndex)}
+                        style={styles.cardTrashBtn}
+                        title="Eliminar este vértice"
                       >
-                        <Check size={14} />
-                        <span>Guardar</span>
+                        <Trash2 size={13} color="#ef4444" />
+                        <span style={{ fontSize: '0.72rem', color: '#ef4444', marginLeft: 4 }}>Quitar nodo</span>
                       </button>
-                    </div>
+                    )}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Separador sutil */}
-                <div style={{ height: 1, backgroundColor: '#f1f5f9', width: '100%', margin: '1px 0' }} />
-              </>
-            )}
-
-              {/* Vista previa de fotografía o documento adjunto */}
-              {pendingAttachment && (
-                <div style={styles.pendingAttachmentCard}>
-                  {pendingAttachment.isImage && pendingAttachment.dataUrl ? (
-                    <img
-                      src={pendingAttachment.dataUrl}
-                      alt="Foto adjunta"
-                      style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <div style={styles.pendingDocIcon}>
-                      <FileText size={20} color="#00979d" />
-                    </div>
+              {selectedTarget.type === 'catastro' && (
+                <div style={styles.cardBodyColumn}>
+                  <span style={styles.cardMetaText}>
+                    {selectedTarget.subtitle || 'Linde catastral oficial de Campito Jorox (Parcela 195/196)'}
+                  </span>
+                  {selectedTarget.notes && (
+                    <span style={{ fontSize: '0.76rem', color: '#64748b' }}>"{selectedTarget.notes}"</span>
                   )}
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={styles.pendingAttachmentName}>{pendingAttachment.name}</p>
-                    <p style={styles.pendingAttachmentMeta}>
-                      {(pendingAttachment.size / 1024).toFixed(1)} KB · {pendingAttachment.isImage ? 'Fotografía lista para vincular' : 'Documento listo'}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setPendingAttachment(null)}
-                    style={styles.targetCloseBtn}
-                    title="Quitar archivo adjunto"
-                    aria-label="Quitar archivo"
-                  >
-                    <X size={15} />
-                  </button>
+                  {selectedTarget.lat && selectedTarget.lng && (
+                    <span style={styles.cardMetaText}>
+                      📍 Coordenadas oficiales: {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}
+                    </span>
+                  )}
                 </div>
               )}
 
-              {/* Banner de feedback de acciones ejecutadas */}
-              {iaFeedback && (
-                <div
-                  style={{
-                    ...styles.mapIaFeedbackBanner,
-                    backgroundColor: iaFeedback.type === 'error' ? '#fef2f2' : iaFeedback.type === 'info' ? '#eff6ff' : '#f0fdf4',
-                    borderColor: iaFeedback.type === 'error' ? '#fca5a5' : iaFeedback.type === 'info' ? '#93c5fd' : '#86efac',
-                    color: iaFeedback.type === 'error' ? '#991b1b' : iaFeedback.type === 'info' ? '#1e40af' : '#166534',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-                    {isProcessingIa && <div style={styles.miniSpinner} />}
-                    <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{iaFeedback.text}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIaFeedback(null)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'inherit' }}
-                  >
-                    <X size={13} />
-                  </button>
+              {selectedTarget.type === 'coord' && (
+                <div style={styles.cardBodyColumn}>
+                  <span style={styles.cardMetaText}>
+                    📍 Coordenada satelital: {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}
+                  </span>
+                  <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    Habla por voz o escribe en el chat para registrar un nuevo árbol, arqueta o elemento en esta ubicación exacta.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Vista previa de archivo adjunto si hay uno */}
+          {pendingAttachment && (
+            <div style={styles.pendingAttachmentCard}>
+              {pendingAttachment.isImage && pendingAttachment.dataUrl ? (
+                <img
+                  src={pendingAttachment.dataUrl}
+                  alt="Foto adjunta"
+                  style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }}
+                />
+              ) : (
+                <div style={styles.pendingDocIcon}>
+                  <FileText size={20} color="#00979d" />
                 </div>
               )}
 
-              {/* Módulo Chat IA integrado abajo */}
-              <div style={styles.chatIaInputBar}>
-                {/* Inputs ocultos para cámara y documentos */}
-                <input
-                  ref={docInputRef}
-                  type="file"
-                  accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,image/*,application/pdf"
-                  onChange={handleDocumentChange}
-                  style={{ display: 'none' }}
-                />
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleCameraChange}
-                  style={{ display: 'none' }}
-                />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={styles.pendingAttachmentName}>{pendingAttachment.name}</p>
+                <p style={styles.pendingAttachmentMeta}>
+                  {(pendingAttachment.size / 1024).toFixed(1)} KB · {pendingAttachment.isImage ? 'Fotografía lista para vincular' : 'Documento listo'}
+                </p>
+              </div>
 
-                {/* Botón (+) a la izquierda para adjuntar fotos o documentos */}
+              <button
+                type="button"
+                onClick={() => setPendingAttachment(null)}
+                style={styles.targetCloseBtn}
+                title="Quitar archivo adjunto"
+                aria-label="Quitar archivo"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          )}
+
+          {/* Banner de feedback si hay mensaje */}
+          {iaFeedback && (
+            <div
+              style={{
+                ...styles.mapIaFeedbackBanner,
+                backgroundColor: iaFeedback.type === 'error' ? '#fef2f2' : iaFeedback.type === 'info' ? '#eff6ff' : '#f0fdf4',
+                borderColor: iaFeedback.type === 'error' ? '#fca5a5' : iaFeedback.type === 'info' ? '#93c5fd' : '#86efac',
+                color: iaFeedback.type === 'error' ? '#991b1b' : iaFeedback.type === 'info' ? '#1e40af' : '#166534',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                {isProcessingIa && <div style={styles.miniSpinner} />}
+                <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{iaFeedback.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIaFeedback(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'inherit' }}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
+
+          {/* Barra de Input Inferior Idéntica a la sección CHAT IA */}
+          <div style={styles.chatIaInputBar}>
+            {/* Inputs ocultos para cámara y documentos */}
+            <input
+              ref={docInputRef}
+              type="file"
+              accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,image/*,application/pdf"
+              onChange={handleDocumentChange}
+              style={{ display: 'none' }}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleCameraChange}
+              style={{ display: 'none' }}
+            />
+
+            {/* 1. Botón (+) a la izquierda para adjuntar fotos o documentos */}
+            <button
+              type="button"
+              style={{
+                ...styles.chatIaAttachBtn,
+                backgroundColor: pendingAttachment && !pendingAttachment.isImage ? '#00979d' : '#f0f0f0',
+                color: pendingAttachment && !pendingAttachment.isImage ? '#ffffff' : '#555555',
+              }}
+              onClick={handleAttachClick}
+              aria-label="Adjuntar archivo o documento (+)"
+              title="Adjuntar archivo o documento (+)"
+            >
+              <Plus size={20} />
+            </button>
+
+            {/* 2. Cápsula central (Idéntica a Chat IA) */}
+            {pendingVoiceAudio && !isVoiceRecording ? (
+              <div style={styles.chatIaAudioPreviewCapsule}>
                 <button
                   type="button"
-                  style={{
-                    ...styles.chatIaAttachBtn,
-                    backgroundColor: pendingAttachment && !pendingAttachment.isImage ? '#00979d' : '#f1f5f9',
-                    color: pendingAttachment && !pendingAttachment.isImage ? '#ffffff' : '#555555',
-                  }}
-                  onClick={handleAttachClick}
-                  aria-label="Adjuntar archivo o documento (+)"
-                  title="Adjuntar archivo o documento (+)"
+                  onClick={handleDiscardVoice}
+                  style={styles.previewTrashBtn}
+                  title="Descartar nota de voz"
+                  aria-label="Descartar nota de voz"
                 >
-                  <Plus size={19} />
+                  <Trash2 size={18} color="#ef4444" />
                 </button>
 
-                {/* Cápsula central (Idéntica a Chat IA) */}
-                {pendingVoiceAudio && !isVoiceRecording ? (
-                  <div style={styles.chatIaAudioPreviewCapsule}>
-                    <button
-                      type="button"
-                      onClick={handleDiscardVoice}
-                      style={styles.previewTrashBtn}
-                      title="Descartar nota de voz"
-                      aria-label="Descartar nota de voz"
-                    >
-                      <Trash2 size={16} color="#ef4444" />
-                    </button>
+                <button
+                  type="button"
+                  onClick={togglePlayPreview}
+                  style={styles.previewPlayBtn}
+                  title={isPreviewPlaying ? 'Pausar audio' : 'Escuchar audio'}
+                  aria-label={isPreviewPlaying ? 'Pausar audio' : 'Escuchar audio'}
+                >
+                  {isPreviewPlaying ? (
+                    <Pause size={15} color="#ffffff" />
+                  ) : (
+                    <Play size={15} color="#ffffff" style={{ marginLeft: 2 }} />
+                  )}
+                </button>
 
-                    <button
-                      type="button"
-                      onClick={togglePlayPreview}
-                      style={styles.previewPlayBtn}
-                      title={isPreviewPlaying ? 'Pausar audio' : 'Escuchar audio'}
-                      aria-label={isPreviewPlaying ? 'Pausar audio' : 'Escuchar audio'}
-                    >
-                      {isPreviewPlaying ? (
-                        <Pause size={14} color="#ffffff" />
-                      ) : (
-                        <Play size={14} color="#ffffff" style={{ marginLeft: 2 }} />
-                      )}
-                    </button>
-
-                    <div style={styles.previewTrackContainer}>
-                      <input
-                        type="range"
-                        min={0}
-                        max={previewDuration || pendingVoiceAudio.duration || 1}
-                        step="0.05"
-                        value={previewCurrentTime}
-                        onChange={handleSeekPreview}
-                        style={styles.previewSlider}
-                        aria-label="Progreso del audio"
-                      />
-                      <div style={styles.previewTimeRow}>
-                        <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>
-                          {formatAudioTime(previewCurrentTime > 0 ? previewCurrentTime : (previewDuration || pendingVoiceAudio.duration))}
-                        </span>
-                        {pendingVoiceAudio.gpsTrack?.length > 0 && (
-                          <span style={styles.previewGpsTag} title={`${pendingVoiceAudio.gpsTrack.length} lecturas GPS vinculadas`}>
-                            📍 {pendingVoiceAudio.gpsTrack.length} pts GPS
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <audio
-                      ref={previewAudioRef}
-                      src={pendingVoiceAudio.dataUrl}
-                      onTimeUpdate={(e) => setPreviewCurrentTime(e.target.currentTime)}
-                      onLoadedMetadata={(e) => {
-                        if (e.target.duration && !isNaN(e.target.duration) && isFinite(e.target.duration)) {
-                          setPreviewDuration(Math.round(e.target.duration));
-                        }
-                      }}
-                      onEnded={() => {
-                        setIsPreviewPlaying(false);
-                        setPreviewCurrentTime(0);
-                      }}
-                      style={{ display: 'none' }}
-                    />
-                  </div>
-                ) : isVoiceRecording ? (
-                  <div style={styles.chatIaRecordingCapsule}>
-                    <span style={styles.pulsingRedDot} />
-                    <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
-                      {formatAudioTime(voiceRecordingSeconds)}
+                <div style={styles.previewTrackContainer}>
+                  <input
+                    type="range"
+                    min={0}
+                    max={previewDuration || pendingVoiceAudio.duration || 1}
+                    step="0.05"
+                    value={previewCurrentTime}
+                    onChange={handleSeekPreview}
+                    style={styles.previewSlider}
+                    aria-label="Progreso del audio"
+                  />
+                  <div style={styles.previewTimeRow}>
+                    <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>
+                      {formatAudioTime(previewCurrentTime > 0 ? previewCurrentTime : (previewDuration || pendingVoiceAudio.duration))}
                     </span>
-                    {voiceCurrentGps ? (
-                      <span style={styles.previewGpsTagActive}>
-                        📍 ±{voiceCurrentGps.accuracy?.toFixed(1)}m
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 'auto' }}>
-                        📍 Conectando GPS...
+                    {pendingVoiceAudio.gpsTrack?.length > 0 && (
+                      <span style={styles.previewGpsTag} title={`${pendingVoiceAudio.gpsTrack.length} lecturas GPS vinculadas`}>
+                        📍 {pendingVoiceAudio.gpsTrack.length} pts GPS
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleCancelVoiceRecording}
-                      style={styles.previewTrashBtn}
-                      title="Cancelar grabación"
-                      aria-label="Cancelar grabación"
-                    >
-                      <Trash2 size={16} color="#64748b" />
-                    </button>
                   </div>
-                ) : (
-                  <div style={styles.chatIaInputCapsule}>
-                    <textarea
-                      rows={1}
-                      value={mapIaInput}
-                      onChange={(e) => {
-                        setMapIaInput(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMapIaOrder();
-                        }
-                      }}
-                      placeholder={
-                        selectedTarget?.type === 'coord'
-                          ? 'Nombrar punto o hablar con IA (ej: "Mi casa", "Arqueta")...'
-                          : selectedTarget?.type === 'point'
-                          ? `Nota o cambio para ${selectedTarget.title}...`
-                          : selectedTarget?.type === 'path'
-                          ? `Nota o cambio para ${selectedTarget.title}...`
-                          : 'Toca el mapa para ubicar o habla aquí con IA...'
-                      }
-                      style={styles.chatIaTextInput}
-                      disabled={isProcessingIa}
-                    />
+                </div>
 
-                    {/* Icono de Cámara dentro de la cápsula a la derecha */}
-                    <button
-                      type="button"
-                      style={{
-                        ...styles.capsuleCameraBtn,
-                        backgroundColor: pendingAttachment?.isImage ? '#00979d' : 'transparent',
-                        color: pendingAttachment?.isImage ? '#ffffff' : '#64748b',
-                      }}
-                      onClick={handleCameraClick}
-                      aria-label="Tomar foto con la cámara"
-                      title="Tomar foto con la cámara"
-                    >
-                      <Camera size={18} />
-                    </button>
-                  </div>
-                )}
-
-                {/* Botón de Acción a la derecha (estilo WhatsApp) */}
-                {isVoiceRecording ? (
-                  <button
-                    type="button"
-                    onClick={handleStopVoiceRecording}
-                    style={{
-                      ...styles.chatIaActionBtn,
-                      backgroundColor: '#dc2626',
-                      color: '#ffffff',
-                      boxShadow: '0 0 10px rgba(220, 38, 38, 0.6)',
-                    }}
-                    title="Detener grabación y revisar audio"
-                    aria-label="Detener grabación"
-                  >
-                    <StopCircle size={19} />
-                  </button>
-                ) : (mapIaInput.trim() || pendingVoiceAudio || pendingAttachment) ? (
-                  <button
-                    type="button"
-                    onClick={handleSendMapIaOrder}
-                    disabled={isProcessingIa}
-                    style={{
-                      ...styles.chatIaActionBtn,
-                      backgroundColor: '#00979d',
-                      color: '#ffffff',
-                      opacity: isProcessingIa ? 0.7 : 1,
-                    }}
-                    title="Enviar orden a la IA"
-                    aria-label="Enviar orden"
-                  >
-                    {isProcessingIa ? <div style={styles.miniWhiteSpinner} /> : <Send size={17} />}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={startVoiceTracking}
-                    disabled={isProcessingIa}
-                    style={{
-                      ...styles.chatIaActionBtn,
-                      backgroundColor: '#00979d',
-                      color: '#ffffff',
-                    }}
-                    title={
-                      selectedTarget
-                        ? `Hablar orden por voz para ${selectedTarget.title}`
-                        : 'Hablar orden por voz con telemetría GPS'
+                <audio
+                  ref={previewAudioRef}
+                  src={pendingVoiceAudio.dataUrl}
+                  onTimeUpdate={(e) => setPreviewCurrentTime(e.target.currentTime)}
+                  onLoadedMetadata={(e) => {
+                    if (e.target.duration && !isNaN(e.target.duration) && isFinite(e.target.duration)) {
+                      setPreviewDuration(Math.round(e.target.duration));
                     }
-                    aria-label="Hablar orden por voz"
-                  >
-                    <Mic size={19} />
-                  </button>
+                  }}
+                  onEnded={() => {
+                    setIsPreviewPlaying(false);
+                    setPreviewCurrentTime(0);
+                  }}
+                  style={{ display: 'none' }}
+                />
+              </div>
+            ) : isVoiceRecording ? (
+              <div style={styles.chatIaRecordingCapsule}>
+                <span style={styles.pulsingRedDot} />
+                <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
+                  {formatAudioTime(voiceRecordingSeconds)}
+                </span>
+                {voiceCurrentGps ? (
+                  <span style={styles.previewGpsTagActive}>
+                    📍 ±{voiceCurrentGps.accuracy?.toFixed(1)}m
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 'auto' }}>
+                    📍 Conectando GPS...
+                  </span>
                 )}
-
-                {/* Botón de Retroceder Cambios (Deshacer) */}
                 <button
                   type="button"
-                  onClick={handleUndoMapAction}
-                  disabled={undoStack.length === 0 || isProcessingIa}
-                  style={{
-                    ...styles.chatIaActionBtn,
-                    backgroundColor: undoStack.length > 0 ? '#334155' : '#f1f5f9',
-                    color: undoStack.length > 0 ? '#ffffff' : '#94a3b8',
-                    cursor: undoStack.length === 0 ? 'not-allowed' : 'pointer',
-                    opacity: undoStack.length === 0 ? 0.45 : 1,
-                  }}
-                  title={
-                    undoStack.length > 0
-                      ? `Retroceder cambios: ${undoStack[undoStack.length - 1].description} (${undoStack.length} en historial)`
-                      : 'No hay cambios recientes para retroceder'
-                  }
-                  aria-label="Retroceder cambios en el mapa"
+                  onClick={handleCancelVoiceRecording}
+                  style={styles.previewTrashBtn}
+                  title="Cancelar grabación"
+                  aria-label="Cancelar grabación"
                 >
-                  <Undo2 size={17} />
+                  <Trash2 size={17} color="#64748b" />
                 </button>
               </div>
-            </div>
+            ) : (
+              <div style={styles.chatIaInputCapsule}>
+                <textarea
+                  rows={1}
+                  value={mapIaInput}
+                  onChange={(e) => {
+                    setMapIaInput(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMapIaOrder();
+                    }
+                  }}
+                  placeholder="Mensaje..."
+                  style={styles.chatIaTextInput}
+                  disabled={isProcessingIa}
+                  autoComplete="off"
+                  autoCorrect="on"
+                  spellCheck="true"
+                />
+
+                {/* Cámara dentro de la cápsula a la derecha */}
+                <button
+                  type="button"
+                  style={{
+                    ...styles.capsuleCameraBtn,
+                    background: pendingAttachment?.isImage ? '#00979d' : 'transparent',
+                    color: pendingAttachment?.isImage ? '#ffffff' : '#64748b',
+                  }}
+                  onClick={handleCameraClick}
+                  aria-label="Tomar foto con la cámara"
+                  title="Tomar foto con la cámara"
+                >
+                  <Camera size={19} />
+                </button>
+              </div>
+            )}
+
+            {/* 3. Botón de Acción a la derecha (estilo WhatsApp) */}
+            {isVoiceRecording ? (
+              <button
+                type="button"
+                onClick={handleStopVoiceRecording}
+                style={{
+                  ...styles.chatIaActionBtn,
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  boxShadow: '0 0 10px rgba(220, 38, 38, 0.6)',
+                }}
+                title="Detener grabación y revisar audio"
+                aria-label="Detener grabación"
+              >
+                <StopCircle size={20} />
+              </button>
+            ) : (mapIaInput.trim() || pendingVoiceAudio || pendingAttachment) ? (
+              <button
+                type="button"
+                onClick={handleSendMapIaOrder}
+                disabled={isProcessingIa}
+                style={{
+                  ...styles.chatIaActionBtn,
+                  backgroundColor: '#00979d',
+                  color: '#ffffff',
+                  opacity: isProcessingIa ? 0.7 : 1,
+                }}
+                title="Enviar orden a la IA"
+                aria-label="Enviar orden"
+              >
+                {isProcessingIa ? <div style={styles.miniWhiteSpinner} /> : <Send size={18} />}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={startVoiceTracking}
+                disabled={isProcessingIa}
+                style={{
+                  ...styles.chatIaActionBtn,
+                  backgroundColor: '#00979d',
+                  color: '#ffffff',
+                }}
+                title={
+                  selectedTarget
+                    ? `Hablar orden por voz para ${selectedTarget.title || 'elemento seleccionado'}`
+                    : 'Hablar orden por voz con telemetría GPS'
+                }
+                aria-label="Grabar mensaje de voz"
+              >
+                <Mic size={20} />
+              </button>
+            )}
+
+            {/* 4. Botón de Deshacer (Undo) si hay historial */}
+            {undoStack.length > 0 && (
+              <button
+                type="button"
+                onClick={handleUndoMapAction}
+                disabled={isProcessingIa}
+                style={styles.chatIaUndoBtn}
+                title={`Retroceder cambios: ${undoStack[undoStack.length - 1].description}`}
+                aria-label="Retroceder cambios en el mapa"
+              >
+                <Undo2 size={17} />
+              </button>
+            )}
           </div>
         </div>
+      </div>
 
       {/* ── Modal para Guardar Nuevo Camino Trazado ──────────────────────────── */}
       {showSaveModal && (
@@ -3451,9 +4101,11 @@ export default function FarmSatelliteMap({
                   style={styles.selectField}
                 >
                   <option value="sendero">Sendero peatonal / de a pie</option>
+                  <option value="carril">Carril / Camino de rodadura agrícola</option>
                   <option value="camino">Camino principal / tractor</option>
-                  <option value="linea_riego">Línea de riego / Tubería</option>
+                  <option value="vereda">Vereda / Paso estrecho</option>
                   <option value="acequia">Acequia / Caudal de agua</option>
+                  <option value="linea_riego">Línea de riego / Tubería</option>
                   <option value="linde">Linde o delimitación</option>
                   <option value="otro">Otro trazado</option>
                 </select>
@@ -4210,18 +4862,17 @@ const styles = {
     cursor: 'pointer',
   },
 
-  // ─── Estilos del Módulo de Control por Chat IA en el Mapa ───
-  mapIaControlWrapper: {
+  // ─── Estilos del Módulo Fijo de Control por Chat IA en el Mapa ───
+  fixedBottomChatWrapper: {
     position: 'absolute',
-    bottom: 12,
-    left: 12,
-    right: 12,
+    bottom: 0,
+    left: 0,
+    right: 0,
     maxWidth: 820,
     margin: '0 auto',
     zIndex: 1000,
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
     pointerEvents: 'auto',
   },
   mapIaFeedbackBanner: {
@@ -4229,193 +4880,187 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '8px 12px',
+    margin: '0 12px 8px 12px',
     borderRadius: 8,
     border: '1px solid',
     boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
     backdropFilter: 'blur(8px)',
   },
-  selectedTargetCard: {
+  cleanTargetCard: {
     display: 'flex',
     flexDirection: 'column',
-    width: '100%',
-    boxSizing: 'border-box',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    border: '1.5px solid #cbd5e1',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)',
     padding: '12px 14px',
-    backgroundColor: 'rgba(255, 255, 255, 0.98)',
-    backdropFilter: 'blur(12px)',
-    borderRadius: 16,
-    border: '1.5px solid #00979d',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.16)',
-    gap: 10,
+    margin: '0 12px 10px 12px',
+    gap: 8,
+    boxSizing: 'border-box',
+    maxHeight: '45vh',
+    overflowY: 'auto',
   },
-  targetHeaderRow: {
+  cardHeaderRow: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
     gap: 10,
   },
-  targetThumbnail: {
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    borderRadius: 8,
-    objectFit: 'cover',
-    border: '1px solid #cbd5e1',
-    cursor: 'pointer',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-  },
-  targetIconCircle: {
-    width: 38,
-    height: 38,
-    minWidth: 38,
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    boxShadow: '0 2px 5px rgba(0,0,0,0.15)',
-  },
-  targetTitle: {
+  cardTitleInput: {
     fontWeight: 700,
-    fontSize: '0.85rem',
+    fontSize: '0.96rem',
     color: '#0f172a',
+    border: 'none',
+    outline: 'none',
+    backgroundColor: 'transparent',
+    flex: 1,
+    minWidth: 100,
+    padding: 0,
+    fontFamily: 'inherit',
   },
-  targetBadge: {
-    fontSize: '0.67rem',
-    fontWeight: 700,
-    padding: '2px 7px',
-    borderRadius: 10,
-    textTransform: 'uppercase',
-    letterSpacing: '0.02em',
-  },
-  targetSubtypeBadge: {
-    fontSize: '0.68rem',
-    fontWeight: 600,
-    padding: '2px 6px',
-    borderRadius: 6,
-    backgroundColor: '#f1f5f9',
-    color: '#475569',
-    border: '1px solid #e2e8f0',
-  },
-  targetMetaRow: {
+  cardHeaderRight: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    fontSize: '0.71rem',
-    color: '#64748b',
-    flexWrap: 'wrap',
-  },
-  targetNotesText: {
-    fontStyle: 'italic',
-    color: '#475569',
-    maxWidth: 240,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  },
-  targetActionsRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
     flexShrink: 0,
   },
-  targetActionBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 8px',
-    borderRadius: 6,
-    border: '1px solid #cbd5e1',
-    cursor: 'pointer',
-    fontSize: '0.74rem',
-    fontWeight: 600,
-    transition: 'all 0.15s ease',
-  },
-  targetDeleteBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 8px',
-    borderRadius: 6,
-    border: '1px solid #fecaca',
-    backgroundColor: '#fef2f2',
-    color: '#dc2626',
-    cursor: 'pointer',
-    fontSize: '0.74rem',
-    fontWeight: 600,
-    transition: 'all 0.15s ease',
-  },
-  actionBtnLabel: {
-    fontSize: '0.74rem',
-    fontWeight: 600,
-  },
-  targetEditForm: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    padding: '8px 10px',
-    backgroundColor: '#f8fafc',
-    borderRadius: 8,
-    border: '1px solid #e2e8f0',
-    marginTop: 6,
-    marginBottom: 4,
-  },
-  targetEditRow: {
-    display: 'flex',
-    gap: 6,
-    alignItems: 'center',
-    flexWrap: 'wrap',
-  },
-  targetEditInput: {
-    flex: 1,
-    minWidth: 120,
-    padding: '5px 8px',
-    borderRadius: 6,
-    border: '1px solid #cbd5e1',
-    fontSize: '0.78rem',
-    backgroundColor: '#ffffff',
-    color: '#1e293b',
-    outline: 'none',
-  },
-  targetEditSelect: {
-    padding: '5px 8px',
-    borderRadius: 6,
-    border: '1px solid #cbd5e1',
-    fontSize: '0.78rem',
-    backgroundColor: '#ffffff',
-    color: '#1e293b',
-    outline: 'none',
-  },
-  targetSaveBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '5px 10px',
-    borderRadius: 6,
-    border: 'none',
-    backgroundColor: '#00979d',
-    color: '#ffffff',
+  cardCategoryGray: {
     fontSize: '0.76rem',
     fontWeight: 600,
-    cursor: 'pointer',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
   },
-  targetCloseBtn: {
+  cardCloseBtn: {
     background: 'none',
     border: 'none',
     cursor: 'pointer',
     color: '#94a3b8',
-    padding: 6,
+    padding: 2,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: '50%',
-    transition: 'color 0.15s ease',
+  },
+  cardBodyColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    width: '100%',
+  },
+  cardFieldsRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    flexWrap: 'wrap',
+  },
+  cleanFieldInput: {
+    flex: 1,
+    minWidth: 120,
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #cbd5e1',
+    backgroundColor: '#ffffff',
+    color: '#1e293b',
+    fontSize: '0.8rem',
+    outline: 'none',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+  },
+  cleanFieldSelect: {
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #cbd5e1',
+    backgroundColor: '#ffffff',
+    color: '#1e293b',
+    fontSize: '0.8rem',
+    outline: 'none',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+  },
+  cleanFieldTextarea: {
+    width: '100%',
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #cbd5e1',
+    backgroundColor: '#ffffff',
+    color: '#1e293b',
+    fontSize: '0.8rem',
+    outline: 'none',
+    resize: 'none',
+    fontFamily: 'inherit',
+    boxSizing: 'border-box',
+  },
+  cardMetaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
+  cardMetaText: {
+    fontSize: '0.73rem',
+    color: '#64748b',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cardPhotoLink: {
+    fontSize: '0.73rem',
+    color: '#00979d',
+    textDecoration: 'none',
+    fontWeight: 600,
+    marginLeft: 6,
+  },
+  cardTrashBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: 3,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto',
+  },
+  cardLengthBadge: {
+    fontSize: '0.76rem',
+    fontWeight: 600,
+    color: '#475569',
+    backgroundColor: '#f1f5f9',
+    padding: '4px 8px',
+    borderRadius: 6,
+    whiteSpace: 'nowrap',
+  },
+  cleanLinkBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '0.75rem',
+    color: '#00979d',
+    fontWeight: 600,
+    padding: 0,
+  },
+  drawTypeSelect: {
+    padding: '4px 8px',
+    borderRadius: 6,
+    border: '1px solid #cbd5e1',
+    backgroundColor: '#ffffff',
+    color: '#1e293b',
+    fontSize: '0.74rem',
+    fontWeight: 600,
+    outline: 'none',
+    cursor: 'pointer',
   },
   pendingAttachmentCard: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
     padding: '6px 12px',
+    margin: '0 12px 8px 12px',
     backgroundColor: 'rgba(240, 253, 250, 0.98)',
     backdropFilter: 'blur(8px)',
     borderRadius: 12,
@@ -4450,22 +5095,28 @@ const styles = {
   chatIaInputBar: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: '8px',
+    padding: '10px 12px',
+    paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
+    backgroundColor: '#ffffff',
+    borderTop: '1px solid #e8e8e8',
     width: '100%',
-    position: 'relative',
+    boxSizing: 'border-box',
+    boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.05)',
   },
   chatIaAttachBtn: {
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    minHeight: 44,
+    width: 40,
+    height: 40,
+    minWidth: 40,
+    minHeight: 40,
     borderRadius: '50%',
-    border: '1px solid #e2e8f0',
+    border: 'none',
+    backgroundColor: '#f0f0f0',
+    color: '#555555',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
     flexShrink: 0,
     transition: 'all 0.15s ease',
   },
@@ -4473,33 +5124,33 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     flex: 1,
-    minHeight: 44,
+    minHeight: 42,
     maxHeight: 100,
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    border: '1px solid #cbd5e1',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
-    padding: '0 8px 0 16px',
-    overflow: 'hidden',
-    transition: 'border-color 0.15s ease',
+    backgroundColor: '#fafafa',
+    borderRadius: 22,
+    border: '1.5px solid #e0e0e0',
+    padding: '0 6px 0 14px',
+    boxSizing: 'border-box',
+    transition: 'border-color 0.2s',
   },
   chatIaTextInput: {
     flex: 1,
     border: 'none',
     outline: 'none',
     backgroundColor: 'transparent',
-    fontSize: '0.88rem',
-    color: '#1e293b',
+    color: '#1a1a1a',
     resize: 'none',
-    padding: '10px 0',
+    lineHeight: 1.4,
+    fontSize: '0.9rem',
+    maxHeight: 100,
+    overflowY: 'auto',
     fontFamily: 'inherit',
-    lineHeight: '20px',
-    maxHeight: 80,
+    padding: '9px 0',
   },
   capsuleCameraBtn: {
-    width: 32,
-    height: 32,
-    minWidth: 32,
+    width: 34,
+    height: 34,
+    minWidth: 34,
     borderRadius: '50%',
     border: 'none',
     display: 'flex',
@@ -4510,19 +5161,45 @@ const styles = {
     transition: 'all 0.15s ease',
   },
   chatIaActionBtn: {
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    minHeight: 44,
+    width: 40,
+    height: 40,
+    minWidth: 40,
+    minHeight: 40,
     borderRadius: '50%',
     border: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
-    boxShadow: '0 2px 8px rgba(0, 151, 157, 0.35)',
     flexShrink: 0,
-    transition: 'transform 0.1s ease',
+    transition: 'all 0.15s ease',
+  },
+  chatIaUndoBtn: {
+    width: 40,
+    height: 40,
+    minWidth: 40,
+    borderRadius: '50%',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    backgroundColor: '#334155',
+    color: '#ffffff',
+    flexShrink: 0,
+    boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+  },
+  targetCloseBtn: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: '#94a3b8',
+    padding: 6,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: '50%',
+    transition: 'color 0.15s ease',
   },
   chatIaAudioPreviewCapsule: {
     display: 'flex',

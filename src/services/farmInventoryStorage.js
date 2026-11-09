@@ -200,7 +200,17 @@ export async function loadFarmInventory() {
 
       // Conservar locales que no estén todavía en remoto (modo local-first)
       const pendingLocals = cleanLocal.filter((loc) => !remoteIds.has(String(loc.id)));
-      const merged = [...cleanRemote, ...pendingLocals];
+      let merged = [...cleanRemote, ...pendingLocals];
+
+      // Asegurar que Casita Cueva de referencia esté presente si no fue borrada expresamente
+      if (
+        !deletedIds.has('00000000-0000-4000-8000-000000000001') &&
+        !deletedIds.has('casita_cueva_principal') &&
+        !merged.some((i) => (i.name || '').toLowerCase().includes('cueva'))
+      ) {
+        merged = [DEFAULT_INITIAL_INVENTORY[0], ...merged];
+      }
+
       setLocalInventory(merged);
       return merged;
     }
