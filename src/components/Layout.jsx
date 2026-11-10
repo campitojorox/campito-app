@@ -54,44 +54,123 @@ export default function Layout({ session }) {
   const isChatIA = location.pathname.startsWith('/chat-ia');
   const isMapas = location.pathname.startsWith('/mapas');
 
+  // Limpiar término de búsqueda al cambiar de sección
+  useEffect(() => {
+    setSearchQuery('');
+  }, [location.pathname]);
+
+  const getSearchPlaceholder = () => {
+    if (location.pathname.startsWith('/mapas')) return 'Buscar árboles, hitos, caminos, parcelas...';
+    if (location.pathname.startsWith('/gasto-venta')) return 'Buscar gastos, ingresos, conceptos, personas...';
+    if (location.pathname.startsWith('/calendario')) return 'Buscar eventos, tareas, turnos de riego...';
+    if (location.pathname.startsWith('/chat-ia')) return 'Buscar en mensajes del chat...';
+    return 'Buscar en esta sección...';
+  };
+
   return (
     <div className="app-container">
-      {/* Top App Bar mimicking AppSheet — se oculta en Chat IA y Mapas */}
-      {!isChatIA && !isMapas && (
-        <header className="app-header" style={{ padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <button style={{ color: 'white', position: 'relative', display: 'flex' }} onClick={() => setIsMenuOpen(true)}>
-              <MenuIcon size={24} />
-              {needRefresh && (
-                <span style={{
-                  position: 'absolute',
-                  top: '-6px',
-                  right: '-8px',
-                  backgroundColor: 'var(--primary)',
-                  color: 'white',
-                  borderRadius: '50%',
-                  width: '18px',
-                  height: '18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  border: '2px solid var(--bg-color)'
-                }}>!</span>
-              )}
-            </button>
-            <Trees size={32} color="var(--primary)" />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {location.pathname !== '/historial' && (
-              <button style={{ color: 'var(--primary)' }} onClick={() => setIsSearchOpen(true)}>
-                <Search size={22} />
-              </button>
-            )}
-          </div>
-        </header>
-      )}
+      {/* Top App Bar con navegación integrada — Orden: Menú 3 rayitas, Calendario, Robot CHAT IA, Mapas, Contabilidad, Buscador */}
+      <header className="app-header" style={{ padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
+        {/* 1. Menú 3 rayitas */}
+        <button
+          style={{ background: 'none', border: 'none', color: isMenuOpen ? '#9edb9e' : '#888888', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '6px' }}
+          onClick={() => setIsMenuOpen(true)}
+          title="Menú"
+        >
+          <MenuIcon size={24} />
+          {needRefresh && (
+            <span style={{
+              position: 'absolute',
+              top: '-2px',
+              right: '-2px',
+              backgroundColor: 'var(--primary)',
+              color: 'white',
+              borderRadius: '50%',
+              width: '14px',
+              height: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '10px',
+              fontWeight: 'bold',
+              border: '2px solid var(--bg-color)'
+            }}>!</span>
+          )}
+        </button>
+
+        {/* 2. Calendario */}
+        <NavLink
+          to="/calendario"
+          style={({ isActive }) => ({
+            color: isActive ? '#9edb9e' : '#888888',
+            background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px'
+          })}
+          title="Calendario"
+        >
+          <Calendar size={24} />
+        </NavLink>
+
+        {/* 3. Robot CHAT IA */}
+        <NavLink
+          to="/chat-ia"
+          style={({ isActive }) => ({
+            color: isActive ? '#9edb9e' : '#888888',
+            background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px'
+          })}
+          title="Chat IA"
+        >
+          <Bot size={24} />
+        </NavLink>
+
+        {/* 4. Mapas */}
+        <NavLink
+          to="/mapas"
+          style={({ isActive }) => ({
+            color: isActive ? '#9edb9e' : '#888888',
+            background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px'
+          })}
+          title="Mapas"
+        >
+          <Globe size={24} />
+        </NavLink>
+
+        {/* 5. Contabilidad */}
+        <NavLink
+          to="/gasto-venta"
+          style={({ isActive }) => ({
+            color: isActive ? '#9edb9e' : '#888888',
+            background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px'
+          })}
+          title="Contabilidad"
+        >
+          <Euro size={24} />
+        </NavLink>
+
+        {/* 6. Buscador */}
+        <button
+          style={{ background: 'none', border: 'none', color: isSearchOpen ? '#9edb9e' : '#888888', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '6px' }}
+          onClick={() => setIsSearchOpen(prev => !prev)}
+          title="Buscar"
+        >
+          <Search size={24} />
+        </button>
+      </header>
 
       {/* Logout Confirmation Modal */}
       {isConfirmingSignOut && (
@@ -406,7 +485,7 @@ export default function Layout({ session }) {
         <div style={{ padding: '0.5rem 1rem', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <input 
             type="text" 
-            placeholder="Buscar eventos, gastos, etc..." 
+            placeholder={getSearchPlaceholder()} 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             autoFocus
@@ -423,22 +502,6 @@ export default function Layout({ session }) {
           <Outlet context={{ isSearchOpen, setIsSearchOpen, searchQuery, setSearchQuery, users, events, transactions, refetchUsers, refetchEvents, refetchTransactions, currentUser }} />
         </Suspense>
       </main>
-
-      {/* Bottom Navigation mimicking AppSheet */}
-      <nav className="bottom-nav">
-        <NavLink to="/chat-ia" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Bot size={32} style={{ display: 'block', margin: '0 auto' }} />
-        </NavLink>
-        <NavLink to="/gasto-venta" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Euro size={32} style={{ display: 'block', margin: '0 auto' }} />
-        </NavLink>
-        <NavLink to="/calendario" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Calendar size={32} style={{ display: 'block', margin: '0 auto' }} />
-        </NavLink>
-        <NavLink to="/mapas" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <Globe size={32} style={{ display: 'block', margin: '0 auto' }} />
-        </NavLink>
-      </nav>
     </div>
   );
 }

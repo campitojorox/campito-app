@@ -27,7 +27,6 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  Search,
   Filter,
   Printer,
   ChevronDown,
@@ -296,6 +295,8 @@ export default function FarmSatelliteMap({
   isFullScreen = false,
   onToggleFullScreen,
   isPageMode = false,   // true cuando se usa como página completa (/mapas)
+  searchQuery: propSearchQuery,
+  onSearchChange,
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -394,7 +395,9 @@ export default function FarmSatelliteMap({
   const userLocationLayerRef = useRef(null);
 
   // ─── Estados de búsqueda y filtros ───────────────────────────────────────────
-  const [searchQuery, setSearchQuery] = useState('');
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
+  const searchQuery = propSearchQuery !== undefined ? propSearchQuery : internalSearchQuery;
+  const setSearchQuery = onSearchChange || setInternalSearchQuery;
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   // visibleCategories: Set de categorías activas (base y dinámicas)
   const [visibleCategories, setVisibleCategories] = useState(() => {
@@ -551,6 +554,39 @@ export default function FarmSatelliteMap({
       return visiblePathTypes.has(pt);
     });
   }, [localPaths, searchQuery, visiblePathTypes]);
+
+  // Auto-enfocar en el mapa cuando hay una búsqueda activa
+  useEffect(() => {
+    const q = (searchQuery || '').trim();
+    if (!q || !mapInstanceRef.current) return;
+
+    if (filteredInventory.length === 1) {
+      const item = filteredInventory[0];
+      const lat = item.latitude || (item.coordenadas && item.coordenadas.lat);
+      const lng = item.longitude || (item.coordenadas && item.coordenadas.lng);
+      if (lat && lng) {
+        mapInstanceRef.current.setView([lat, lng], 19, { animate: true });
+      }
+    } else if (filteredInventory.length > 1) {
+      const coords = filteredInventory
+        .map((i) => [i.latitude || i.coordenadas?.lat, i.longitude || i.coordenadas?.lng])
+        .filter(([lat, lng]) => lat && lng);
+      if (coords.length > 0) {
+        const bounds = L.latLngBounds(coords);
+        if (bounds.isValid()) {
+          mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19, animate: true });
+        }
+      }
+    } else if (filteredPaths.length === 1) {
+      const coords = filteredPaths[0].coordinates;
+      if (Array.isArray(coords) && coords.length > 0) {
+        const bounds = L.latLngBounds(coords);
+        if (bounds.isValid()) {
+          mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19, animate: true });
+        }
+      }
+    }
+  }, [searchQuery, filteredInventory, filteredPaths]);
 
   // ─── 1. Inicialización de Leaflet y capas base ──────────────────────────────
   useEffect(() => {
@@ -2534,27 +2570,25 @@ export default function FarmSatelliteMap({
 
   return (
     <div style={isPageMode ? stylesPage.wrapper : styles.wrapper}>
-      {/* ── Barra Superior Limpia: Buscar, Filtros, PDF, Capas e Información ── */}
+      {/* ── Barra Superior: Filtros, Trazado, Capas, PDF e Información alineados a la derecha ── */}
       <div style={styles.topBarClean}>
-        {/* 1. Buscador */}
-        <div style={stylesFilter.searchBox}>
-          <Search size={14} color="#64748b" style={{ flexShrink: 0 }} />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={stylesFilter.searchInput}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
-            >
-              <X size={12} color="#94a3b8" />
-            </button>
-          )}
-        </div>
+        {/* Indicador de búsqueda activa desde la barra principal */}
+        {searchQuery && (
+          <div style={{
+            marginRight: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: '0.78rem',
+            color: '#00979d',
+            fontWeight: 600,
+            backgroundColor: 'rgba(0,151,157,0.08)',
+            padding: '4px 9px',
+            borderRadius: 12,
+          }}>
+            <span>🔍 {filteredInventory.length + filteredPaths.length} encontrados</span>
+          </div>
+        )}
 
         {/* 2. Filtros (Solo icono, sin recuadro exterior) */}
         <button
@@ -4283,6 +4317,7 @@ const styles = {
   topBarClean: {
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     padding: '8px 10px',
     backgroundColor: '#ffffff',
     borderBottom: '1px solid #e2e8f0',

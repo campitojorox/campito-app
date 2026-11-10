@@ -4,10 +4,12 @@
 // al componente FarmSatelliteMap en modo página completa.
 
 import { useState, useEffect, useCallback } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
 import { loadFarmInventory, loadFarmPaths } from '../services/farmInventoryStorage';
 
 export default function MapaFinca() {
+  const { searchQuery = '', isSearchOpen = false } = useOutletContext() || {};
   const [inventory, setInventory] = useState([]);
   const [paths, setPaths] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,7 @@ export default function MapaFinca() {
         onReloadPaths={loadPaths}
         onPathCreated={(newPath) => setPaths(prev => [newPath, ...prev])}
         isPageMode={true}
+        searchQuery={isSearchOpen ? searchQuery : ''}
       />
     </div>
   );

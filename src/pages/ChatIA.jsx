@@ -1,7 +1,7 @@
 // src/pages/ChatIA.jsx — Chat IA Campito Jorox
 // Conexión directa a Google Gemini con sistema multi-servidor y fallback automático de cuota
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -984,6 +984,8 @@ export default function ChatIA() {
     events: outletEvents = [],
     transactions: outletTransactions = [],
     users: outletUsers = [],
+    searchQuery: outletSearchQuery = '',
+    isSearchOpen = false,
     refetchEvents,
     refetchTransactions,
   } = outletContext;
@@ -1063,6 +1065,17 @@ export default function ChatIA() {
     }
     return [WELCOME_MESSAGE];
   });
+
+  // Filtrado de mensajes reactivo al buscador principal
+  const displayedMessages = useMemo(() => {
+    if (!isSearchOpen || !outletSearchQuery.trim()) return messages;
+    const q = outletSearchQuery.toLowerCase().trim();
+    return messages.filter(
+      (m) =>
+        (m.text && m.text.toLowerCase().includes(q)) ||
+        (m.content && m.content.toLowerCase().includes(q))
+    );
+  }, [messages, isSearchOpen, outletSearchQuery]);
 
   // Mantener borrador en curso si el usuario estaba escribiendo y fue a otra sección
   const [input, setInput] = useState(() => {
@@ -3456,7 +3469,12 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         </div>
       )}
       <div style={styles.messagesArea}>
-        {messages.map((msg) => {
+        {isSearchOpen && outletSearchQuery.trim() && displayedMessages.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
+            🔍 No se encontraron mensajes con "{outletSearchQuery.trim()}".
+          </div>
+        )}
+        {displayedMessages.map((msg) => {
           const isUser = msg.role === 'user';
 
           return (
