@@ -345,8 +345,8 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 .fab {
   position: fixed;
-  bottom: 90px;
-  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: calc(20px + env(safe-area-inset-right, 0px));
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -357,6 +357,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   justify-content: center;
   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
   z-index: 100;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.fab:active {
+  transform: scale(0.95);
 }
 
 @keyframes pulse-color {

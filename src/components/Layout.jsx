@@ -83,7 +83,7 @@ export default function Layout({ session }) {
               position: 'absolute',
               top: '-2px',
               right: '-2px',
-              backgroundColor: 'var(--primary)',
+              backgroundColor: '#ef4444',
               color: 'white',
               borderRadius: '50%',
               width: '14px',
