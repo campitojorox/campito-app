@@ -56,6 +56,7 @@ import {
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
 import { getLocalInventory, getLocalPaths, insertFarmInventoryItem, deleteFarmInventoryItem } from '../services/farmInventoryStorage';
 import { parseStructuredCommands, executeInventoryActions } from '../services/mapIaOrchestrator';
+import { deleteCalendarEvent } from '../services/calendarService';
 
 // ─── Configuración de Modelos de Gemini (Ordenados de más a menos potente) ─────
 const GEMINI_SERVERS = [
@@ -126,6 +127,14 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
   c) Si no hay turnos agendados en esa fecha exacta, indícaselo con total transparencia ("He consultado el calendario oficial de Campito Jorox y para el sábado 14 de noviembre no hay ningún turno agendado actualmente"), lístale los turnos más cercanos y ofrécele programarlo de inmediato.
 - Si te piden programar un turno o evento (ej: "Apunta riego el sábado 14 de 09:00 a 11:30 en La Nana con Ariel"), confírmalo y añade al final de tu respuesta el comando:
   [[CREAR_EVENTO: {"date": "YYYY-MM-DD", "start_time": "HH:MM", "end_time": "HH:MM", "category": "RIEGO - La Nana|RIEGO - El Moro|MANTENIMIENTO - Poda|etc", "responsibles": ["Nombre"], "info": "Notas adicionales"}]]
+- Si te piden BORRAR, ELIMINAR O CANCELAR un evento o turno del calendario (ej: "Borra el riego del sábado", "Cancela el evento del 14 de noviembre", "Elimina la poda de mañana", "Elimina el evento con ID 12"):
+  a) Localiza el evento en el calendario inyectado por su ID, fecha o descripción/categoría.
+  b) Confirma amablemente en tu respuesta que el evento ha sido eliminado indicando qué turno o evento se ha borrado.
+  c) Añade OBLIGATORIAMENTE al final de tu respuesta el comando estructurado oficial:
+     [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "descripción o categoría", "event_id": "ID_del_evento"}]]
+     o alternativamente:
+     [[ELIMINAR_EVENTO: {"event_id": "ID_del_evento"}]]
+     (puedes incluir "event_id" si lo identificas, y/o "date" y "query" con las palabras clave del evento).
 
 2. 💰 **ACCESO TOTAL A CONTABILIDAD, GASTOS Y BALANCES FINANCIEROS**:
 - Tienes acceso nativo a todas las transacciones de Campito Jorox inyectadas en '💰 CONTABILIDAD Y BALANCES FINANCIEROS'.
@@ -262,7 +271,7 @@ function formatEventsContext(events) {
     const notas = ev.info ? ` | Notas: ${ev.info}` : '';
     const categoria = ev.category || 'General';
 
-    return `- [${rawDate} · ${diaSemana}] ${categoria} | Horario: ${horario} | Responsables: ${resp}${notas}`;
+    return `- [ID: ${ev.id}] [${rawDate} · ${diaSemana}] ${categoria} | Horario: ${horario} | Responsables: ${resp}${notas}`;
   });
 
   return `\n\n📅 **CALENDARIO Y TURNOS DE RIEGO PROGRAMADOS (${events.length} turnos/eventos en base de datos)**:
@@ -272,6 +281,8 @@ ${lines.join('\n')}
   1. Busca en la lista superior.
   2. Si encuentras turnos en esa fecha o sector (La Nana o El Moro), responde inmediatamente con el horario exacto, el sector y los responsables asignados.
   3. Si no hay turnos exactamente en esa fecha, infórmaselo con total claridad ("He comprobado el calendario y para el sábado 14 de noviembre no hay turnos agendados"), menciona los turnos programados más cercanos y ofrécete a programarlo de inmediato.
+- Para programar o añadir un evento: usa [[CREAR_EVENTO: {"date": "YYYY-MM-DD", "start_time": "HH:MM", "end_time": "HH:MM", "category": "...", "responsibles": ["..."], "info": "..."}]].
+- Para borrar o cancelar un evento: usa [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "...", "event_id": "..."}]] o [[ELIMINAR_EVENTO: {"event_id": "..."}]].
 - NUNCA respondas que no tienes acceso al calendario ni que el usuario no te ha dicho qué horario hay.*`;
 }
 
@@ -495,7 +506,7 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
 
   if (!prompt && audio) {
     userParts.push({
-      text: 'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Transcribe o interpreta lo que dice y responde a su consulta o petición. Si consulta sobre el calendario o turnos de riego, revisa el calendario inyectado y responde con el horario exacto. Si consulta sobre la contabilidad, responde con los balances reales. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla de la finca, guárdala con [[MEMORIA: {...} ]]. Si pide borrar un punto, usa [[BORRAR_PUNTO: {...}]]. Responde detalladamente en español.',
+      text: 'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Transcribe o interpreta lo que dice y responde a su consulta o petición. Si consulta sobre el calendario o turnos de riego, revisa el calendario inyectado y responde con el horario exacto. Si pide programar un turno o evento, usa [[CREAR_EVENTO: {...}]]. Si pide borrar o cancelar un evento del calendario, usa [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "...", "event_id": "..."}]] o [[ELIMINAR_EVENTO: {"event_id": "..."}]]. Si consulta sobre la contabilidad, responde con los balances reales. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla de la finca, guárdala con [[MEMORIA: {...} ]]. Si pide borrar un punto, usa [[BORRAR_PUNTO: {...}]]. Responde detalladamente en español.',
     });
   } else if (!prompt && att) {
     userParts.push({
@@ -1605,7 +1616,7 @@ Si el usuario te pregunta:
 - O preguntas similares sobre el GPS:
 RESPONDE SIEMPRE ROTUNDAMENTE QUE SÍ:
 "¡Sí! La app de Campito Jorox obtiene continuamente tu posición GPS en tiempo real. Ahora mismo tu teléfono está transmitiendo las coordenadas [${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}] con precisión de ±${effectivePt.accuracy ? effectivePt.accuracy.toFixed(1) + 'm' : '3.5m'}."
-Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si te pide aprender una regla o dato de la finca, usa [[MEMORIA: {...}]].*`;
+Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si te pide aprender una regla o dato de la finca, usa [[MEMORIA: {...}]]. Si te pide programar un turno, usa [[CREAR_EVENTO: {...}]]. Si te pide borrar o cancelar un evento del calendario, usa [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "...", "event_id": "..."}]] o [[ELIMINAR_EVENTO: {"event_id": "..."}]].*`;
 
       // 1. Refrescar datos en vivo de Supabase para que el asistente tenga el calendario,
       // la contabilidad y la memoria permanente 100% actualizados en cada respuesta
@@ -1734,6 +1745,9 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           .replace(/\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
           .replace(/\[\[REGISTRAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
           .replace(/\[\[EDITAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+          .replace(/\[\[CREAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+          .replace(/\[\[BORRAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+          .replace(/\[\[ELIMINAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
           .trim();
 
         const actionsToExecute = [
@@ -1859,6 +1873,33 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             }
           } catch (e) {
             console.warn('Error al procesar bloque CREAR_EVENTO:', e);
+          }
+        }
+
+        // 3b. Detección y ejecución de orden de borrado o cancelación de evento en el calendario
+        const delEventMatches = [
+          ...successResult.matchAll(/\[\[(?:BORRAR_EVENTO|ELIMINAR_EVENTO):\s*(\{[\s\S]*?\})\s*\]\]/gi),
+        ];
+        for (const delMatch of delEventMatches) {
+          try {
+            const delData = JSON.parse(delMatch[1]);
+            displayedContent = displayedContent.replace(delMatch[0], '').trim();
+
+            const delRes = await deleteCalendarEvent({
+              event_id: delData.event_id || delData.id,
+              date: delData.date,
+              query: delData.query || delData.info || delData.category || delData.description,
+              currentEvents,
+            });
+
+            if (delRes.success && delRes.deletedId) {
+              setFincaEvents((prev) => prev.filter((ev) => ev.id?.toString() !== delRes.deletedId.toString()));
+              if (refetchEvents) refetchEvents();
+            } else {
+              console.warn('[ChatIA] No se pudo borrar el evento:', delRes.error);
+            }
+          } catch (e) {
+            console.warn('[ChatIA] Error al procesar bloque BORRAR_EVENTO/ELIMINAR_EVENTO:', e);
           }
         }
 

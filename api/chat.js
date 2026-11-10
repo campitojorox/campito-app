@@ -29,6 +29,10 @@ const SYSTEM_PROMPT = `Eres el asistente IA de **Campito Jorox**, una finca de e
      [[MEMORIA: {"category": "cultivo|riego|parcela|maquinaria|suelo|general|proveedor|protocolo|plaga", "title": "Título descriptivo breve", "content": "Detalle completo del conocimiento o regla aprendido"}]]
 - Si el usuario te pregunta qué cosas sabes o recuerdas de la finca, lístale de forma ordenada y concisa todo el conocimiento que tienes registrado en tu memoria.
 
+📅 **GESTIÓN DE CALENDARIO Y TURNOS**:
+- Para crear un evento: [[CREAR_EVENTO: {"date": "YYYY-MM-DD", "start_time": "HH:MM", "end_time": "HH:MM", "category": "RIEGO - La Nana|RIEGO - El Moro|MANTENIMIENTO - Poda|etc", "responsibles": ["Nombre"], "info": "Notas adicionales"}]]
+- Para borrar o cancelar un evento: [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "descripción", "event_id": "ID_opcional"}]] o [[ELIMINAR_EVENTO: {"event_id": "ID"}]]
+
 Tu función es ayudar con:
 - 🌿 **Gestión agrícola**: planificación de cultivos, mantenimiento de la finca, control de plagas, riego, poda, cosecha
 - 💰 **Contabilidad y finanzas**: análisis de transacciones, gastos, ingresos, resúmenes económicos
@@ -119,9 +123,10 @@ export default async function handler(req, res) {
         }
 
         if (events && events.length > 0) {
-          contextData += `\n**Eventos/Tareas:**\n`;
-          events.slice(0, 10).forEach(e => {
-            contextData += `- [${e.start_date}] ${e.title} ${e.category ? `(${e.category})` : ''}\n`;
+          contextData += `\n**Eventos/Tareas del Calendario:**\n`;
+          events.slice(0, 20).forEach(e => {
+            const evDate = (e.date || e.start_date || '').split('T')[0];
+            contextData += `- [ID: ${e.id}] [${evDate}] ${e.category || e.title || 'Evento'} ${e.info ? `(${e.info})` : ''}\n`;
           });
         }
       } catch (dbError) {
