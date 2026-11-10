@@ -50,7 +50,7 @@ import {
   Route
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
+import { useVoiceGeoTracker, setGlobalLastKnownGps } from '../hooks/useVoiceGeoTracker';
 import {
   getLocalInventory,
   getLocalPaths,
@@ -60,7 +60,19 @@ import {
   insertFarmPath,
   updateFarmPath,
   deleteFarmPath,
+  BASE_CATEGORY_MAP,
+  BASE_CATEGORY_COLORS,
+  DYNAMIC_PALETTE,
+  getCategoryColor,
+  PATH_TYPE_COLORS,
+  getItemCategory,
+  getSubcategoriesForParent,
 } from '../services/farmInventoryStorage';
+import {
+  callGeminiForInventoryAction,
+  executeInventoryActions,
+  parseStructuredCommands,
+} from '../services/mapIaOrchestrator';
 import { interpolateGpsAtAudioTime } from '../utils/geoAudioInterpolation';
 import {
   exportInventoryToExcel,
@@ -88,179 +100,14 @@ const COLOR_PALETTE = [
   { name: 'Gris Pizarra', hex: '#64748b' },
 ];
 
-// ─── Sistema Dinámico de Categorías y Filtros ─────────────────────────────────
-// Categorías base oficiales de Campito Jorox con sus palabras clave de clasificación
-export const BASE_CATEGORY_MAP = {
-  'Árboles': ['aguacate', 'olivo', 'limonero', 'naranjo', 'citrico', 'arbol', 'frutales', 'algarrobo', 'granado', 'mango', 'higuera', 'frutal'],
-  'Plantas': ['planta', 'hierba', 'arbusto', 'herbaceo', 'vegetal', 'palmera', 'bambu', 'huerta'],
-  'Riego / Agua': ['riego', 'llave', 'gotero', 'filtro', 'valvula', 'contador', 'arqueta', 'pozo', 'deposito', 'cisterna', 'grifo', 'tuberia', 'manguera', 'aspersor', 'bomba', 'caudal', 'acequia'],
-  'Casas / Edificios': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
-  'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario', 'apero'],
-  'Hitos': ['mojon', 'linde', 'piedra', 'marca', 'señal', 'cota', 'limite'],
-  'Otros': [],
-};
-
-// Colores por defecto para las categorías base
-export const BASE_CATEGORY_COLORS = {
-  'Árboles': '#16a34a',           // Verde oscuro
-  'Plantas': '#4ade80',           // Verde claro
-  'Riego / Agua': '#0284c7',      // Azul
-  'Casas / Edificios': '#eab308', // Amarillo
-  'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
-  'Herramientas': '#f97316',      // Naranja
-  'Hitos': '#8b5cf6',             // Púrpura
-  'Otros': '#64748b',             // Pizarra
-};
-
-// Paleta de colores vivos asignables deterministamente a nuevas categorías dinámicas
-export const DYNAMIC_PALETTE = [
-  '#06b6d4', // Cian
-  '#ec4899', // Rosa fucsia
-  '#14b8a6', // Teal esmeralda
-  '#f43f5e', // Coral
-  '#a855f7', // Púrpura
-  '#6366f1', // Índigo
-  '#84cc16', // Lima
-  '#d97706', // Ámbar tostado
-  '#0d9488', // Verde azulado
-  '#e11d48', // Rubí
-];
-
-/**
- * Obtiene el color visual asociado a una categoría (base o dinámica)
- */
-export function getCategoryColor(categoryName) {
-  if (!categoryName) return '#64748b';
-  if (BASE_CATEGORY_COLORS[categoryName]) return BASE_CATEGORY_COLORS[categoryName];
-
-  // Hash determinista para asignar color consistente a cualquier nueva categoría
-  let hash = 0;
-  for (let i = 0; i < categoryName.length; i++) {
-    hash = categoryName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const index = Math.abs(hash) % DYNAMIC_PALETTE.length;
-  return DYNAMIC_PALETTE[index];
-}
-
-// Aliases para retrocompatibilidad
+// ─── Sistema Dinámico de Categorías y Filtros (Centralizado) ─────────────────
 const CATEGORY_MAP = BASE_CATEGORY_MAP;
 const CATEGORY_COLORS = BASE_CATEGORY_COLORS;
 
-// Color de línea por tipo de camino
-const PATH_TYPE_COLORS = {
-  'camino': '#92400e',        // Marrón
-  'carril': '#a16207',        // Ocre / tierra
-  'sendero': '#b45309',       // Marrón claro
-  'vereda': '#d97706',        // Ámbar
-  'acequia': '#1d4ed8',       // Azul marino
-  'linea_riego': '#38bdf8',   // Azul claro
-  'linde': '#ef4444',         // Rojo
-  'otro': '#64748b',          // Pizarra
-};
-
 /**
- * Determina la categoría de un elemento del inventario.
- * Si coincide con palabras clave de una categoría base, la asigna;
- * si contiene una categoría personalizada (ej: "invernadero", "fauna"),
- * la promueve a categoría dinámica propia en lugar de agruparla en 'Otros'.
+ * Adaptador de compatibilidad para comandos estructurados
  */
-export function getItemCategory(item) {
-  if (!item) return 'Otros';
-
-  // 1. Coincidencia directa con clave base existente
-  if (item.category && BASE_CATEGORY_MAP[item.category]) {
-    return item.category;
-  }
-
-  const text = [item.category, item.tipo, item.variety_type, item.name, item.title]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
-    if (parent === 'Otros') continue;
-    if (keywords.some(k => text.includes(k))) return parent;
-  }
-
-  // 2. Si el item tiene una categoría explícita no contemplada en las base, se convierte en categoría dinámica
-  const explicitCat = (item.category || item.tipo || '').trim();
-  if (explicitCat && explicitCat.toLowerCase() !== 'otros' && explicitCat.toLowerCase() !== 'otro') {
-    return explicitCat.charAt(0).toUpperCase() + explicitCat.slice(1);
-  }
-
-  return 'Otros';
-}
-
-/**
- * Genera lista de subcategorías únicas dentro de una categoría,
- * extrayendo de variety_type, name o tipo de los items reales.
- */
-export function getSubcategoriesForParent(inventory, parent) {
-  const subs = new Set();
-  (inventory || []).forEach(item => {
-    const itemParent = getItemCategory(item);
-    if (itemParent === parent) {
-      const subLabel = item.variety_type || item.tipo || item.name;
-      if (subLabel && subLabel !== parent) {
-        subs.add(subLabel);
-      }
-    }
-  });
-  return [...subs];
-}
-
-/**
- * Analizador universal de comandos estructurados emitidos por el agente IA o ingresados por el usuario:
- * - [[REGISTRAR_PUNTOS: [ { ... } ] ]]
- * - [[REGISTRAR_PUNTO: { ... } ]]
- * - [[BORRAR_PUNTO: { ... } ]]
- */
-export function parseRegisterPointsCommands(rawText) {
-  if (!rawText || typeof rawText !== 'string') return [];
-  const results = [];
-
-  // 1. Extraer bloques de múltiples puntos: [[REGISTRAR_PUNTOS: [...] ]]
-  const batchRegex = /\[\[REGISTRAR_PUNTOS:\s*(\[[\s\S]*?\])\s*\]\]/gi;
-  let batchMatch;
-  while ((batchMatch = batchRegex.exec(rawText)) !== null) {
-    try {
-      const cleanJson = batchMatch[1].replace(/,\s*([\]}])/g, '$1');
-      const items = JSON.parse(cleanJson);
-      if (Array.isArray(items)) {
-        results.push(...items);
-      }
-    } catch (err) {
-      console.warn('[Parser] Error parseando bloque REGISTRAR_PUNTOS:', err);
-      const objMatches = batchMatch[1].match(/\{[\s\S]*?\}/g);
-      if (objMatches) {
-        for (const om of objMatches) {
-          try {
-            results.push(JSON.parse(om.replace(/,\s*([\]}])/g, '$1')));
-          } catch (_) {}
-        }
-      }
-    }
-  }
-
-  // 2. Extraer puntos individuales: [[REGISTRAR_PUNTO: {...} ]]
-  const singleRegex = /\[\[REGISTRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi;
-  let singleMatch;
-  while ((singleMatch = singleRegex.exec(rawText)) !== null) {
-    try {
-      const cleanJson = singleMatch[1].replace(/,\s*([\]}])/g, '$1');
-      const item = JSON.parse(cleanJson);
-      if (item && typeof item === 'object') {
-        results.push(item);
-      }
-    } catch (err) {
-      console.warn('[Parser] Error parseando bloque REGISTRAR_PUNTO:', err);
-    }
-  }
-
-  return results;
-}
+export const parseRegisterPointsCommands = (rawText) => parseStructuredCommands(rawText).points;
 
 // Tipos de camino para filtros
 const PATH_TYPES = ['camino', 'carril', 'sendero', 'vereda', 'acequia', 'linea_riego', 'linde', 'otro'];
@@ -435,310 +282,9 @@ function isDeleteIntent(text) {
 }
 
 /**
- * Motor IA directo de Campito Jorox para ejecutar órdenes sobre el mapa satelital
- * mediante modelos Google Gemini con fallback automático de cuotas y soporte multimodal
- * (audio de voz, fotografías con cámara, documentos adjuntos y selección precisa de pines/lindes).
+ * Conector unificado con el Orquestador IA de Cartografía e Inventario
  */
-async function callGeminiForMapAction({
-  prompt,
-  audio,
-  attachment,
-  selectedTarget,
-  visibleInventory = [],
-  visiblePaths = [],
-  mapCenter,
-  currentGps,
-  apiKey,
-}) {
-  const inventoryContext = visibleInventory.slice(0, 80).map((i) => ({
-    id: i.id,
-    name: i.name || i.tipo,
-    category: getItemCategory(i),
-    variety: i.variety_type,
-    status: i.status || i.estado || 'saludable',
-    lat: i.latitude || i.coordenadas?.lat,
-    lng: i.longitude || i.coordenadas?.lng,
-    notes: i.notes || '',
-    photo_url: i.photo_url || i.foto_url || null,
-  }));
-
-  const pathsContext = visiblePaths.slice(0, 30).map((p) => ({
-    id: p.id,
-    name: p.name,
-    path_type: p.path_type,
-    color: p.color,
-    length_m: p.length_meters,
-    notes: p.notes || '',
-  }));
-
-  const centerLat = selectedTarget?.lat || (audio?.gpsTrack && audio.gpsTrack[0]?.lat) || currentGps?.lat || mapCenter?.[0] || DEFAULT_CENTER[0];
-  const centerLng = selectedTarget?.lng || (audio?.gpsTrack && audio.gpsTrack[0]?.lng) || currentGps?.lng || mapCenter?.[1] || DEFAULT_CENTER[1];
-
-  const targetInfoStr = selectedTarget ? `
-🎯 ELEMENTO ACTUALMENTE SELECCIONADO / PINCHADO EN EL MAPA:
-- Tipo: ${selectedTarget.type} (punto de inventario, trazado o coordenada de linde)
-- ID: ${selectedTarget.id || 'N/A'}
-- Nombre/Título: ${selectedTarget.title || 'N/A'}
-- Categoría/Variedad: ${selectedTarget.category || selectedTarget.variety || selectedTarget.path_type || 'N/A'}
-- Estado fitosanitario actual: ${selectedTarget.status || 'N/A'}
-- Notas actuales: ${selectedTarget.notes || 'Ninguna'}
-- Coordenadas exactas: Lat ${selectedTarget.lat || centerLat}, Lng ${selectedTarget.lng || centerLng}
-${selectedTarget.photo_url ? `- Foto previa: ${selectedTarget.photo_url}` : ''}
-
-REGLAS CRÍTICAS DE ELEMENTO SELECCIONADO:
-1. El usuario tiene SELECCIONADO este pin o coordenada. Cualquier orden de voz, texto o foto enviada está DIRIGIDA A ESTE ELEMENTO.
-2. Si el usuario pide cambios como:
-   - "cámbialo a clorosis / seco / enfermo / poda requerida / saludable" -> UPDATE_POINT con {"status": "clorosis"|"enfermo"|"poda_requerida"|"saludable"}
-   - "ponle nota de ...", "añade que ...", "apunta observación ..." -> UPDATE_POINT o UPDATE_PATH agregando la nota técnica
-   - "renómbralo como ...", "cambia su nombre a ..." -> UPDATE_POINT o UPDATE_PATH con {"name": "..."}
-   - "cambia su color a ..." -> UPDATE_PATH o UPDATE_POINT con {"color": "#hex"}
-   - "elimínalo / bórralo" -> DELETE_POINT o DELETE_PATH con su target_id '${selectedTarget.id}'
-3. Si el elemento seleccionado es de tipo 'coord' o 'catastro' (una coordenada del mapa o linde de parcela) y el usuario dice o describe cualquier elemento (ej: "mi casa", "casa", "llave", "arqueta", "aguacate", "gotero", "mojón", "depósito", "taller", "edificio"):
-   - Genera acción "ADD_POINT" en esas coordenadas exactas (lat: ${selectedTarget.lat}, lng: ${selectedTarget.lng}).
-   - Asigna como "name" el nombre indicado (ej: "Mi Casa", "Casa", "Arqueta de Riego").
-   - Asigna "category": 'edificio' (para casa, almacén, caravana, nave, caseta), 'arbol', 'planta', 'riego', 'herramienta' o 'hito'.
-4. Si el usuario adjunta una foto, asocia los hallazgos en las notas de este elemento.` : '';
-
-  const systemInstruction = `Eres el motor de control IA del mapa satelital de Campito Jorox (Parcelas 195 y 196).
-Tu misión es interpretar órdenes de voz, fotos adjuntas y texto del agricultor y ejecutar acciones directas sobre los puntos de inventario y trazados del mapa.
-${targetInfoStr}
-
-Coordenadas de referencia actuales:
-- GPS Usuario: ${currentGps ? `${currentGps.lat.toFixed(6)}, ${currentGps.lng.toFixed(6)} (precisión: ±${currentGps.accuracy}m)` : 'No disponible'}
-- Centro del mapa / Coordenada activa: ${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}
-
-Elementos actualmente visibles en el mapa:
-PUNTOS DE INVENTARIO (${inventoryContext.length}):
-${JSON.stringify(inventoryContext)}
-
-TRAZADOS Y CAMINOS (${pathsContext.length}):
-${JSON.stringify(pathsContext)}
-
-INSTRUCCIONES SUPREMAS:
-- Devuelve un JSON estructurado o los comandos oficiales:
-Para registrar puntos (árboles, arquetas, tuberías, edificios, casas o cualquier elemento de la finca):
-[[REGISTRAR_PUNTOS: [
-  {
-    "name": "Nombre claro del elemento (ej: 'Aguacate Hass 3', 'Arqueta Principal')",
-    "category": "arbol|riego|edificio|planta|herramienta|hito|o categoría nueva",
-    "tipo": "especie o tipo de elemento",
-    "variedad": "variedad botánica o subtipo si aplica",
-    "estado": "saludable|clorosis|poda_requerida|enfermo|seco",
-    "observaciones": "observaciones del agricultor o notas",
-    "latitude": ${centerLat},
-    "longitude": ${centerLng},
-    "timestamp_audio_s": 0.0
-  }
-] ]]
-O para un único punto:
-[[REGISTRAR_PUNTO: { ... } ]]
-O para borrar:
-[[BORRAR_PUNTO: { "target": "ultimo|especifico", "query": "..." } ]]
-O esquema JSON estándar:
-{
-  "description": "Resumen conciso en español...",
-  "transcription": "Texto transcrito del audio...",
-  "actions": [
-    {
-      "type": "ADD_POINT" | "CREATE_POINT" | "DELETE_POINT" | "DELETE_PATH" | "UPDATE_POINT" | "UPDATE_PATH",
-      "target_id": "uuid si es update/delete",
-      "data": { ... }
-    }
-  ]
-}
-
-Reglas generales:
-1. "borrar / eliminar / quitar": Encuentra los elementos coincidentes o usa el elemento seleccionado y genera DELETE_POINT o DELETE_PATH.
-2. "editar / cambiar estado / cambiar nota": Actualiza el pin con UPDATE_POINT (status, variety_type, notes, name).
-3. "cambiar color": Genera UPDATE_PATH o UPDATE_POINT con {"color": "#hex"}.
-4. "añadir / colocar / poner / registrar / guardar / nuevo / o mención de un elemento (ej: 'mi casa', 'casa', 'arqueta', 'limonero', 'depósito')": Genera "ADD_POINT" con:
-   {
-     "name": "Nombre claro del elemento (ej: 'Mi Casa', 'Arqueta Principal', 'Aguacate Hass')",
-     "category": "edificio"|"arbol"|"planta"|"riego"|"herramienta"|"hito",
-     "variety_type": "variedad o subtipo si aplica",
-     "status": "saludable",
-     "latitude": ${centerLat},
-     "longitude": ${centerLng},
-     "notes": "observaciones del agricultor o transcripción"
-   }
-   * Si el usuario dice "mi casa" o "casa", category DEBE ser "edificio".
-   * Si dice "aguacate", "limonero", "olivo", category DEBE ser "arbol".
-   * Si dice "arqueta", "llave", "gotero", "pozo", category DEBE ser "riego".
-5. Si no hay elementos coincidentes ni órdenes claras, devuelve:
-   {"description": "No se encontraron elementos coincidentes con la orden", "transcription": "", "actions": []}
-`;
-
-  const userParts = [];
-  if (prompt) {
-    userParts.push({ text: prompt });
-  }
-
-  // Soporte multimodal para fotos y documentos
-  if (attachment) {
-    if (attachment.textContent) {
-      userParts.push({
-        text: `\n\n📄 **CONTENIDO DEL ARCHIVO ADJUNTO ("${attachment.name || 'documento'}")**:\n\`\`\`\n${attachment.textContent}\n\`\`\`\n`,
-      });
-    }
-
-    if (attachment.dataUrl) {
-      const match = attachment.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
-      if (match) {
-        const cleanMime = match[1].toLowerCase().split(';')[0].trim();
-        if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
-          userParts.push({
-            inlineData: {
-              mimeType: cleanMime,
-              data: match[2],
-            },
-          });
-        }
-      }
-    }
-  }
-
-  // Soporte multimodal de audio de voz con telemetría GPS
-  if (audio && audio.dataUrl) {
-    const match = audio.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
-    if (match) {
-      userParts.push({
-        inlineData: {
-          mimeType: match[1].split(';')[0].trim(),
-          data: match[2],
-        },
-      });
-    } else {
-      const cleanMime = (audio.mimeType || 'audio/webm').split(';')[0].trim();
-      const cleanBase64 = audio.dataUrl.replace(/^data:.*?;base64,/, '');
-      userParts.push({
-        inlineData: {
-          mimeType: cleanMime,
-          data: cleanBase64,
-        },
-      });
-    }
-  }
-
-  // Si se envió un audio sin texto de prompt, añadir instrucción explícita a Gemini
-  if (!prompt && audio) {
-    userParts.push({
-      text: selectedTarget
-        ? `Por favor escucha atentamente este mensaje de voz del agricultor para el elemento seleccionado "${selectedTarget.title}" (${selectedTarget.type} en lat ${selectedTarget.lat}, lng ${selectedTarget.lng}). Transcribe lo que dice en "transcription", interpreta la orden (añadir pin, renombrar, cambiar estado, notas o borrar) y genera el JSON con la acción correspondiente (ej: ADD_POINT si pide registrar un elemento como 'mi casa', 'arqueta', etc.).`
-        : `Por favor escucha atentamente este mensaje de voz del agricultor para el mapa de Campito Jorox. Transcribe lo que dice en "transcription", interpreta la orden y devuelve el JSON con la acción requerida (ej: "ADD_POINT" en lat ${centerLat}, lng ${centerLng} si nombra un elemento como 'mi casa', 'árbol', 'arqueta', etc.).`,
-    });
-  } else if (userParts.length === 0) {
-    userParts.push({ text: selectedTarget ? `Analizar y actualizar elemento seleccionado: ${selectedTarget.title}` : 'Interpretar orden del mapa' });
-  }
-
-  const payload = {
-    contents: [{ role: 'user', parts: userParts }],
-    system_instruction: { parts: [{ text: systemInstruction }] },
-    generationConfig: {
-      temperature: 0.1,
-      response_mime_type: 'application/json',
-    },
-  };
-
-  const MAP_GEMINI_MODELS = [
-    'gemini-3.5-flash',
-    'gemini-3.1-pro-preview',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-3.1-flash-lite',
-  ];
-
-  let lastError = null;
-  for (const modelId of MAP_GEMINI_MODELS) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), ((audio || attachment) ? 35000 : 20000));
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error?.message || `HTTP ${res.status}`);
-      }
-
-      const resData = await res.json();
-      const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) throw new Error('Respuesta vacía del modelo');
-
-      // 1. Extraer bloques de comando estructurado [[REGISTRAR_PUNTOS]] / [[REGISTRAR_PUNTO]] si están presentes
-      const parsedPoints = parseRegisterPointsCommands(rawText);
-      const delMatches = rawText.match(/\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/i);
-
-      if (parsedPoints.length > 0 || delMatches) {
-        const actions = [];
-        for (const p of parsedPoints) {
-          actions.push({
-            type: 'ADD_POINT',
-            data: {
-              name: p.name || p.nombre || p.tipo || 'Punto registrado',
-              category: p.category || p.categoria || p.tipo || 'arbol',
-              variety_type: p.variedad || p.variety_type || p.variety || null,
-              status: p.estado || p.status || 'saludable',
-              notes: p.observaciones || p.notes || p.observacion || '',
-              latitude: p.latitude !== undefined ? Number(p.latitude) : p.lat !== undefined ? Number(p.lat) : undefined,
-              longitude: p.longitude !== undefined ? Number(p.longitude) : p.lng !== undefined ? Number(p.lng) : undefined,
-              timestamp_audio_s: p.timestamp_audio_s !== undefined ? Number(p.timestamp_audio_s) : undefined,
-            },
-          });
-        }
-        if (delMatches) {
-          try {
-            const delData = JSON.parse(delMatches[1].replace(/,\s*([\]}])/g, '$1'));
-            actions.push({
-              type: 'DELETE_POINT',
-              target: delData.target,
-              query: delData.query,
-            });
-          } catch (_) {}
-        }
-
-        const cleanDescription = rawText
-          .replace(/\[\[REGISTRAR_PUNTOS:[\s\S]*?\]\]/gi, '')
-          .replace(/\[\[REGISTRAR_PUNTO:[\s\S]*?\]\]/gi, '')
-          .replace(/\[\[BORRAR_PUNTO:[\s\S]*?\]\]/gi, '')
-          .trim();
-
-        return {
-          description: cleanDescription || `Registrados ${parsedPoints.length} punto(s) en el mapa`,
-          transcription: audio?.transcription || '',
-          actions,
-        };
-      }
-
-      let parsed;
-      try {
-        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleanJson);
-      } catch (parseErr) {
-        const match = rawText.match(/\{[\s\S]*\}/);
-        if (match) {
-          parsed = JSON.parse(match[0]);
-        } else {
-          throw parseErr;
-        }
-      }
-      return parsed;
-    } catch (err) {
-      console.warn(`[MapAI] Falló ${modelId}:`, err.message);
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error('No se pudo procesar la orden con ningún modelo disponible.');
-}
+const callGeminiForMapAction = callGeminiForInventoryAction;
 
 export default function FarmSatelliteMap({
   inventory = [],
@@ -842,6 +388,9 @@ export default function FarmSatelliteMap({
   const [isLayersMenuOpen, setIsLayersMenuOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [isLocatingUser, setIsLocatingUser] = useState(false);
+  const [liveUserGps, setLiveUserGps] = useState(null);
+  const liveUserGpsRef = useRef(null);
+  const [gpsStatus, setGpsStatus] = useState('searching'); // 'searching' | 'active' | 'denied' | 'weak' | 'unsupported'
   const userLocationLayerRef = useRef(null);
 
   // ─── Estados de búsqueda y filtros ───────────────────────────────────────────
@@ -1883,7 +1432,109 @@ export default function FarmSatelliteMap({
     setShowPaths(false);
   };
 
-  // ─── 13. Centrador de ubicación actual del usuario con GPS ────────────────
+  // ─── 13. Centrador y seguimiento continuo de ubicación del usuario con GPS ───
+  const updateUserLocationMarker = useCallback((coords) => {
+    if (!coords || typeof coords.lat !== 'number' || typeof coords.lng !== 'number') return;
+    const layer = userLocationLayerRef.current;
+    if (!layer) return;
+
+    layer.clearLayers();
+
+    const { lat, lng, accuracy = 8 } = coords;
+
+    // Círculo translúcido de precisión
+    L.circle([lat, lng], {
+      radius: Math.max(accuracy, 2),
+      color: '#0284c7',
+      fillColor: '#38bdf8',
+      fillOpacity: 0.2,
+      weight: 1.5,
+      dashArray: '3, 4',
+    }).addTo(layer);
+
+    // Marcador pulsante
+    const marker = L.circleMarker([lat, lng], {
+      radius: 8,
+      fillColor: '#0284c7',
+      fillOpacity: 1,
+      color: '#ffffff',
+      weight: 2.5,
+    });
+
+    marker.bindTooltip(
+      `<b>📍 Estás aquí</b><br/><span style="font-size:10px">Precisión: ±${accuracy.toFixed(1)} m</span>`,
+      { permanent: true, direction: 'top', offset: [0, -8] }
+    );
+
+    marker.addTo(layer);
+  }, []);
+
+  // Seguimiento GPS continuo en el mapa para inventario en movimiento
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      setGpsStatus('unsupported');
+      return;
+    }
+
+    // 1. Obtener primera posición rápida (permite caché de 60s para pintar el punto sin espera)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const info = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy || 10,
+          altitude: pos.coords.altitude || null,
+          heading: pos.coords.heading || null,
+          speed: pos.coords.speed || null,
+          timestamp: pos.timestamp || Date.now(),
+        };
+        setLiveUserGps(info);
+        liveUserGpsRef.current = info;
+        setGlobalLastKnownGps(info);
+        setGpsStatus('active');
+        updateUserLocationMarker(info);
+      },
+      (err) => {
+        console.warn('[FarmMap] Lectura inicial rápida GPS no disponible:', err.message);
+        if (err.code === 1) setGpsStatus('denied');
+      },
+      { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 }
+    );
+
+    // 2. Rastreo GPS de alta precisión en tiempo real
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const info = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy || 5,
+          altitude: pos.coords.altitude || null,
+          heading: pos.coords.heading || null,
+          speed: pos.coords.speed || null,
+          timestamp: pos.timestamp || Date.now(),
+        };
+        setLiveUserGps(info);
+        liveUserGpsRef.current = info;
+        setGlobalLastKnownGps(info);
+        setGpsStatus('active');
+        updateUserLocationMarker(info);
+      },
+      (err) => {
+        console.warn('[FarmMap] Advertencia en watchPosition:', err.message);
+        if (err.code === 1) {
+          setGpsStatus('denied');
+        } else if (err.code === 3 || err.code === 2) {
+          setGpsStatus('weak');
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [updateUserLocationMarker]);
+
   const handleCenterOnUserLocation = useCallback(() => {
     if (!('geolocation' in navigator)) {
       alert('Tu dispositivo o navegador no soporta geolocalización GPS.');
@@ -1893,6 +1544,13 @@ export default function FarmSatelliteMap({
     const map = mapInstanceRef.current;
     if (!map) return;
 
+    // Si ya disponemos de la posición en vivo, centrar de inmediato sin latencia
+    if (liveUserGpsRef.current) {
+      map.setView([liveUserGpsRef.current.lat, liveUserGpsRef.current.lng], 19);
+      updateUserLocationMarker(liveUserGpsRef.current);
+      return;
+    }
+
     setIsLocatingUser(true);
 
     navigator.geolocation.getCurrentPosition(
@@ -1901,50 +1559,38 @@ export default function FarmSatelliteMap({
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const acc = pos.coords.accuracy || 10;
+        const info = {
+          lat,
+          lng,
+          accuracy: acc,
+          altitude: pos.coords.altitude || null,
+          heading: pos.coords.heading || null,
+          speed: pos.coords.speed || null,
+          timestamp: pos.timestamp || Date.now(),
+        };
+
+        setLiveUserGps(info);
+        liveUserGpsRef.current = info;
+        setGlobalLastKnownGps(info);
+        setGpsStatus('active');
 
         // Centrar mapa
         map.setView([lat, lng], 19);
-
-        // Actualizar capa de usuario
-        const layer = userLocationLayerRef.current;
-        if (layer) {
-          layer.clearLayers();
-
-          // Círculo translúcido de precisión
-          L.circle([lat, lng], {
-            radius: acc,
-            color: '#0284c7',
-            fillColor: '#38bdf8',
-            fillOpacity: 0.2,
-            weight: 1.5,
-            dashArray: '3, 4',
-          }).addTo(layer);
-
-          // Marcador pulsante
-          const marker = L.circleMarker([lat, lng], {
-            radius: 8,
-            fillColor: '#0284c7',
-            fillOpacity: 1,
-            color: '#ffffff',
-            weight: 2.5,
-          });
-
-          marker.bindTooltip(
-            `<b>📍 Estás aquí</b><br/><span style="font-size:10px">Precisión: ±${acc.toFixed(1)} m</span>`,
-            { permanent: true, direction: 'top', offset: [0, -8] }
-          );
-
-          marker.addTo(layer);
-        }
+        updateUserLocationMarker(info);
       },
       (err) => {
         setIsLocatingUser(false);
         console.warn('Error capturando GPS:', err);
-        alert(`No se pudo obtener la posición GPS (${err.message}). Comprueba que los permisos de ubicación estén habilitados.`);
+        if (err.code === 1) {
+          setGpsStatus('denied');
+          alert('Permiso de GPS denegado. Por favor, activa los permisos de ubicación en tu navegador o teléfono.');
+        } else {
+          alert(`No se pudo obtener la posición GPS (${err.message}). Comprueba que la ubicación esté habilitada en tu móvil.`);
+        }
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
-  }, []);
+  }, [updateUserLocationMarker]);
 
   // ─── Control y edición de elemento seleccionado en el Mapa ────────────────
   const handleStartEditTarget = () => {
@@ -2216,7 +1862,23 @@ export default function FarmSatelliteMap({
     accuracyWarning: voiceAccuracyWarning,
     startTracking: startVoiceTracking,
     stopTracking: stopVoiceTracking,
+    cancelTracking: cancelVoiceTracking,
   } = useVoiceGeoTracker();
+
+  // Iniciar grabación asociando inmediatamente la posición GPS en vivo del dispositivo
+  const handleStartVoiceRecording = async () => {
+    try {
+      const initialGps = liveUserGpsRef.current || voiceCurrentGps || null;
+      await startVoiceTracking({ initialGps });
+    } catch (err) {
+      console.error('Error iniciando grabación:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        alert('Permiso de micrófono denegado. Por favor, habilítalo en los ajustes de tu navegador o teléfono para poder grabar notas de voz.');
+      } else {
+        alert(`No se pudo iniciar el micrófono: ${err.message || 'Comprueba los permisos en tu navegador.'}`);
+      }
+    }
+  };
 
   // Reproductor preview audio estilo WhatsApp
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -2264,7 +1926,11 @@ export default function FarmSatelliteMap({
 
   const handleCancelVoiceRecording = async () => {
     try {
-      await stopVoiceTracking();
+      if (cancelVoiceTracking) {
+        cancelVoiceTracking();
+      } else {
+        await stopVoiceTracking();
+      }
     } catch (e) {
       console.error('Error cancelando grabación:', e);
     }
@@ -2416,56 +2082,44 @@ export default function FarmSatelliteMap({
       return;
     }
 
-    // ─── 0b. Detección directa de comandos estructurados [[REGISTRAR_PUNTOS]] en texto ──
-    const directParsedPoints = parseRegisterPointsCommands(textOrder);
-    if (directParsedPoints.length > 0) {
+    // ─── 0b. Detección directa de comandos estructurados [[REGISTRAR_PUNTOS]] / [[BORRAR_PUNTO]] en texto ──
+    const directParsed = parseStructuredCommands(textOrder);
+    if (directParsed.points.length > 0 || directParsed.deletions.length > 0) {
       setMapIaInput('');
       setPendingVoiceAudio(null);
       setPendingAttachment(null);
       setIsPreviewPlaying(false);
       setIsProcessingIa(true);
-      setIaFeedback({ type: 'info', text: `📍 Procesando comando estructurado (${directParsedPoints.length} punto(s))...` });
+      setIaFeedback({ type: 'info', text: `📍 Procesando comando estructurado (${directParsed.points.length} punto(s))...` });
 
       try {
-        const addedItems = [];
         const center = mapInstanceRef.current ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng] : DEFAULT_CENTER;
+        const gpsPos = liveUserGpsRef.current || voiceCurrentGps || null;
 
-        for (const p of directParsedPoints) {
-          const lat = Number(p.latitude ?? p.lat ?? selectedTarget?.lat ?? voiceCurrentGps?.lat ?? center[0]);
-          const lng = Number(p.longitude ?? p.lng ?? selectedTarget?.lng ?? voiceCurrentGps?.lng ?? center[1]);
-          const rawName = p.name || p.nombre || p.tipo || 'Punto registrado';
-          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-          let category = p.category || p.categoria || p.tipo;
-          if (!category || category === 'Otros' || category === 'otro') {
-            category = getItemCategory({ name: formattedName, ...p });
-          }
+        const actions = [
+          ...directParsed.points.map((p) => ({ type: 'ADD_POINT', data: p })),
+          ...directParsed.deletions.map((d) => ({ type: 'DELETE_POINT', data: d })),
+        ];
 
-          const newItem = {
-            name: formattedName,
-            category,
-            variety_type: p.variedad || p.variety_type || p.variety || null,
-            status: p.estado || p.status || 'saludable',
-            latitude: lat,
-            longitude: lng,
-            notes: p.observaciones || p.notes || 'Registrado por comando [[REGISTRAR_PUNTOS]]',
-            photo_url: uploadedPhotoUrl || null,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
+        const execResult = await executeInventoryActions({
+          actions,
+          liveGps: gpsPos,
+          mapCenter: center,
+          selectedTarget,
+          currentInventory: localInventory,
+          currentPaths: localPaths,
+        });
 
-          const inserted = await insertFarmInventoryItem(newItem);
-          if (inserted) {
-            addedItems.push(inserted);
-            setLocalInventory((prev) => [inserted, ...prev.filter((i) => String(i.id) !== String(inserted.id))]);
-            const parentCat = getItemCategory(inserted);
-            setVisibleCategories((prev) => new Set([...prev, parentCat]));
-            window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: inserted }));
-          }
-        }
-
-        if (addedItems.length > 0) {
-          const lastOne = addedItems[addedItems.length - 1];
+        if (execResult.addedItems.length > 0) {
+          setLocalInventory((prev) => [
+            ...execResult.addedItems,
+            ...prev.filter((i) => !execResult.addedItems.some((a) => String(a.id) === String(i.id))),
+          ]);
+          execResult.addedItems.forEach((it) => {
+            const cat = getItemCategory(it);
+            setVisibleCategories((prev) => new Set([...prev, cat]));
+          });
+          const lastOne = execResult.addedItems[execResult.addedItems.length - 1];
           if (mapInstanceRef.current && lastOne.latitude && lastOne.longitude) {
             mapInstanceRef.current.panTo([lastOne.latitude, lastOne.longitude]);
           }
@@ -2482,12 +2136,32 @@ export default function FarmSatelliteMap({
             photo_url: lastOne.photo_url,
             raw: lastOne,
           });
-          setIaFeedback({
-            type: 'success',
-            text: `✨ Registrado(s) ${addedItems.length} punto(s) en el mapa`,
-          });
-          if (onReloadInventory) await onReloadInventory();
         }
+
+        if (execResult.deletedItems.length > 0) {
+          setLocalInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
+          if (selectedTarget && execResult.deletedItems.includes(selectedTarget.id)) {
+            setSelectedTarget(null);
+            setSelectedPoint(null);
+          }
+        }
+
+        if (execResult.reverts.length > 0) {
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Registrado(s) ${execResult.addedItems.length} punto(s)`,
+              reverts: execResult.reverts,
+              timestamp: Date.now(),
+            },
+          ]);
+        }
+
+        setIaFeedback({
+          type: 'success',
+          text: `✨ Registrado(s) ${execResult.addedItems.length} punto(s) en el mapa`,
+        });
+        if (onReloadInventory) await onReloadInventory();
       } catch (err) {
         setIaFeedback({ type: 'error', text: `Error registrando puntos: ${err.message}` });
       } finally {
@@ -2528,9 +2202,11 @@ export default function FarmSatelliteMap({
 
     try {
       const center = mapInstanceRef.current ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng] : DEFAULT_CENTER;
-      const gpsPos = voiceCurrentGps || null;
+      const gpsPos = (audioOrder?.gpsTrack && audioOrder.gpsTrack.length > 0)
+        ? audioOrder.gpsTrack[0]
+        : (liveUserGpsRef.current || voiceCurrentGps || null);
 
-      const result = await callGeminiForMapAction({
+      const result = await callGeminiForInventoryAction({
         prompt: textOrder,
         audio: audioOrder,
         attachment: attOrder,
@@ -2551,7 +2227,7 @@ export default function FarmSatelliteMap({
       if (!result.actions || result.actions.length === 0) {
         // 1. Si el usuario adjuntó una foto, nota o audio sobre un punto de inventario seleccionado
         if (selectedTarget?.type === 'point' && (uploadedPhotoUrl || textOrder || audioOrder)) {
-          const prevItem = inventory.find(i => i.id === selectedTarget.id);
+          const prevItem = localInventory.find(i => String(i.id) === String(selectedTarget.id));
           const updatePayload = {
             updated_at: new Date().toISOString()
           };
@@ -2581,6 +2257,9 @@ export default function FarmSatelliteMap({
             },
           ]);
           setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
+          setLocalInventory((prev) =>
+            prev.map((i) => (String(i.id) === String(selectedTarget.id) ? { ...i, ...updatePayload } : i))
+          );
           setIaFeedback({ type: 'success', text: `✨ Datos guardados en ${selectedTarget.title}` });
           if (onReloadInventory) await onReloadInventory();
           setIsProcessingIa(false);
@@ -2589,7 +2268,7 @@ export default function FarmSatelliteMap({
 
         // 2. Si el usuario añadió una nota sobre una polilínea / camino seleccionado
         if (selectedTarget?.type === 'path' && (uploadedPhotoUrl || textOrder || audioOrder)) {
-          const prevPath = paths.find(p => p.id === selectedTarget.id);
+          const prevPath = localPaths.find(p => String(p.id) === String(selectedTarget.id));
           const updatePayload = {};
           const noteToAdd = textOrder || (result.transcription ? `Audio: "${result.transcription}"` : null);
           if (noteToAdd) {
@@ -2597,6 +2276,10 @@ export default function FarmSatelliteMap({
           }
 
           await updateFarmPath(selectedTarget.id, updatePayload);
+          setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
+          setLocalPaths((prev) =>
+            prev.map((p) => (String(p.id) === String(selectedTarget.id) ? { ...p, ...updatePayload } : p))
+          );
           setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
           setIaFeedback({ type: 'success', text: `✨ Notas actualizadas en ${selectedTarget.title}` });
           if (onReloadPaths) await onReloadPaths();
@@ -2676,183 +2359,114 @@ export default function FarmSatelliteMap({
         return;
       }
 
-      // Preparar estructura para deshacer
-      const undoAction = {
-        description: result.description || 'Cambios en el mapa',
-        reverts: [],
-        timestamp: Date.now(),
-      };
+      // ─── Ejecución de acciones con orquestador unificado (Puntos y Caminos) ─
+      const execResult = await executeInventoryActions({
+        actions: result.actions,
+        audio: audioOrder,
+        liveGps: gpsPos,
+        mapCenter: center,
+        selectedTarget,
+        currentInventory: localInventory,
+        currentPaths: localPaths,
+        uploadedPhotoUrl,
+      });
 
-      for (const act of result.actions) {
-        const actType = (act.type || '').toUpperCase();
-        const actData = act.data || act;
-
-        if (actType === 'DELETE_POINT' || actType === 'REMOVE_POINT') {
-          let targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          if (!targetId && (act.query || act.target === 'ultimo' || actData.query || actData.target === 'ultimo')) {
-            const isLast = act.target === 'ultimo' || actData.target === 'ultimo';
-            const q = (act.query || actData.query || '').toLowerCase().trim();
-            let matched = null;
-            if (isLast) {
-              matched = localInventory[0];
-            } else if (q) {
-              matched = localInventory.find(i =>
-                (i.name && i.name.toLowerCase().includes(q)) ||
-                (i.variety_type && i.variety_type.toLowerCase().includes(q)) ||
-                (i.category && i.category.toLowerCase().includes(q))
-              );
-            }
-            if (matched) targetId = matched.id;
-          }
-          if (targetId) {
-            const item = localInventory.find((i) => String(i.id) === String(targetId)) || selectedTarget?.raw;
-            setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(targetId)));
-            await deleteFarmInventoryItem(targetId);
-            window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: targetId, deleted: true } }));
-            if (item) {
-              undoAction.reverts.push({ type: 'RESTORE_POINT', itemData: item });
-            }
-            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
-              setSelectedTarget(null);
-              setSelectedPoint(null);
-            }
-          }
-        } else if (actType === 'DELETE_PATH' || actType === 'REMOVE_PATH') {
-          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          if (targetId) {
-            const path = localPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
-            setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(targetId)));
-            await deleteFarmPath(targetId);
-            if (path) {
-              undoAction.reverts.push({ type: 'RESTORE_PATH', pathData: path });
-            }
-            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
-              setSelectedTarget(null);
-              setSelectedPath(null);
-            }
-          }
-        } else if (actType === 'UPDATE_POINT' || actType === 'EDIT_POINT' || actType === 'MODIFY_POINT') {
-          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          if (targetId && actData) {
-            const item = localInventory.find((i) => String(i.id) === String(targetId)) || selectedTarget?.raw;
-            const updatePayload = { ...actData };
-            delete updatePayload.type;
-            delete updatePayload.target_id;
-            delete updatePayload.id;
-            if (uploadedPhotoUrl) {
-              updatePayload.photo_url = uploadedPhotoUrl;
-            }
-            setLocalInventory((prev) =>
-              prev.map((i) => (String(i.id) === String(targetId) ? { ...i, ...updatePayload } : i))
-            );
-            await updateFarmInventoryItem(targetId, updatePayload);
-            if (item) {
-              const prevData = {};
-              Object.keys(updatePayload).forEach((k) => { prevData[k] = item[k]; });
-              undoAction.reverts.push({ type: 'UPDATE_POINT', target_id: targetId, prevData });
-            }
-            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
-              setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
-            }
-          }
-        } else if (actType === 'UPDATE_PATH' || actType === 'EDIT_PATH') {
-          const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-          if (targetId && actData) {
-            const path = localPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
-            setLocalPaths((prev) =>
-              prev.map((p) => (String(p.id) === String(targetId) ? { ...p, ...actData } : p))
-            );
-            await updateFarmPath(targetId, actData);
-            if (path) {
-              const prevData = {};
-              Object.keys(actData).forEach((k) => { prevData[k] = path[k]; });
-              undoAction.reverts.push({ type: 'UPDATE_PATH', target_id: targetId, prevData });
-            }
-            if (selectedTarget && String(selectedTarget.id) === String(targetId)) {
-              setSelectedTarget((prev) => ({ ...prev, ...actData }));
-            }
-          }
-        } else if (actType === 'ADD_POINT' || actType === 'CREATE_POINT' || actType === 'INSERT_POINT' || actType === 'NEW_POINT') {
-          let lat = Number(
-            actData.latitude ?? actData.lat ?? act.latitude ?? act.lat
-          );
-          let lng = Number(
-            actData.longitude ?? actData.lng ?? act.longitude ?? act.lng
-          );
-
-          // Interpolación temporal con GPS si provino de audio continuo
-          if ((isNaN(lat) || !lat) && audioOrder?.gpsTrack && audioOrder.gpsTrack.length > 0 && actData.timestamp_audio_s !== undefined) {
-            const t0 = audioOrder.t0 || Date.now() - (audioOrder.duration || 1) * 1000;
-            const interpolated = interpolateGpsAtAudioTime({
-              t0,
-              gpsTrack: audioOrder.gpsTrack,
-              timestampAudioSec: Number(actData.timestamp_audio_s) || 0,
-            });
-            if (interpolated.lat && interpolated.lng) {
-              lat = interpolated.lat;
-              lng = interpolated.lng;
-            }
-          }
-
-          lat = Number(lat || selectedTarget?.lat || audioOrder?.gpsTrack?.[0]?.lat || voiceCurrentGps?.lat || center[0] || DEFAULT_CENTER[0]);
-          lng = Number(lng || selectedTarget?.lng || audioOrder?.gpsTrack?.[0]?.lng || voiceCurrentGps?.lng || center[1] || DEFAULT_CENTER[1]);
-
-          const rawName = actData.name || actData.title || act.title || actData.tipo || (result.transcription && result.transcription.length < 35 ? result.transcription : 'Punto registrado');
-          const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-
-          let category = actData.category || act.category || actData.categoria || actData.tipo;
-          if (!category || category === 'Otros' || category === 'otro') {
-            category = getItemCategory({ name: formattedName, ...actData });
-          }
-
-          const notes = actData.notes || act.notes || actData.observaciones || (textOrder ? textOrder : (result.transcription ? `Audio: "${result.transcription}"` : (result.description || 'Registrado con Agente IA')));
-
-          const newItem = {
-            name: formattedName,
-            category,
-            variety_type: actData.variety_type || actData.variety || actData.variedad || null,
-            status: actData.status || actData.estado || 'saludable',
-            latitude: lat,
-            longitude: lng,
-            notes,
-            photo_url: uploadedPhotoUrl || null,
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-
-          const inserted = await insertFarmInventoryItem(newItem);
-          if (inserted) {
-            setLocalInventory((prev) => [inserted, ...prev.filter((i) => String(i.id) !== String(inserted.id))]);
-            undoAction.reverts.push({ type: 'DELETE_POINT', target_id: inserted.id });
-
-            // Auto-activar categoría para visibilidad inmediata en mapa y panel
-            const parentCat = getItemCategory(inserted);
-            setVisibleCategories((prev) => new Set([...prev, parentCat]));
-
-            setSelectedTarget({
-              type: 'point',
-              id: inserted.id,
-              title: inserted.name,
-              category: getItemCategory(inserted),
-              variety: inserted.variety_type,
-              status: inserted.status,
-              notes: inserted.notes,
-              lat: inserted.latitude,
-              lng: inserted.longitude,
-              photo_url: inserted.photo_url,
-              raw: inserted,
-            });
-            if (mapInstanceRef.current && inserted.latitude && inserted.longitude) {
-              mapInstanceRef.current.panTo([inserted.latitude, inserted.longitude]);
-            }
-            window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: inserted }));
-          }
+      // Reflejar cambios en el estado local de inventario y caminos
+      if (execResult.deletedItems.length > 0) {
+        setLocalInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
+        if (selectedTarget && execResult.deletedItems.includes(selectedTarget.id)) {
+          setSelectedTarget(null);
+          setSelectedPoint(null);
         }
       }
+      if (execResult.deletedPaths.length > 0) {
+        setLocalPaths((prev) => prev.filter((p) => !execResult.deletedPaths.includes(p.id)));
+        if (selectedTarget && execResult.deletedPaths.includes(selectedTarget.id)) {
+          setSelectedTarget(null);
+          setSelectedPath(null);
+        }
+      }
+      if (execResult.updatedItems.length > 0) {
+        setLocalInventory((prev) =>
+          prev.map((i) => {
+            const upd = execResult.updatedItems.find((u) => String(u.id) === String(i.id));
+            return upd ? { ...i, ...upd } : i;
+          })
+        );
+        if (selectedTarget && selectedTarget.type === 'point') {
+          const upd = execResult.updatedItems.find((u) => String(u.id) === String(selectedTarget.id));
+          if (upd) setSelectedTarget((prev) => ({ ...prev, ...upd }));
+        }
+      }
+      if (execResult.updatedPaths.length > 0) {
+        setLocalPaths((prev) =>
+          prev.map((p) => {
+            const upd = execResult.updatedPaths.find((u) => String(u.id) === String(p.id));
+            return upd ? { ...p, ...upd } : p;
+          })
+        );
+        if (selectedTarget && selectedTarget.type === 'path') {
+          const upd = execResult.updatedPaths.find((u) => String(u.id) === String(selectedTarget.id));
+          if (upd) setSelectedTarget((prev) => ({ ...prev, ...upd }));
+        }
+      }
+      if (execResult.addedItems.length > 0) {
+        setLocalInventory((prev) => [
+          ...execResult.addedItems,
+          ...prev.filter((i) => !execResult.addedItems.some((a) => String(a.id) === String(i.id))),
+        ]);
+        execResult.addedItems.forEach((it) => {
+          const cat = getItemCategory(it);
+          setVisibleCategories((prev) => new Set([...prev, cat]));
+        });
+        const lastOne = execResult.addedItems[execResult.addedItems.length - 1];
+        if (mapInstanceRef.current && lastOne.latitude && lastOne.longitude) {
+          mapInstanceRef.current.panTo([lastOne.latitude, lastOne.longitude]);
+        }
+        setSelectedTarget({
+          type: 'point',
+          id: lastOne.id,
+          title: lastOne.name,
+          category: getItemCategory(lastOne),
+          variety: lastOne.variety_type,
+          status: lastOne.status,
+          notes: lastOne.notes,
+          lat: lastOne.latitude,
+          lng: lastOne.longitude,
+          photo_url: lastOne.photo_url,
+          raw: lastOne,
+        });
+      }
+      if (execResult.addedPaths.length > 0) {
+        setLocalPaths((prev) => [
+          ...execResult.addedPaths,
+          ...prev.filter((p) => !execResult.addedPaths.some((a) => String(a.id) === String(p.id))),
+        ]);
+        const lastPath = execResult.addedPaths[execResult.addedPaths.length - 1];
+        if (mapInstanceRef.current && lastPath.coordinates && lastPath.coordinates.length > 0) {
+          mapInstanceRef.current.panTo(lastPath.coordinates[0]);
+        }
+        setSelectedTarget({
+          type: 'path',
+          id: lastPath.id,
+          title: lastPath.name,
+          path_type: lastPath.path_type,
+          color: lastPath.color,
+          notes: lastPath.notes,
+          coordinates: lastPath.coordinates,
+          raw: lastPath,
+        });
+      }
 
-      if (undoAction.reverts.length > 0) {
-        setUndoStack((prev) => [...prev, undoAction]);
+      if (execResult.reverts.length > 0) {
+        setUndoStack((prev) => [
+          ...prev,
+          {
+            description: result.description || 'Cambios en el mapa',
+            reverts: execResult.reverts,
+            timestamp: Date.now(),
+          },
+        ]);
         setIaFeedback({
           type: 'success',
           text: `✨ ${result.description || 'Cambios aplicados en el mapa'} (Pulsa ↩️ para revertir)`,
@@ -3225,12 +2839,38 @@ export default function FarmSatelliteMap({
               disabled={isLocatingUser}
               style={{
                 ...styles.navWidgetBtn,
-                color: isLocatingUser ? '#f59e0b' : '#0284c7',
+                color: isLocatingUser
+                  ? '#f59e0b'
+                  : gpsStatus === 'active'
+                    ? '#10b981'
+                    : gpsStatus === 'denied'
+                      ? '#ef4444'
+                      : '#0284c7',
                 backgroundColor: isLocatingUser ? '#f0f9ff' : '#ffffff',
+                position: 'relative',
               }}
-              title="Centrar en mi ubicación actual GPS"
+              title={
+                gpsStatus === 'active'
+                  ? `📍 GPS en vivo (±${liveUserGps?.accuracy?.toFixed(1) || '4'}m) - Centrar en mí`
+                  : gpsStatus === 'denied'
+                    ? '🔴 GPS sin permiso en el móvil'
+                    : 'Centrar en mi ubicación actual GPS'
+              }
             >
               <Crosshair size={16} />
+              {gpsStatus === 'active' && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    right: 4,
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    backgroundColor: '#10b981',
+                  }}
+                />
+              )}
             </button>
 
             <button
@@ -3931,6 +3571,10 @@ export default function FarmSatelliteMap({
                   <span style={styles.previewGpsTagActive}>
                     📍 ±{voiceCurrentGps.accuracy?.toFixed(1)}m
                   </span>
+                ) : liveUserGps ? (
+                  <span style={styles.previewGpsTagActive}>
+                    📍 ±{liveUserGps.accuracy?.toFixed(1)}m
+                  </span>
                 ) : (
                   <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 'auto' }}>
                     📍 Conectando GPS...
@@ -4022,7 +3666,7 @@ export default function FarmSatelliteMap({
             ) : (
               <button
                 type="button"
-                onClick={startVoiceTracking}
+                onClick={handleStartVoiceRecording}
                 disabled={isProcessingIa}
                 style={{
                   ...styles.chatIaActionBtn,

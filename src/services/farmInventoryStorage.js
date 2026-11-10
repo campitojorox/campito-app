@@ -464,3 +464,108 @@ export async function deleteFarmPath(id) {
     console.warn('[InventoryStorage] Camino eliminado en local (Supabase pendiente):', err.message);
   }
 }
+
+// ─── Taxonomía Unificada de Categorías y Subcategorías ────────────────────────
+export const BASE_CATEGORY_MAP = {
+  'Árboles': ['aguacate', 'olivo', 'limonero', 'naranjo', 'citrico', 'arbol', 'frutales', 'algarrobo', 'granado', 'mango', 'higuera', 'frutal'],
+  'Plantas': ['planta', 'hierba', 'arbusto', 'herbaceo', 'vegetal', 'palmera', 'bambu', 'huerta'],
+  'Riego / Agua': ['riego', 'llave', 'gotero', 'filtro', 'valvula', 'contador', 'arqueta', 'pozo', 'deposito', 'cisterna', 'grifo', 'tuberia', 'manguera', 'aspersor', 'bomba', 'caudal', 'acequia'],
+  'Casas / Edificios': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
+  'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario', 'apero'],
+  'Hitos': ['mojon', 'linde', 'piedra', 'marca', 'señal', 'cota', 'limite'],
+  'Otros': [],
+};
+
+export const BASE_CATEGORY_COLORS = {
+  'Árboles': '#16a34a',           // Verde oscuro
+  'Plantas': '#4ade80',           // Verde claro
+  'Riego / Agua': '#0284c7',      // Azul
+  'Casas / Edificios': '#eab308', // Amarillo
+  'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
+  'Herramientas': '#f97316',      // Naranja
+  'Hitos': '#8b5cf6',             // Púrpura
+  'Otros': '#64748b',             // Pizarra
+};
+
+export const DYNAMIC_PALETTE = [
+  '#06b6d4', // Cian
+  '#ec4899', // Rosa fucsia
+  '#14b8a6', // Teal esmeralda
+  '#f43f5e', // Coral
+  '#a855f7', // Púrpura
+  '#6366f1', // Índigo
+  '#84cc16', // Lima
+  '#d97706', // Ámbar tostado
+  '#0d9488', // Verde azulado
+  '#e11d48', // Rubí
+];
+
+export function getCategoryColor(categoryName) {
+  if (!categoryName) return '#64748b';
+  if (BASE_CATEGORY_COLORS[categoryName]) return BASE_CATEGORY_COLORS[categoryName];
+
+  let hash = 0;
+  for (let i = 0; i < categoryName.length; i++) {
+    hash = categoryName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % DYNAMIC_PALETTE.length;
+  return DYNAMIC_PALETTE[index];
+}
+
+export const PATH_TYPE_COLORS = {
+  'camino': '#92400e',        // Marrón
+  'carril': '#a16207',        // Ocre / tierra
+  'sendero': '#b45309',       // Marrón claro
+  'vereda': '#d97706',        // Ámbar
+  'acequia': '#1d4ed8',       // Azul marino
+  'linea_riego': '#38bdf8',   // Azul claro
+  'linde': '#ef4444',         // Rojo
+  'otro': '#64748b',          // Pizarra
+};
+
+/**
+ * Determina la categoría de un elemento del inventario con promoción dinámica.
+ */
+export function getItemCategory(item) {
+  if (!item) return 'Otros';
+
+  if (item.category && BASE_CATEGORY_MAP[item.category]) {
+    return item.category;
+  }
+
+  const text = [item.category, item.tipo, item.variety_type, item.name, item.title]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
+    if (parent === 'Otros') continue;
+    if (keywords.some((k) => text.includes(k))) return parent;
+  }
+
+  const explicitCat = (item.category || item.tipo || '').trim();
+  if (explicitCat && explicitCat.toLowerCase() !== 'otros' && explicitCat.toLowerCase() !== 'otro') {
+    return explicitCat.charAt(0).toUpperCase() + explicitCat.slice(1);
+  }
+
+  return 'Otros';
+}
+
+/**
+ * Obtiene las subcategorías presentes dentro de una categoría padre.
+ */
+export function getSubcategoriesForParent(inventory, parent) {
+  const subs = new Set();
+  (inventory || []).forEach((item) => {
+    const itemParent = getItemCategory(item);
+    if (itemParent === parent) {
+      const subLabel = item.variety_type || item.tipo || item.name;
+      if (subLabel && subLabel !== parent) {
+        subs.add(subLabel);
+      }
+    }
+  });
+  return [...subs];
+}

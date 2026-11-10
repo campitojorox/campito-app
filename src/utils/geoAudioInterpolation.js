@@ -224,3 +224,92 @@ export function treesToGeoJSON(trees) {
   };
 }
 
+/**
+ * Calcula la distancia haversiana en metros entre dos coordenadas geográficas.
+ */
+export function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Radio de la Tierra en metros
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Calcula la longitud total acumulada en metros de un array de coordenadas [[lat, lng], ...].
+ */
+export function calculateTrackLengthMeters(coords) {
+  if (!Array.isArray(coords) || coords.length < 2) return 0;
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p1 = coords[i];
+    const p2 = coords[i + 1];
+    const lat1 = Array.isArray(p1) ? p1[0] : p1.lat;
+    const lon1 = Array.isArray(p1) ? p1[1] : p1.lng;
+    const lat2 = Array.isArray(p2) ? p2[0] : p2.lat;
+    const lon2 = Array.isArray(p2) ? p2[1] : p2.lng;
+    total += calculateDistanceMeters(lat1, lon1, lat2, lon2);
+  }
+  return Number(total.toFixed(1));
+}
+
+/**
+ * Extrae un tramo de coordenadas (polilínea) interpolado entre dos instantes de audio (en segundos).
+ * Ideal para trazar mangueras, líneas de riego, caminos o lindes dictados por voz en movimiento.
+ */
+export function interpolateGpsTrackSegment({
+  t0,
+  gpsTrack,
+  startAudioSec = 0,
+  endAudioSec = null,
+}) {
+  if (!Array.isArray(gpsTrack) || gpsTrack.length === 0) return [];
+
+  const startPt = interpolateGpsAtAudioTime({
+    t0,
+    gpsTrack,
+    timestampAudioSec: startAudioSec,
+  });
+
+  const durationSec = (gpsTrack[gpsTrack.length - 1].timestamp - t0) / 1000;
+  const targetEndSec = endAudioSec !== null && !isNaN(endAudioSec) ? endAudioSec : durationSec;
+
+  const endPt = interpolateGpsAtAudioTime({
+    t0,
+    gpsTrack,
+    timestampAudioSec: targetEndSec,
+  });
+
+  const startTimeMs = t0 + startAudioSec * 1000;
+  const endTimeMs = t0 + targetEndSec * 1000;
+
+  const middlePoints = gpsTrack
+    .filter((p) => p.timestamp > startTimeMs && p.timestamp < endTimeMs)
+    .map((p) => [Number(p.lat.toFixed(7)), Number(p.lng.toFixed(7))]);
+
+  const result = [];
+  if (startPt && startPt.lat && startPt.lng) {
+    result.push([startPt.lat, startPt.lng]);
+  }
+  result.push(...middlePoints);
+  if (endPt && endPt.lat && endPt.lng) {
+    const last = result[result.length - 1];
+    if (!last || Math.abs(last[0] - endPt.lat) > 0.000001 || Math.abs(last[1] - endPt.lng) > 0.000001) {
+      result.push([endPt.lat, endPt.lng]);
+    }
+  }
+
+  // Si no hay suficientes puntos en el subrango, usar todos los disponibles en el track
+  if (result.length < 2 && gpsTrack.length >= 2) {
+    return gpsTrack.map((p) => [Number(p.lat.toFixed(7)), Number(p.lng.toFixed(7))]);
+  }
+
+  return result;
+}
+

@@ -1,6 +1,7 @@
 // src/hooks/useVoiceGeoTracker.js
 // Hook de React para captura simultánea y sincronizada de audio y telemetría GPS
-// con respaldo automático en IndexedDB para funcionamiento offline en campo.
+// con apagado estricto del hardware de micrófono entre grabaciones (estilo WhatsApp)
+// y respaldo automático en IndexedDB para funcionamiento offline en campo.
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 
@@ -77,28 +78,36 @@ export async function removeOfflineTrack(id) {
   }
 }
 
-// ─── Stream de audio persistente compartido (evita pedir permisos en cada audio) ─
-let globalAudioStream = null;
+// ─── Gestión de Hardware de Audio (Estilo WhatsApp) ───────────────────────────
+// Para que el micrófono NO quede activado (punto naranja en iOS / icono verde en Android)
+// entre grabaciones, las pistas de audio se detienen completamente (track.stop()) al finalizar
+// o cancelar cada nota de voz. El navegador recuerda los permisos concedidos en la primera vez,
+// por lo que las siguientes sesiones inician al instante sin volver a preguntar.
 
-async function getOrCreateAudioStream() {
-  if (globalAudioStream) {
-    const tracks = globalAudioStream.getAudioTracks();
-    const allLive = tracks.length > 0 && tracks.every((t) => t.readyState === 'live');
-    if (allLive) {
-      // Reactivar el micrófono silenciado para comenzar la grabación
-      tracks.forEach((t) => {
-        t.enabled = true;
-      });
-      return globalAudioStream;
-    }
-    // Si alguna pista murió (ej: llamada entrante o suspensión del SO), limpiar
-    tracks.forEach((t) => {
-      try { t.stop(); } catch {}
+export function stopMediaStream(stream) {
+  if (!stream) return;
+  try {
+    const tracks = stream.getTracks ? stream.getTracks() : [];
+    tracks.forEach((track) => {
+      try {
+        track.stop();
+      } catch (e) {
+        console.warn('[VoiceGeoTracker] Error deteniendo track:', e);
+      }
     });
-    globalAudioStream = null;
+  } catch (err) {
+    console.warn('[VoiceGeoTracker] Error en stopMediaStream:', err);
   }
+}
 
-  // Primera solicitud de permisos: el navegador pedirá confirmación solo esta primera vez
+/**
+ * Solicita acceso al micrófono por primera vez para comprobar o conceder permisos
+ * y apaga inmediatamente el hardware de captura.
+ */
+export async function requestMicrophonePermission() {
+  if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error('Navegador no compatible con grabación de audio');
+  }
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
@@ -106,36 +115,45 @@ async function getOrCreateAudioStream() {
       autoGainControl: true,
     },
   });
-
-  globalAudioStream = stream;
-  return stream;
+  stopMediaStream(stream);
+  return true;
 }
 
-function muteAudioStream() {
-  if (globalAudioStream) {
-    // Silencia la captura de audio sin destruir el stream para que iOS y Android
-    // NO vuelvan a mostrar el diálogo de confirmación de permisos en el siguiente audio
-    globalAudioStream.getAudioTracks().forEach((track) => {
-      track.enabled = false;
-    });
+/**
+ * Consulta el estado actual de permisos de micrófono si el navegador lo admite.
+ */
+export async function checkMicrophonePermission() {
+  if (typeof window === 'undefined' || !navigator.permissions || !navigator.permissions.query) {
+    return 'unknown';
+  }
+  try {
+    const res = await navigator.permissions.query({ name: 'microphone' });
+    return res.state; // 'granted' | 'prompt' | 'denied'
+  } catch {
+    return 'unknown';
   }
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    if (globalAudioStream) {
-      globalAudioStream.getTracks().forEach((t) => {
-        try { t.stop(); } catch {}
-      });
-      globalAudioStream = null;
-    }
-  });
+// Caché global del último punto GPS conocido para respuesta inmediata en frío
+let moduleLastKnownGps = null;
+
+export function setGlobalLastKnownGps(gpsInfo) {
+  if (gpsInfo && typeof gpsInfo.lat === 'number' && typeof gpsInfo.lng === 'number') {
+    moduleLastKnownGps = {
+      ...gpsInfo,
+      timestamp: gpsInfo.timestamp || Date.now(),
+    };
+  }
+}
+
+export function getGlobalLastKnownGps() {
+  return moduleLastKnownGps;
 }
 
 // ─── Hook useVoiceGeoTracker ──────────────────────────────────────────────────
 export function useVoiceGeoTracker({
   gpsSampleIntervalMs = 1500, // Muestreo GPS cada 1.5s
-  maxAccuracyThreshold = 6.0,  // Advertencia si la precisión supera los 6 metros
+  maxAccuracyThreshold = 8.0,  // Advertencia si la precisión supera los 8 metros
   autoPersistOffline = true,
 } = {}) {
   const [isRecording, setIsRecording] = useState(false);
@@ -165,7 +183,10 @@ export function useVoiceGeoTracker({
 
   // ── Iniciar grabación sincronizada de audio + GPS ───────────────────────────
   const startTracking = useCallback(async (options = {}) => {
-    const { initialGps = null } = options;
+    // Si options es un SyntheticEvent de React (ej: onClick={startVoiceTracking}), ignorarlo
+    const cleanOptions = (options && typeof options === 'object' && !('nativeEvent' in options)) ? options : {};
+    const { initialGps = null } = cleanOptions;
+
     setError(null);
     audioChunksRef.current = [];
     gpsTrackRef.current = [];
@@ -187,8 +208,17 @@ export function useVoiceGeoTracker({
     }
 
     try {
-      // 2. Obtener stream de micrófono (reutiliza el autorizado sin pedir permisos)
-      const stream = await getOrCreateAudioStream();
+      // 2. Solicitar y abrir el stream del micrófono para esta sesión
+      // La primera vez que el usuario use la app, el navegador pedirá confirmación de permisos.
+      // Una vez autorizado, el navegador lo recuerda permanentemente y en las
+      // siguientes sesiones se activará de forma instantánea sin volver a preguntar (igual que WhatsApp).
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       streamRef.current = stream;
 
       // 3. Seleccionar mejor codec soportado
@@ -219,63 +249,116 @@ export function useVoiceGeoTracker({
       t0Ref.current = t0;
       lastSampleTimeRef.current = 0;
 
-      // Sembrar inmediatamente la posición GPS inicial si ya se dispone de ella
-      if (initialGps && typeof initialGps.lat === 'number' && typeof initialGps.lng === 'number') {
+      // Sembrar inmediatamente la posición GPS inicial si ya se dispone de ella o usar caché
+      const seedPosition = (initialGps && typeof initialGps.lat === 'number' && typeof initialGps.lng === 'number')
+        ? initialGps
+        : (moduleLastKnownGps && typeof moduleLastKnownGps.lat === 'number' && typeof moduleLastKnownGps.lng === 'number' && (Date.now() - (moduleLastKnownGps.timestamp || 0) < 180000))
+          ? moduleLastKnownGps
+          : null;
+
+      if (seedPosition) {
         const seedReading = {
           timestamp: t0,
           relativeTimeMs: 0,
-          lat: initialGps.lat,
-          lng: initialGps.lng,
-          accuracy: initialGps.accuracy || 3.0,
-          altitude: initialGps.altitude || null,
-          speed: initialGps.speed || null,
-          heading: initialGps.heading || null,
+          lat: seedPosition.lat,
+          lng: seedPosition.lng,
+          accuracy: seedPosition.accuracy || 3.0,
+          altitude: seedPosition.altitude || null,
+          speed: seedPosition.speed || null,
+          heading: seedPosition.heading || null,
         };
         gpsTrackRef.current.push(seedReading);
         setCurrentGps(seedReading);
         setGpsPointsCount(1);
+      } else {
+        // Intento rápido no bloqueante de captura inmediata de posición
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const reading = {
+              timestamp: Date.now(),
+              relativeTimeMs: Date.now() - t0,
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              accuracy: pos.coords.accuracy,
+              altitude: pos.coords.altitude || null,
+              speed: pos.coords.speed || null,
+              heading: pos.coords.heading || null,
+            };
+            moduleLastKnownGps = reading;
+            if (gpsTrackRef.current.length === 0) {
+              gpsTrackRef.current.push(reading);
+              setCurrentGps(reading);
+              setGpsPointsCount(1);
+            }
+          },
+          () => {},
+          { enableHighAccuracy: false, maximumAge: 30000, timeout: 3000 }
+        );
       }
 
       // 5. Iniciar MediaRecorder en intervalos de 500ms
       mediaRecorder.start(500);
 
-      // 6. Iniciar seguimiento GPS continuo en tiempo real
+      // 6. Iniciar seguimiento GPS continuo en tiempo real (tolerante y adaptativo para móviles)
+      const handleGpsSuccess = (position) => {
+        const now = Date.now();
+        const timeSinceLastSample = now - lastSampleTimeRef.current;
+        const currentCount = gpsTrackRef.current.length;
+        const lastReading = currentCount > 0 ? gpsTrackRef.current[currentCount - 1] : null;
+
+        // Aceptar lectura si:
+        // - Es la primera lectura de la sesión
+        // - Ha transcurrido el intervalo configurado (1.5s)
+        // - O la precisión es notablemente mejor que la lectura anterior (mejora > 2m)
+        const isBetterAccuracy = lastReading && position.coords.accuracy < (lastReading.accuracy - 2.0);
+
+        if (currentCount === 0 || timeSinceLastSample >= gpsSampleIntervalMs || isBetterAccuracy) {
+          lastSampleTimeRef.current = now;
+
+          const reading = {
+            timestamp: now,
+            relativeTimeMs: now - t0,
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            altitude: position.coords.altitude || null,
+            speed: position.coords.speed || null,
+            heading: position.coords.heading || null,
+          };
+
+          moduleLastKnownGps = reading;
+          gpsTrackRef.current.push(reading);
+          setCurrentGps(reading);
+          setGpsPointsCount(gpsTrackRef.current.length);
+
+          const isDegraded = position.coords.accuracy > maxAccuracyThreshold;
+          setAccuracyWarning(isDegraded);
+        }
+      };
+
+      const handleGpsError = (geoErr) => {
+        console.warn('[VoiceGeoTracker] Error o advertencia GPS:', geoErr.message, 'Código:', geoErr.code);
+        if (geoErr.code === 1) { // PERMISSION_DENIED
+          setError('Permiso de GPS no concedido en el navegador.');
+        } else if (geoErr.code === 3 || geoErr.code === 2) { // TIMEOUT o POSITION_UNAVAILABLE
+          // Reintentar con menor exigencia de hardware para capturar antenas o WiFi
+          try {
+            navigator.geolocation.getCurrentPosition(
+              handleGpsSuccess,
+              () => {},
+              { enableHighAccuracy: false, maximumAge: 15000, timeout: 6000 }
+            );
+          } catch {}
+        }
+      };
+
       const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const now = Date.now();
-          const timeSinceLastSample = now - lastSampleTimeRef.current;
-
-          // Muestrear cada gpsSampleIntervalMs (1-2s)
-          if (timeSinceLastSample >= gpsSampleIntervalMs) {
-            lastSampleTimeRef.current = now;
-
-            const reading = {
-              timestamp: now,
-              relativeTimeMs: now - t0,
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              accuracy: position.coords.accuracy,
-              altitude: position.coords.altitude || null,
-              speed: position.coords.speed || null,
-              heading: position.coords.heading || null,
-            };
-
-            gpsTrackRef.current.push(reading);
-            setCurrentGps(reading);
-            setGpsPointsCount(gpsTrackRef.current.length);
-
-            // Alerta si la precisión es baja (error > 6m)
-            const isDegraded = position.coords.accuracy > maxAccuracyThreshold;
-            setAccuracyWarning(isDegraded);
-          }
-        },
-        (geoErr) => {
-          console.warn('[VoiceGeoTracker] Error en geolocalización:', geoErr.message);
-        },
+        handleGpsSuccess,
+        handleGpsError,
         {
           enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 8000,
+          maximumAge: 3000,
+          timeout: 15000,
         }
       );
       watchIdRef.current = watchId;
@@ -288,6 +371,10 @@ export function useVoiceGeoTracker({
       setIsRecording(true);
     } catch (err) {
       console.error('[VoiceGeoTracker] Error iniciando captura:', err);
+      if (streamRef.current) {
+        stopMediaStream(streamRef.current);
+        streamRef.current = null;
+      }
       setError(err.message || 'Error al iniciar captura de voz y GPS');
       throw err;
     }
@@ -309,7 +396,7 @@ export function useVoiceGeoTracker({
       timerIntervalRef.current = null;
     }
 
-    // 2. Esperar finalización del MediaRecorder antes de silenciar el stream
+    // 2. Esperar finalización del MediaRecorder antes de destruir las pistas de audio
     const audioBlob = await new Promise((resolve) => {
       const recorder = mediaRecorderRef.current;
       if (!recorder || recorder.state === 'inactive') {
@@ -323,17 +410,47 @@ export function useVoiceGeoTracker({
         const blob = new Blob(audioChunksRef.current, { type: mime });
         resolve(blob);
       };
-      recorder.stop();
+
+      try {
+        recorder.stop();
+      } catch (e) {
+        console.warn('[VoiceGeoTracker] Error deteniendo recorder:', e);
+        const mime = recorder.mimeType || 'audio/webm';
+        resolve(new Blob(audioChunksRef.current, { type: mime }));
+      }
     });
 
-    // 3. Silenciar stream de audio sin destruirlo (evita volver a pedir permisos)
-    muteAudioStream();
-    streamRef.current = null;
+    // 3. APAGAR COMPLETAMENTE EL MICRÓFONO DEL TELÉFONO (estilo WhatsApp)
+    // Detener todas las pistas del stream para que el indicador de micrófono
+    // (punto naranja en iOS o icono verde en Android) se apague de inmediato.
+    if (streamRef.current) {
+      stopMediaStream(streamRef.current);
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
 
     const t0 = t0Ref.current;
     const tEnd = Date.now();
     const durationSeconds = (tEnd - t0) / 1000;
     const finalGpsTrack = [...gpsTrackRef.current];
+
+    // Si por alguna razón el track quedó vacío pero teníamos posición inicial o última conocida,
+    // garantizar que al menos se registre la posición donde se habló
+    if (finalGpsTrack.length === 0) {
+      const fallbackGps = currentGps || moduleLastKnownGps;
+      if (fallbackGps && typeof fallbackGps.lat === 'number' && typeof fallbackGps.lng === 'number') {
+        finalGpsTrack.push({
+          timestamp: t0,
+          relativeTimeMs: 0,
+          lat: fallbackGps.lat,
+          lng: fallbackGps.lng,
+          accuracy: fallbackGps.accuracy || 4.0,
+          altitude: fallbackGps.altitude || null,
+          speed: fallbackGps.speed || null,
+          heading: fallbackGps.heading || null,
+        });
+      }
+    }
 
     // Convertir audio a dataUrl inmediatamente para reproductores de preview y APIs
     const dataUrl = await new Promise((resolve) => {
@@ -368,7 +485,34 @@ export function useVoiceGeoTracker({
 
     setIsRecording(false);
     return result;
-  }, [isRecording, autoPersistOffline]);
+  }, [isRecording, autoPersistOffline, currentGps]);
+
+  // ── Cancelar grabación y liberar micrófono de inmediato ─────────────────────
+  const cancelTracking = useCallback(() => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.onstop = null;
+        mediaRecorderRef.current.stop();
+      } catch {}
+      mediaRecorderRef.current = null;
+    }
+    if (streamRef.current) {
+      stopMediaStream(streamRef.current);
+      streamRef.current = null;
+    }
+    audioChunksRef.current = [];
+    gpsTrackRef.current = [];
+    setIsRecording(false);
+    setElapsedSeconds(0);
+  }, []);
 
   // Limpieza al desmontar
   useEffect(() => {
@@ -379,7 +523,10 @@ export function useVoiceGeoTracker({
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
-      muteAudioStream();
+      if (streamRef.current) {
+        stopMediaStream(streamRef.current);
+        streamRef.current = null;
+      }
     };
   }, []);
 
@@ -393,6 +540,6 @@ export function useVoiceGeoTracker({
     error,
     startTracking,
     stopTracking,
+    cancelTracking,
   };
 }
-

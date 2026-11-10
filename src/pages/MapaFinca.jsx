@@ -33,7 +33,7 @@ export default function MapaFinca() {
     }
   }, []);
 
-  // Carga inicial
+  // Carga inicial y escucha reactiva de eventos
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
@@ -47,6 +47,15 @@ export default function MapaFinca() {
       }
     };
     loadAll();
+
+    const handleInv = () => loadInventory();
+    const handlePaths = () => loadPaths();
+    window.addEventListener('farm-inventory-updated', handleInv);
+    window.addEventListener('farm-paths-updated', handlePaths);
+    return () => {
+      window.removeEventListener('farm-inventory-updated', handleInv);
+      window.removeEventListener('farm-paths-updated', handlePaths);
+    };
   }, [loadInventory, loadPaths]);
 
   if (loading) {

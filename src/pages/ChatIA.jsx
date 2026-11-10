@@ -39,7 +39,7 @@ import {
   Pause
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { useVoiceGeoTracker } from '../hooks/useVoiceGeoTracker';
+import { useVoiceGeoTracker, setGlobalLastKnownGps, getGlobalLastKnownGps } from '../hooks/useVoiceGeoTracker';
 import { interpolateGpsAtAudioTime } from '../utils/geoAudioInterpolation';
 import {
   exportInventoryToExcel,
@@ -55,6 +55,7 @@ import {
 } from '../utils/exportTools';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
 import { getLocalInventory, getLocalPaths, insertFarmInventoryItem, deleteFarmInventoryItem } from '../services/farmInventoryStorage';
+import { parseStructuredCommands, executeInventoryActions } from '../services/mapIaOrchestrator';
 
 // ─── Configuración de Modelos de Gemini (Ordenados de más a menos potente) ─────
 const GEMINI_SERVERS = [
@@ -1250,7 +1251,7 @@ export default function ChatIA() {
   useEffect(() => {
     if (!('geolocation' in navigator)) return;
 
-    // Lectura inicial rápida
+    // Lectura inicial rápida (permite ubicación de caché para disponibilidad inmediata)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const info = {
@@ -1262,14 +1263,15 @@ export default function ChatIA() {
         };
         setDeviceGps(info);
         deviceGpsRef.current = info;
+        setGlobalLastKnownGps(info);
       },
       (err) => {
         console.warn('[ChatIA] Lectura inicial GPS no disponible:', err.message);
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 20000 }
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
     );
 
-    // Muestreo continuo
+    // Muestreo continuo tolerante para móviles
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const info = {
@@ -1281,11 +1283,12 @@ export default function ChatIA() {
         };
         setDeviceGps(info);
         deviceGpsRef.current = info;
+        setGlobalLastKnownGps(info);
       },
       (err) => {
         console.warn('[ChatIA] watchPosition error:', err.message);
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
     );
 
     return () => {
@@ -1471,6 +1474,24 @@ export default function ChatIA() {
       console.warn('Error al recargar caminos:', err);
     }
   };
+
+  // Sincronización reactiva bidireccional entre el Mapa, la Voz y el Chat IA
+  useEffect(() => {
+    const handleInvUpdated = () => {
+      reloadInventory();
+    };
+    const handlePathsUpdated = () => {
+      reloadPaths();
+    };
+
+    window.addEventListener('farm-inventory-updated', handleInvUpdated);
+    window.addEventListener('farm-paths-updated', handlePathsUpdated);
+
+    return () => {
+      window.removeEventListener('farm-inventory-updated', handleInvUpdated);
+      window.removeEventListener('farm-paths-updated', handlePathsUpdated);
+    };
+  }, []);
 
   // ── Eliminar o desactivar elemento del inventario ─────────────────────────────
   const handleDeleteInventoryItem = async (id) => {
@@ -1690,130 +1711,27 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           }
         }
 
-        // 1. Detección y ejecución de registro de múltiples puntos con GPS continuo interpolado
-        const regPointsMatch = successResult.match(/\[\[REGISTRAR_PUNTOS:\s*(\[.*?\])\s*\]\]/s);
-        if (regPointsMatch) {
-          try {
-            const items = JSON.parse(regPointsMatch[1]);
-            displayedContent = displayedContent.replace(regPointsMatch[0], '').trim();
+        // ─── Procesamiento Unificado de Acciones de Inventario y Cartografía ───
+        const structured = parseStructuredCommands(successResult);
 
-            if (Array.isArray(items) && items.length > 0) {
-              const audTrack = aud?.gpsTrack || (deviceGpsRef.current ? [{ ...deviceGpsRef.current, timestamp: Date.now() }] : []);
-              const t0 = aud?.t0 || Date.now();
+        // Limpiar comandos estructurados del texto visible al usuario
+        displayedContent = displayedContent
+          .replace(/\[\[REGISTRAR_PUNTOS:\s*(\[[\s\S]*?\])\s*\]\]/gi, '')
+          .replace(/\[\[REGISTRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+          .replace(/\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+          .replace(/\[\[REGISTRAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+          .replace(/\[\[EDITAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+          .trim();
 
-              for (const item of items) {
-                const geo = interpolateGpsAtAudioTime({
-                  t0,
-                  gpsTrack: audTrack,
-                  timestampAudioSec: Number(item.timestamp_audio_s) || 0,
-                });
+        const actionsToExecute = [
+          ...structured.points.map((p) => ({ type: 'ADD_POINT', data: p })),
+          ...structured.deletions.map((d) => ({ type: 'DELETE_POINT', data: d })),
+          ...structured.paths.map((pth) => ({ type: 'ADD_PATH', data: pth })),
+          ...structured.updates.map((u) => ({ type: 'UPDATE_POINT', data: u })),
+        ];
 
-                const lat = geo.lat || currentGpsInfo?.lat || 36.72595;
-                const lng = geo.lng || currentGpsInfo?.lng || -4.89462;
-                const acc = geo.accuracy_m || currentGpsInfo?.accuracy || 3.0;
-
-                const category = item.category || item.tipo || 'arbol';
-                const variety_type = item.variedad || item.variety_type || (item.tipo && item.tipo !== category ? item.tipo : null);
-                const name = item.name || `${item.tipo || category} ${variety_type || ''}`.trim();
-
-                const newRow = await insertFarmInventoryItem({
-                  name,
-                  category,
-                  variety_type,
-                  status: item.estado || item.status || 'saludable',
-                  latitude: lat,
-                  longitude: lng,
-                  accuracy_meters: acc,
-                  notes: item.observaciones || item.notes || 'Registrado por voz en Campito Jorox',
-                  is_active: true,
-                });
-
-                if (newRow) {
-                  newlyAddedBatch.push(newRow);
-                  contextDataRef.current += `\n- [${(newRow.category || 'arbol').toUpperCase()}] ${newRow.name} (${newRow.variety_type || ''}) | Lat/Lng: ${newRow.latitude}, ${newRow.longitude}`;
-                  window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: newRow }));
-                }
-              }
-
-              if (newlyAddedBatch.length > 0) {
-                setFarmInventory((prev) => [...newlyAddedBatch, ...prev]);
-              }
-            }
-          } catch (e) {
-            console.warn('Error al procesar bloque REGISTRAR_PUNTOS:', e);
-          }
-        }
-
-        // 2. Detección y ejecución de orden de registro de punto único
-        const regPointMatch = successResult.match(/\[\[REGISTRAR_PUNTO:\s*(\{.*?\})\s*\]\]/s);
-        if (regPointMatch) {
-          try {
-            const regData = JSON.parse(regPointMatch[1]);
-            displayedContent = displayedContent.replace(regPointMatch[0], '').trim();
-
-            const lat = Number(regData.latitude) || (currentGpsInfo ? currentGpsInfo.lat : 36.72595);
-            const lng = Number(regData.longitude) || (currentGpsInfo ? currentGpsInfo.lng : -4.89462);
-            const acc = Number(regData.accuracy_meters) || (currentGpsInfo ? currentGpsInfo.accuracy : 3.0);
-
-            const pointCat = regData.category || regData.tipo || 'arbol';
-            const pointVariety = regData.variety_type || regData.variedad || (regData.tipo && regData.tipo !== pointCat ? regData.tipo : null);
-            const pointName = regData.name || `${regData.tipo || pointCat} ${pointVariety || ''}`.trim();
-
-            const newPoint = await insertFarmInventoryItem({
-              name: pointName,
-              category: pointCat,
-              variety_type: pointVariety,
-              status: regData.status || regData.estado || 'saludable',
-              latitude: lat,
-              longitude: lng,
-              accuracy_meters: acc,
-              notes: regData.notes || regData.observaciones || 'Registrado con GPS desde Chat IA',
-              is_active: true,
-            });
-
-            if (newPoint) {
-              newlyAddedBatch.push(newPoint);
-              setFarmInventory((prev) => [newPoint, ...prev]);
-              contextDataRef.current += `\n- [${(newPoint.category || 'arbol').toUpperCase()}] ${newPoint.name} (${newPoint.variety_type || ''}) | Estado: ${newPoint.status} | Lat/Lng: ${newPoint.latitude}, ${newPoint.longitude}`;
-              window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: newPoint }));
-            }
-          } catch (e) {
-            console.warn('Error al procesar orden de registro de punto:', e);
-          }
-        }
-
-        // Detección y ejecución de orden de borrado de puntos del inventario catastral
-        const delPointMatch = successResult.match(/\[\[BORRAR_PUNTO:\s*(\{.*?\})\s*\]\]/s);
-        if (delPointMatch) {
-          try {
-            const delData = JSON.parse(delPointMatch[1]);
-            displayedContent = displayedContent.replace(delPointMatch[0], '').trim();
-
-            if (delData.target === 'ultimo') {
-              const target = farmInventoryRef.current[0];
-              if (target) {
-                await deleteFarmInventoryItem(target.id);
-                setFarmInventory((prev) => prev.filter((p) => String(p.id) !== String(target.id)));
-                window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: target.id, deleted: true } }));
-              }
-            } else if (delData.query) {
-              const q = delData.query.toLowerCase().trim();
-              const target = farmInventoryRef.current.find((p) =>
-                (p.name && p.name.toLowerCase().includes(q)) ||
-                (p.variety_type && p.variety_type.toLowerCase().includes(q)) ||
-                (p.category && p.category.toLowerCase().includes(q))
-              );
-              if (target) {
-                await deleteFarmInventoryItem(target.id);
-                setFarmInventory((prev) => prev.filter((p) => String(p.id) !== String(target.id)));
-                window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: target.id, deleted: true } }));
-              }
-            }
-          } catch (e) {
-            console.warn('Error al procesar orden de borrado de punto:', e);
-          }
-        } else if (text) {
-          // Heurística de respaldo si el usuario pidió explícitamente borrar por voz o texto
+        // Heurística de respaldo si el usuario pidió explícitamente borrar por voz o texto
+        if (text && actionsToExecute.filter((a) => a.type === 'DELETE_POINT').length === 0) {
           const lower = text.toLowerCase().trim();
           const isDeleteLast =
             lower.includes('borra el último árbol') ||
@@ -1826,14 +1744,68 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             lower.includes('cancela el último');
 
           if (isDeleteLast && farmInventoryRef.current.length > 0) {
-            const target = farmInventoryRef.current[0];
-            try {
-              await deleteFarmInventoryItem(target.id);
-              setFarmInventory((prev) => prev.filter((p) => String(p.id) !== String(target.id)));
-              window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: target.id, deleted: true } }));
-            } catch (err) {
-              console.warn('Error en heurística de borrado:', err);
+            actionsToExecute.push({
+              type: 'DELETE_POINT',
+              data: { target: 'ultimo' },
+            });
+          }
+        }
+
+        if (actionsToExecute.length > 0) {
+          try {
+            const execResult = await executeInventoryActions({
+              actions: actionsToExecute,
+              audio: aud,
+              liveGps: effectivePt,
+              currentInventory: farmInventoryRef.current,
+              currentPaths: farmPathsRef.current,
+            });
+
+            if (execResult.addedItems.length > 0) {
+              newlyAddedBatch.push(...execResult.addedItems);
+              setFarmInventory((prev) => [
+                ...execResult.addedItems,
+                ...prev.filter((i) => !execResult.addedItems.some((a) => String(a.id) === String(i.id))),
+              ]);
+              execResult.addedItems.forEach((newRow) => {
+                contextDataRef.current += `\n- [${(newRow.category || 'arbol').toUpperCase()}] ${newRow.name} (${newRow.variety_type || ''}) | Lat/Lng: ${newRow.latitude}, ${newRow.longitude}`;
+              });
             }
+
+            if (execResult.deletedItems.length > 0) {
+              setFarmInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
+            }
+
+            if (execResult.updatedItems.length > 0) {
+              setFarmInventory((prev) =>
+                prev.map((i) => {
+                  const upd = execResult.updatedItems.find((u) => String(u.id) === String(i.id));
+                  return upd ? { ...i, ...upd } : i;
+                })
+              );
+            }
+
+            if (execResult.addedPaths.length > 0) {
+              setFarmPaths((prev) => [
+                ...execResult.addedPaths,
+                ...prev.filter((p) => !execResult.addedPaths.some((a) => String(a.id) === String(p.id))),
+              ]);
+            }
+
+            if (execResult.deletedPaths.length > 0) {
+              setFarmPaths((prev) => prev.filter((p) => !execResult.deletedPaths.includes(p.id)));
+            }
+
+            if (execResult.updatedPaths.length > 0) {
+              setFarmPaths((prev) =>
+                prev.map((p) => {
+                  const upd = execResult.updatedPaths.find((u) => String(u.id) === String(p.id));
+                  return upd ? { ...p, ...upd } : p;
+                })
+              );
+            }
+          } catch (e) {
+            console.warn('[ChatIA] Error ejecutando acciones de inventario:', e);
           }
         }
 
@@ -2316,10 +2288,15 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
     try {
       setPendingAudio(null);
       setError(null);
-      await startTracking({ initialGps: deviceGpsRef.current });
+      const seedGps = deviceGpsRef.current || getGlobalLastKnownGps() || null;
+      await startTracking({ initialGps: seedGps });
     } catch (err) {
       console.error('Error iniciando grabación:', err);
-      setError('No se pudo acceder al micrófono o GPS. Verifica los permisos en tu navegador o móvil.');
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Permiso de micrófono denegado. Por favor, habilítalo en los ajustes de tu navegador o móvil para grabar audios.');
+      } else {
+        setError('No se pudo acceder al micrófono o GPS. Verifica los permisos en tu navegador o móvil.');
+      }
     }
   };
 
