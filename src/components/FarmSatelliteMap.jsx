@@ -76,6 +76,7 @@ import {
   markJobActionsApplied,
 } from '../services/aiBackgroundJobManager';
 import { generateCustomPDF } from '../utils/exportTools';
+import { syncTextareaHeight } from '../utils/helpers';
 import catastroJorox from '../data/catastroJorox.json';
 
 const mapRuntimeContextMap = new globalThis.Map();
@@ -463,9 +464,14 @@ export default function FarmSatelliteMap({
   const [pendingVoiceAudio, setPendingVoiceAudio] = useState(null);
 
   // Inputs y estados para adjuntar fotos de cámara y documentos (+ / 📷)
+  const mapIaTextareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
   const [pendingAttachment, setPendingAttachment] = useState(null);
+
+  useEffect(() => {
+    syncTextareaHeight(mapIaTextareaRef.current, mapIaInput);
+  }, [mapIaInput]);
 
   const isDrawingRef = useRef(isDrawing);
   useEffect(() => {
@@ -1947,6 +1953,7 @@ export default function FarmSatelliteMap({
 
     // Limpiar entrada inmediatamente y delegar a Background Job
     setMapIaInput('');
+    syncTextareaHeight(mapIaTextareaRef.current, '');
     setPendingVoiceAudio(null);
     setPendingAttachment(null);
     setIsPreviewPlaying(false);
@@ -3415,12 +3422,13 @@ export default function FarmSatelliteMap({
               <div style={{ ...styles.chatIaInputCapsule, paddingLeft: 12 }}>
                 <Bot size={18} color="#00979d" style={{ flexShrink: 0, marginRight: 8 }} />
                 <textarea
+                  ref={mapIaTextareaRef}
                   rows={1}
                   value={mapIaInput}
                   onChange={(e) => {
-                    setMapIaInput(e.target.value);
-                    e.target.style.height = 'auto';
-                    e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
+                    const val = e.target.value;
+                    setMapIaInput(val);
+                    syncTextareaHeight(e.target, val);
                   }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -4594,17 +4602,21 @@ const styles = {
   },
   chatIaTextInput: {
     flex: 1,
+    minWidth: 0,
+    height: 38,
+    minHeight: 38,
+    maxHeight: 100,
     border: 'none',
     outline: 'none',
     backgroundColor: 'transparent',
     color: '#1a1a1a',
     resize: 'none',
-    lineHeight: 1.4,
-    fontSize: '0.9rem',
-    maxHeight: 100,
+    lineHeight: '20px',
+    fontSize: '16px',
     overflowY: 'auto',
     fontFamily: 'inherit',
     padding: '9px 0',
+    boxSizing: 'border-box',
   },
   capsuleCameraBtn: {
     width: 34,

@@ -63,6 +63,7 @@ import FarmSatelliteMap from '../components/FarmSatelliteMap';
 import { getLocalInventory, getLocalPaths } from '../services/farmInventoryStorage';
 import { parseStructuredCommands, executeInventoryActions } from '../services/mapIaOrchestrator';
 import { deleteCalendarEvent } from '../services/calendarService';
+import { syncTextareaHeight } from '../utils/helpers';
 import {
   startAiBackgroundJob,
   subscribeSectionJobs,
@@ -758,22 +759,27 @@ const styles = {
     borderRadius: 22,
     padding: '0 6px 0 14px',
     minHeight: 42,
+    maxHeight: 100,
     boxSizing: 'border-box',
     transition: 'border-color 0.2s',
   },
   textInput: {
     flex: 1,
+    minWidth: 0,
+    height: 38,
+    minHeight: 38,
+    maxHeight: 100,
     border: 'none',
     outline: 'none',
     backgroundColor: 'transparent',
     color: '#1a1a1a',
     resize: 'none',
-    lineHeight: 1.4,
-    fontSize: '0.9rem',
-    maxHeight: 100,
+    lineHeight: '20px',
+    fontSize: '16px',
     overflowY: 'auto',
     fontFamily: 'inherit',
     padding: '9px 0',
+    boxSizing: 'border-box',
   },
   capsuleCameraBtn: (active) => ({
     width: 34,
@@ -1133,6 +1139,10 @@ export default function ChatIA() {
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
+
+  useEffect(() => {
+    syncTextareaHeight(inputRef.current, input);
+  }, [input]);
 
   // ── Reproductor de preview de audio en la barra de input (estilo WhatsApp) ──
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -2103,6 +2113,7 @@ export default function ChatIA() {
       }
 
       setInput('');
+      syncTextareaHeight(inputRef.current, '');
       setPendingAttachment(null);
       setPendingAudio(null);
       setIsLoading(true);
@@ -4347,8 +4358,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                     // ignore
                   }
                 }
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
+                syncTextareaHeight(e.target, val);
               }}
               onKeyDown={handleKeyDown}
               rows={1}

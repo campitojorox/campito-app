@@ -20,7 +20,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { stopMediaStream } from '../hooks/useVoiceGeoTracker';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, syncTextareaHeight } from '../utils/helpers';
 import {
   buildSectionSystemInstruction,
   loadFarmKnowledgeSafe,
@@ -117,6 +117,10 @@ export default function SectionChatIA({
   const onHighlightDateRef = useRef(onHighlightDate);
   const consumedJobIdsRef = useRef(new Set());
   const pendingAttachmentsByJobRef = useRef(new Map());
+
+  useEffect(() => {
+    syncTextareaHeight(textareaRef.current, inputText);
+  }, [inputText]);
 
   useEffect(() => {
     contextDataRef.current = contextData;
@@ -598,7 +602,7 @@ export default function SectionChatIA({
 
     // Limpiar barra inferior inmediatamente para UX fluida y sin bloqueos
     setInputText('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    syncTextareaHeight(textareaRef.current, '');
     setPendingVoiceAudio(null);
     setPendingAttachment(null);
     setIsPreviewPlaying(false);
@@ -1086,9 +1090,9 @@ export default function SectionChatIA({
               rows={1}
               value={inputText}
               onChange={(e) => {
-                setInputText(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 100) + 'px';
+                const val = e.target.value;
+                setInputText(val);
+                syncTextareaHeight(e.target, val);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1482,17 +1486,21 @@ const styles = {
   },
   chatIaTextInput: {
     flex: 1,
+    minWidth: 0,
+    height: 38,
+    minHeight: 38,
+    maxHeight: 100,
     border: 'none',
     outline: 'none',
     backgroundColor: 'transparent',
     color: '#1a1a1a',
     resize: 'none',
-    lineHeight: 1.4,
-    fontSize: '0.9rem',
-    maxHeight: 100,
+    lineHeight: '20px',
+    fontSize: '16px',
     overflowY: 'auto',
     fontFamily: 'inherit',
     padding: '9px 0',
+    boxSizing: 'border-box',
   },
   capsuleCameraBtn: {
     width: 34,

@@ -11,3 +11,14 @@ export const highlightText = (text, highlight) => {
     regex.test(part) ? <span key={i} style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{part}</span> : part
   );
 };
+
+/**
+ * Ajusta dinámicamente la altura de un textarea al escribir y lo devuelve a 1 línea al limpiarse.
+ */
+export const syncTextareaHeight = (el, value, baseHeight = 38, maxHeight = 100) => {
+  if (!el) return;
+  el.style.height = `${baseHeight}px`;
+  if (value) {
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, baseHeight), maxHeight)}px`;
+  }
+};

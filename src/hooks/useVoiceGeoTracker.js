@@ -100,12 +100,25 @@ export function getGlobalLastKnownGps() {
   return moduleLastKnownGps;
 }
 
-// ─── Helpers Compartidos de Geolocalización Segura (iOS / Safari / PWA / HTTPS) ───
+// ─── Helpers Compartidos de Geolocalización Segura (iOS / Android / PWA / HTTPS) ───
 export function isIosDevice() {
   if (typeof navigator === 'undefined') return false;
   return (
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isAndroidDevice() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
+function isStandalonePwa() {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia?.('(display-mode: standalone)')?.matches ||
+    window.navigator?.standalone === true
   );
 }
 
@@ -185,16 +198,42 @@ export function formatGeolocationErrorMessage(err) {
     return `El móvil bloquea el GPS porque estás accediendo sin HTTPS (${origin}).\n\nPara usar el GPS desde el móvil debes abrir la app mediante HTTPS (por ejemplo, la URL de Vercel o un túnel HTTPS).`;
   }
   if (err?.code === 1) {
+    const standalone = isStandalonePwa();
+
     if (isIosDevice()) {
+      if (standalone) {
+        return (
+          'GPS bloqueado desde el icono de Pantalla de inicio (iPhone).\n\n' +
+          'En iOS las apps añadidas al escritorio usan un visor separado de Safari y Apple exige estos ajustes:\n' +
+          '1. Ajustes → Privacidad y seguridad → Localización → "Sitios web de Safari" → selecciona "Mientras se usa la app" (NO "Preguntar") y activa "Ubicación exacta".\n' +
+          '2. Ajustes → Apps → Safari → Ubicación → selecciona "Permitir".\n' +
+          '3. Borra este icono, ve a Ajustes → Apps → Safari → Avanzado → Datos de sitios web y elimina "campitojorox", abre la web en Safari, concede el GPS y vuelve a añadirla.\n\n' +
+          'Nota: en algunas versiones de iOS Apple bloquea igualmente el GPS en Pantalla de inicio; en ese caso úsala directamente desde Safari.'
+        );
+      }
       return (
-        'Permiso de GPS bloqueado en iPhone/Safari.\n\n' +
-        'Nota: la app web NO aparece con su propio nombre en Ajustes; comparte permisos con Safari:\n' +
-        '1. Ve a Ajustes → Privacidad y seguridad → Localización → "Sitios web de Safari" y elige "Mientras se usa la app".\n' +
-        '2. En Safari, pulsa el icono a la izquierda de la barra de dirección → Ajustes del sitio web → Ubicación → "Permitir".\n' +
-        '3. Si abres la app desde el icono de Pantalla de inicio y sigue bloqueada, quítala de la pantalla de inicio, abre primero la web en Safari, concede el permiso y vuelve a añadirla.'
+        'Permiso de GPS bloqueado en iPhone (Safari).\n\n' +
+        '1. Ajustes → Privacidad y seguridad → Localización → "Sitios web de Safari" → "Mientras se usa la app" + "Ubicación exacta".\n' +
+        '2. En Safari, pulsa el icono izquierdo de la barra de dirección → Ajustes del sitio web → Ubicación → "Permitir".'
       );
     }
-    return 'Permiso de GPS denegado. Activa el permiso de ubicación para este sitio en los ajustes del navegador (icono de candado junto a la URL).';
+
+    if (isAndroidDevice()) {
+      if (standalone) {
+        return (
+          'Permiso de GPS bloqueado en la App (Android).\n\n' +
+          '1. Mantén pulsado el icono de "Campito Jorox" → Información de la app (ⓘ) → Permisos → Ubicación → "Permitir solo mientras se usa la app" (y activa "Usar ubicación precisa").\n' +
+          '2. Comprueba que la Ubicación general del teléfono está activada.'
+        );
+      }
+      return (
+        'Permiso de GPS bloqueado en Android.\n\n' +
+        '1. Activa la Ubicación en los ajustes rápidos del móvil.\n' +
+        '2. Toca el icono de ajustes/candado a la izquierda de la barra de dirección → Permisos → Ubicación → "Permitir".'
+      );
+    }
+
+    return 'Permiso de GPS denegado. Activa el permiso de ubicación para este sitio en los ajustes del navegador (icono junto a la URL).';
   }
   return `No se pudo obtener la posición GPS (${err?.message || 'tiempo agotado'}). Comprueba que la Localización esté activa en el teléfono e inténtalo al aire libre.`;
 }
