@@ -5,6 +5,7 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, en
 import { es } from 'date-fns/locale';
 import { supabase } from '../supabaseClient';
 import { Plus, Calendar, Clock, AlignLeft } from 'lucide-react';
+import SectionChatIA from '../components/SectionChatIA';
 
 const categoryColors = {
   'RIEGO': '#38bdf8', // Azul claro (Tailwind sky-400)
@@ -44,6 +45,8 @@ export default function Calendario() {
   }, [location.state]);
   
   // Form state
+  // cambio de grafica del form: formulario superior colapsable (isAddFormOpen) separado de edición inline (isFormOpen)
+  const [isAddFormOpen, setIsAddFormOpen] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -94,7 +97,7 @@ export default function Calendario() {
     }
     
     if (newCategory === 'MANTENIMIENTO' && !newSubcategory) {
-      alert("Por favor, selecciona una subcategoría para Mantenimiento (Poda, Desbroza, Fertilizado, Fitosanitarios).");
+      alert("Por favor, selecciona una subcategoría para Mantenimiento (Poda, Limpieza, Fertilizado, Fitosanitarios).");
       return;
     }
 
@@ -117,11 +120,33 @@ export default function Calendario() {
     }
     
     refetchEvents(); // Reload from DB
+    setIsAddFormOpen(false);
     setIsFormOpen(false);
     setEditingEvent(null);
   };
 
+  const toggleAddForm = () => {
+    setIsAddFormOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setEditingEvent(null);
+        setIsFormOpen(false);
+        const dayIso = format(selectedDate, 'yyyy-MM-dd');
+        setNewDate(dayIso);
+        setNewEndDate(dayIso);
+        setNewStartTime('08:00');
+        setNewEndTime('09:00');
+        setNewCategory('');
+        setNewSubcategory('');
+        setNewResponsibles([]);
+        setNewInfo('');
+      }
+      return next;
+    });
+  };
+
   const openEdit = (ev) => {
+    setIsAddFormOpen(false);
     setEditingEvent(ev);
     setNewDate(ev.Date ? ev.Date.split(' ')[0] : format(selectedDate, 'yyyy-MM-dd'));
     setNewEndDate(ev["End Date"] ? ev["End Date"].split(' ')[0] : format(selectedDate, 'yyyy-MM-dd'));
@@ -134,7 +159,8 @@ export default function Calendario() {
       setNewSubcategory(cat.includes(' - ') ? cat.split(' - ')[1] : '');
     } else if (cat.startsWith('MANTENIMIENTO')) {
       setNewCategory('MANTENIMIENTO');
-      setNewSubcategory(cat.includes(' - ') ? cat.split(' - ')[1] : '');
+      const rawSub = cat.includes(' - ') ? cat.split(' - ')[1] : '';
+      setNewSubcategory(rawSub === 'Desbroza' ? 'Limpieza' : rawSub);
     } else {
       setNewCategory(cat);
       setNewSubcategory('');
@@ -155,6 +181,9 @@ export default function Calendario() {
     setSelectedDate(day);
     setIsFormOpen(false);
     setEditingEvent(null);
+    const dayIso = format(day, 'yyyy-MM-dd');
+    setNewDate(dayIso);
+    setNewEndDate(dayIso);
   }, []);
 
   const monthStart = useMemo(() => startOfMonth(currentMonth), [currentMonth]);
@@ -189,265 +218,458 @@ export default function Calendario() {
     });
   }, [events, searchQuery]);
 
-  const displayEvents = useMemo(() => {
-    return (isSearchOpen && searchQuery.trim() !== '') ? searchResults : selectedDayEvents;
-  }, [isSearchOpen, searchQuery, searchResults, selectedDayEvents]);
+  const isSearching = isSearchOpen && searchQuery.trim() !== '';
 
-  const renderForm = () => (
-    <div id="event-form" className="form-container" style={{ margin: '3rem 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: '2.5rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.5rem', color: '#000000', fontWeight: 'bold' }}>{editingEvent ? 'Editar Evento' : 'Agregar Evento'}</h2>
-            {editingEvent && (
-              <button type="button" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
-            )}
-          </div>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <form onSubmit={handleAddEvent}>
-
-            <div className="form-group" style={{ padding: 0, marginBottom: '1.8rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '0.5rem', width: '100%', flexWrap: 'wrap' }}>
-                {users.map(u => {
-                  const isSelected = newResponsibles.includes(u.name);
-                  return (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => {
-                        const fakeEvent = { target: { setCustomValidity: () => {} } };
-                        fakeEvent.target.setCustomValidity('');
-                        if (isSelected) {
-                          setNewResponsibles(newResponsibles.filter(name => name !== u.name));
-                        } else {
-                          setNewResponsibles([...newResponsibles, u.name]);
-                        }
-                      }}
-                      style={{
-                        flex: 1,
-                        minWidth: '22%',
-                        padding: '0.8rem 0',
-                        borderRadius: '12px',
-                        border: isSelected ? `2px solid #9edb9e` : `2px solid transparent`,
-                        backgroundColor: isSelected ? '#9edb9e' : 'var(--primary)',
-                        color: isSelected ? '#1a1a1a' : 'white',
-                        fontWeight: '600',
-                        fontSize: '1rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      {u.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <div className="input-with-icon" style={{ flex: '1.1 1 0', marginBottom: 0, position: 'relative' }}>
-                <Calendar className="input-icon" size={18} style={{ left: '0.75rem' }} />
-                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-              </div>
-              <div className="input-with-icon" style={{ flex: '0.9 1 0', marginBottom: 0, position: 'relative' }}>
-                <Clock className="input-icon" size={18} style={{ left: '0.75rem' }} />
-                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.85rem' }}>
-              <div className="input-with-icon" style={{ flex: '1.1 1 0', marginBottom: 0, position: 'relative' }}>
-                <div className="input-icon" style={{ left: '0.75rem', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', pointerEvents: 'none', overflow: 'visible' }}>
-                  <Calendar size={18} color="var(--primary)" />
-                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ position: 'absolute' }}>
-                    <line x1="3" y1="19" x2="19" y2="3" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
-                    <line x1="3" y1="19" x2="19" y2="3" stroke="var(--primary)" strokeWidth="1.6" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <input type="date" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newEndDate} onChange={(e) => setNewEndDate(e.target.value)} />
-              </div>
-              <div className="input-with-icon" style={{ flex: '0.9 1 0', marginBottom: 0, position: 'relative' }}>
-                <div className="input-icon" style={{ left: '0.75rem', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', pointerEvents: 'none', overflow: 'visible' }}>
-                  <Clock size={18} color="var(--primary)" />
-                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ position: 'absolute' }}>
-                    <line x1="3" y1="19" x2="19" y2="3" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
-                    <line x1="3" y1="19" x2="19" y2="3" stroke="var(--primary)" strokeWidth="1.6" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <input type="time" className="form-input" style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.95rem', paddingLeft: '2.5rem' }} required value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} />
-              </div>
-            </div>
-
-            <div className="form-group" style={{ padding: 0, marginTop: '3.2rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
-              <button 
+  // cambio de grafica del form: campos compartidos con mismos tamaños y gráfica que Transacciones
+  const renderEventFormFields = (isEdit) => (
+    <form onSubmit={handleAddEvent}>
+      <div className="form-group" style={{ padding: 0, marginBottom: '0.9rem' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', width: '100%', flexWrap: 'nowrap' }}>
+          {users.map(u => {
+            const isSelected = newResponsibles.includes(u.name);
+            return (
+              <button
+                key={u.id}
                 type="button"
-                onClick={() => setNewCategory('RIEGO')}
+                onClick={() => {
+                  const fakeEvent = { target: { setCustomValidity: () => {} } };
+                  fakeEvent.target.setCustomValidity('');
+                  if (isSelected) {
+                    setNewResponsibles(newResponsibles.filter(name => name !== u.name));
+                  } else {
+                    setNewResponsibles([...newResponsibles, u.name]);
+                  }
+                }}
                 style={{
                   flex: 1,
-                  padding: '0.8rem 0.2rem',
-                  borderRadius: '8px',
-                  border: newCategory === 'RIEGO' ? `2px solid #9edb9e` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'RIEGO' ? '#9edb9e' : 'var(--primary)',
-                  color: newCategory === 'RIEGO' ? '#1a1a1a' : 'white',
+                  minWidth: 0,
+                  minHeight: '42px',
+                  padding: '0.5rem 0.2rem',
+                  borderRadius: '10px',
+                  border: isSelected ? `2px solid #74c474` : `2px solid transparent`,
+                  backgroundColor: isSelected ? '#9edb9e' : 'var(--primary)',
+                  color: isSelected ? '#1a1a1a' : 'white',
                   fontWeight: '600',
-                  fontSize: '1rem',
+                  fontSize: 'clamp(0.74rem, 3.1vw, 0.92rem)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative'
+                  justifyContent: 'center'
                 }}
               >
-                <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: categoryColors['RIEGO'], border: '2px solid #ffffff', marginRight: '0.5rem', flexShrink: 0 }} />
-                Riego
+                {u.name}
               </button>
-              <button 
-                type="button"
-                onClick={() => setNewCategory('MANTENIMIENTO')}
-                style={{
-                  flex: 1,
-                  padding: '0.8rem 0.2rem',
-                  borderRadius: '8px',
-                  border: newCategory === 'MANTENIMIENTO' ? `2px solid #9edb9e` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'MANTENIMIENTO' ? '#9edb9e' : 'var(--primary)',
-                  color: newCategory === 'MANTENIMIENTO' ? '#1a1a1a' : 'white',
-                  fontWeight: '600',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative'
-                }}
-              >
-                <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: categoryColors['MANTENIMIENTO'], border: '2px solid #ffffff', marginRight: '0.5rem', flexShrink: 0 }} />
-                Mant.
-              </button>
-              <button 
-                type="button"
-                onClick={() => setNewCategory('OTRO')}
-                style={{
-                  flex: 1,
-                  padding: '0.8rem 0.2rem',
-                  borderRadius: '8px',
-                  border: newCategory === 'OTRO' ? `2px solid #9edb9e` : `2px solid transparent`,
-                  backgroundColor: newCategory === 'OTRO' ? '#9edb9e' : 'var(--primary)',
-                  color: newCategory === 'OTRO' ? '#1a1a1a' : 'white',
-                  fontWeight: '600',
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative'
-                }}
-              >
-                <div style={{ width: '18px', height: '18px', borderRadius: '50%', backgroundColor: categoryColors['OTRO'], border: '2px solid #ffffff', marginRight: '0.5rem', flexShrink: 0 }} />
-                Otro
-              </button>
-            </div>
-            
-            {newCategory === 'RIEGO' && (
-              <div className="form-group" style={{ padding: 0, marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setNewSubcategory('La Nana')}
-                  style={{
-                    flex: 1,
-                    padding: '0.6rem 0.2rem',
-                    borderRadius: '8px',
-                    border: newSubcategory === 'La Nana' ? `2px solid #9edb9e` : `2px solid transparent`,
-                    backgroundColor: newSubcategory === 'La Nana' ? '#9edb9e' : categoryColors['RIEGO'],
-                    color: newSubcategory === 'La Nana' ? '#1a1a1a' : 'white',
-                    fontWeight: '600',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative'
-                  }}
-                >
-                  La Nana
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewSubcategory('El Moro')}
-                  style={{
-                    flex: 1,
-                    padding: '0.6rem 0.2rem',
-                    borderRadius: '8px',
-                    border: newSubcategory === 'El Moro' ? `2px solid #9edb9e` : `2px solid transparent`,
-                    backgroundColor: newSubcategory === 'El Moro' ? '#9edb9e' : categoryColors['RIEGO'],
-                    color: newSubcategory === 'El Moro' ? '#1a1a1a' : 'white',
-                    fontWeight: '600',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative'
-                  }}
-                >
-                  El Moro
-                </button>
-              </div>
-            )}
-            
-            {newCategory === 'MANTENIMIENTO' && (
-              <div className="form-group" style={{ padding: 0, marginTop: '1rem', marginBottom: '0.5rem', display: 'flex', flexDirection: 'row', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {['Poda', 'Desbroza', 'Fertilizado', 'Fitosanitarios'].map(sub => (
-                  <button
-                    key={sub}
-                    type="button"
-                    onClick={() => setNewSubcategory(sub)}
-                    style={{
-                      flex: 1,
-                      minWidth: '45%',
-                      padding: '0.6rem 0.2rem',
-                      borderRadius: '8px',
-                      border: newSubcategory === sub ? `2px solid #9edb9e` : `2px solid transparent`,
-                      backgroundColor: newSubcategory === sub ? '#9edb9e' : categoryColors['MANTENIMIENTO'],
-                      color: newSubcategory === sub ? '#1a1a1a' : 'white',
-                      fontWeight: '600',
-                      fontSize: '1rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      position: 'relative'
-                    }}
-                  >
-                    {sub}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-              <div className="input-with-icon">
-                <AlignLeft className="input-icon" size={20} />
-                <input type="text" className="form-input" value={newInfo} onChange={(e) => setNewInfo(e.target.value)} placeholder="Detalles / Info" />
-              </div>
-            </div>
-            {!editingEvent ? (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '3rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Agregar</button>
-                <button type="button" className="btn" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--danger)', color: 'white', flex: 1, margin: 0, padding: '0.75rem 0' }}>Cancelar</button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '3rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
-                <button type="button" onClick={(e) => { e.preventDefault(); setIsConfirmingDelete(true); }} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
-              </div>
-            )}
-            </form>
-          </div>
+            );
+          })}
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.55rem', marginBottom: '0.55rem' }}>
+        <div className="input-with-icon" style={{ flex: '1.15 1 0', marginBottom: 0, position: 'relative' }}>
+          <Calendar className="input-icon" size={18} style={{ left: '0.7rem' }} />
+          <input
+            type="date"
+            className="form-input"
+            style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.92rem', paddingLeft: '2.35rem', height: '46px', borderRadius: '10px' }}
+            required
+            value={newDate}
+            onChange={(e) => setNewDate(e.target.value)}
+          />
+        </div>
+        <div className="input-with-icon" style={{ flex: '0.85 1 0', marginBottom: 0, position: 'relative' }}>
+          <Clock className="input-icon" size={18} style={{ left: '0.7rem' }} />
+          <input
+            type="time"
+            className="form-input"
+            style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.92rem', paddingLeft: '2.35rem', height: '46px', borderRadius: '10px' }}
+            required
+            value={newStartTime}
+            onChange={(e) => setNewStartTime(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.55rem', marginBottom: '0.55rem' }}>
+        <div className="input-with-icon" style={{ flex: '1.15 1 0', marginBottom: 0, position: 'relative' }}>
+          <div className="input-icon" style={{ left: '0.7rem', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', pointerEvents: 'none', overflow: 'visible' }}>
+            <Calendar size={18} color="var(--primary)" />
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ position: 'absolute' }}>
+              <line x1="3" y1="19" x2="19" y2="3" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
+              <line x1="3" y1="19" x2="19" y2="3" stroke="var(--primary)" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </div>
+          <input
+            type="date"
+            className="form-input"
+            style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.92rem', paddingLeft: '2.35rem', height: '46px', borderRadius: '10px' }}
+            required
+            value={newEndDate}
+            onChange={(e) => setNewEndDate(e.target.value)}
+          />
+        </div>
+        <div className="input-with-icon" style={{ flex: '0.85 1 0', marginBottom: 0, position: 'relative' }}>
+          <div className="input-icon" style={{ left: '0.7rem', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'absolute', pointerEvents: 'none', overflow: 'visible' }}>
+            <Clock size={18} color="var(--primary)" />
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ position: 'absolute' }}>
+              <line x1="3" y1="19" x2="19" y2="3" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
+              <line x1="3" y1="19" x2="19" y2="3" stroke="var(--primary)" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </div>
+          <input
+            type="time"
+            className="form-input"
+            style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.92rem', paddingLeft: '2.35rem', height: '46px', borderRadius: '10px' }}
+            required
+            value={newEndTime}
+            onChange={(e) => setNewEndTime(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="form-group" style={{ padding: 0, marginTop: '1.1rem', marginBottom: '0.4rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
+        <button
+          type="button"
+          onClick={() => setNewCategory('RIEGO')}
+          style={{
+            flex: 1,
+            minHeight: '46px',
+            padding: '0.55rem 0.35rem',
+            borderRadius: '10px',
+            border: newCategory === 'RIEGO' ? `2px solid #74c474` : `2px solid transparent`,
+            backgroundColor: newCategory === 'RIEGO' ? '#9edb9e' : 'var(--primary)',
+            color: newCategory === 'RIEGO' ? '#1a1a1a' : 'white',
+            fontWeight: '600',
+            fontSize: '0.92rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative'
+          }}
+        >
+          <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['RIEGO'], border: '2px solid #ffffff', marginRight: '0.4rem', flexShrink: 0 }} />
+          Riego
+        </button>
+        <button
+          type="button"
+          onClick={() => setNewCategory('MANTENIMIENTO')}
+          style={{
+            flex: 1,
+            minHeight: '46px',
+            padding: '0.55rem 0.35rem',
+            borderRadius: '10px',
+            border: newCategory === 'MANTENIMIENTO' ? `2px solid #74c474` : `2px solid transparent`,
+            backgroundColor: newCategory === 'MANTENIMIENTO' ? '#9edb9e' : 'var(--primary)',
+            color: newCategory === 'MANTENIMIENTO' ? '#1a1a1a' : 'white',
+            fontWeight: '600',
+            fontSize: '0.92rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative'
+          }}
+        >
+          <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['MANTENIMIENTO'], border: '2px solid #ffffff', marginRight: '0.4rem', flexShrink: 0 }} />
+          Mant.
+        </button>
+        <button
+          type="button"
+          onClick={() => setNewCategory('OTRO')}
+          style={{
+            flex: 1,
+            minHeight: '46px',
+            padding: '0.55rem 0.35rem',
+            borderRadius: '10px',
+            border: newCategory === 'OTRO' ? `2px solid #74c474` : `2px solid transparent`,
+            backgroundColor: newCategory === 'OTRO' ? '#9edb9e' : 'var(--primary)',
+            color: newCategory === 'OTRO' ? '#1a1a1a' : 'white',
+            fontWeight: '600',
+            fontSize: '0.92rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative'
+          }}
+        >
+          <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: categoryColors['OTRO'], border: '2px solid #ffffff', marginRight: '0.4rem', flexShrink: 0 }} />
+          Otro
+        </button>
+      </div>
+
+      {newCategory === 'RIEGO' && (
+        <div className="form-group" style={{ padding: 0, marginTop: '0.65rem', marginBottom: '0.4rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={() => setNewSubcategory('La Nana')}
+            style={{
+              flex: 1,
+              minHeight: '42px',
+              padding: '0.5rem 0.4rem',
+              borderRadius: '10px',
+              border: newSubcategory === 'La Nana' ? `2px solid #74c474` : `2px solid transparent`,
+              backgroundColor: newSubcategory === 'La Nana' ? '#9edb9e' : categoryColors['RIEGO'],
+              color: newSubcategory === 'La Nana' ? '#1a1a1a' : 'white',
+              fontWeight: '600',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative'
+            }}
+          >
+            La Nana
+          </button>
+          <button
+            type="button"
+            onClick={() => setNewSubcategory('El Moro')}
+            style={{
+              flex: 1,
+              minHeight: '42px',
+              padding: '0.5rem 0.4rem',
+              borderRadius: '10px',
+              border: newSubcategory === 'El Moro' ? `2px solid #74c474` : `2px solid transparent`,
+              backgroundColor: newSubcategory === 'El Moro' ? '#9edb9e' : categoryColors['RIEGO'],
+              color: newSubcategory === 'El Moro' ? '#1a1a1a' : 'white',
+              fontWeight: '600',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative'
+            }}
+          >
+            El Moro
+          </button>
+        </div>
+      )}
+
+      {newCategory === 'MANTENIMIENTO' && (
+        <div className="form-group" style={{ padding: 0, marginTop: '0.65rem', marginBottom: '0.4rem', display: 'flex', flexDirection: 'row', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {['Poda', 'Limpieza', 'Fertilizado', 'Fitosanitarios'].map(sub => (
+            <button
+              key={sub}
+              type="button"
+              onClick={() => setNewSubcategory(sub)}
+              style={{
+                flex: '1 1 calc(50% - 0.5rem)',
+                minWidth: '42%',
+                minHeight: '42px',
+                padding: '0.5rem 0.4rem',
+                borderRadius: '10px',
+                border: newSubcategory === sub ? `2px solid #74c474` : `2px solid transparent`,
+                backgroundColor: newSubcategory === sub ? '#9edb9e' : categoryColors['MANTENIMIENTO'],
+                color: newSubcategory === sub ? '#1a1a1a' : 'white',
+                fontWeight: '600',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative'
+              }}
+            >
+              {sub}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="form-group" style={{ padding: 0, marginTop: '0.95rem', marginBottom: 0 }}>
+        <div className="input-with-icon" style={{ marginBottom: 0 }}>
+          <AlignLeft className="input-icon" size={19} />
+          <input
+            type="text"
+            className="form-input"
+            value={newInfo}
+            onChange={(e) => setNewInfo(e.target.value)}
+            placeholder="Detalles / Info"
+            style={{ height: '48px', borderRadius: '10px', fontSize: '0.95rem' }}
+          />
+        </div>
+      </div>
+
+      {!isEdit ? (
+        <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1.35rem' }}>
+          <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, minHeight: '46px', padding: '0.65rem 0', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 700 }}>Agregar</button>
+          <button type="button" className="btn" onClick={() => { setIsAddFormOpen(false); setIsFormOpen(false); setEditingEvent(null); }} style={{ backgroundColor: 'var(--danger)', color: 'white', flex: 1, margin: 0, minHeight: '46px', padding: '0.65rem 0', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 700 }}>Cancelar</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1.35rem' }}>
+          <button type="submit" className="btn btn-primary" style={{ flex: 1, margin: 0, minHeight: '46px', padding: '0.65rem 0', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 700 }}>Guardar / Cerrar</button>
+          <button type="button" onClick={(e) => { e.preventDefault(); setIsConfirmingDelete(true); }} className="btn" style={{ flex: 1, margin: 0, minHeight: '46px', padding: '0.65rem 0', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 700, backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
+        </div>
+      )}
+    </form>
   );
 
+  const renderForm = () => (
+    <div
+      id="event-form"
+      className="form-container"
+      style={{
+        margin: '0.5rem 0',
+        padding: '1.35rem',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: '1.25rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#000000', fontWeight: 'bold' }}>Editar Evento</h2>
+        <button type="button" onClick={() => { setIsFormOpen(false); setEditingEvent(null); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', padding: 0, lineHeight: 1 }}>&times;</button>
+      </div>
+      {renderEventFormFields(true)}
+    </div>
+  );
+
+  const renderEventRow = (ev, i, totalLen) => {
+    const evColor = ev.Category?.startsWith('RIEGO')
+      ? categoryColors['RIEGO']
+      : ev.Category?.startsWith('MANTENIMIENTO')
+      ? categoryColors['MANTENIMIENTO']
+      : categoryColors[ev.Category] || 'var(--primary)';
+
+    const startDateFmt = formatDateToDDMMYY(ev.Date);
+    const endDateFmt = formatDateToDDMMYY(ev['End Date'] || ev.Date);
+    const dateLabel = endDateFmt && endDateFmt !== startDateFmt
+      ? `${startDateFmt} → ${endDateFmt}`
+      : startDateFmt;
+
+    const startTime = ev['Start Time'] ? ev['Start Time'].substring(0, 5) : '';
+    const endTime = ev['End Time'] ? ev['End Time'].substring(0, 5) : '';
+    const timeRange = startTime && endTime ? `${startTime} - ${endTime}` : startTime || 'Todo el día';
+
+    return (
+      <div
+        key={ev.EventID || i}
+        onClick={() => openEdit(ev)}
+        style={{
+          cursor: 'pointer',
+          padding: '0.78rem 0.25rem',
+          borderBottom: i < totalLen - 1 ? '1px solid #e2e8f0' : 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          transition: 'background-color 0.15s ease',
+        }}
+      >
+        {/* Lado izquierdo: Círculo de color, Categoría, Fecha y Detalles */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor: evColor,
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontWeight: 700,
+                fontSize: '0.92rem',
+                color: '#0f172a',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {ev.Category}
+            </span>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', opacity: 0.9, flexShrink: 0 }}>
+              {dateLabel}
+            </span>
+          </div>
+
+          <span
+            style={{
+              fontSize: '0.83rem',
+              color: '#64748b',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {ev.Info || 'Sin detalles adicionales'}
+          </span>
+        </div>
+
+        {/* Lado derecho: Horario y Responsables */}
+        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: '0.96rem',
+              color: '#0f172a',
+            }}
+          >
+            {timeRange}
+          </div>
+          <div
+            style={{
+              fontSize: '0.7rem',
+              textTransform: 'uppercase',
+              fontWeight: 600,
+              color: '#64748b',
+              opacity: 0.9,
+              marginTop: '1px',
+            }}
+          >
+            {ev.Responsible || 'Sin Asignar'}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderEventsList = (eventList, { insideCalendar = false } = {}) => {
+    const editingIdx =
+      isFormOpen && editingEvent
+        ? eventList.findIndex((ev) => ev.EventID === editingEvent.EventID)
+        : -1;
+
+    const wrapCard = (children, key) =>
+      insideCalendar ? (
+        <div key={key}>{children}</div>
+      ) : (
+        <div
+          key={key}
+          style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '14px',
+            padding: '0.25rem 1rem',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+          }}
+        >
+          {children}
+        </div>
+      );
+
+    if (editingIdx === -1) {
+      return wrapCard(eventList.map((ev, i) => renderEventRow(ev, i, eventList.length)));
+    }
+
+    const before = eventList.slice(0, editingIdx);
+    const after = eventList.slice(editingIdx + 1);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {before.length > 0 && wrapCard(before.map((ev, i) => renderEventRow(ev, i, before.length)), 'before')}
+        {renderForm()}
+        {after.length > 0 && wrapCard(after.map((ev, i) => renderEventRow(ev, i, after.length)), 'after')}
+      </div>
+    );
+  };
+
   return (
-    <div style={{ position: 'relative', minHeight: '100%', padding: '1rem' }}>
+    <div className="container" style={{ position: 'relative', minHeight: '100%', padding: '1rem', paddingBottom: '8rem' }}>
       
       {isConfirmingDelete && createPortal((
         <div style={{
@@ -470,15 +692,16 @@ export default function Calendario() {
         </div>
       ), document.body)}
 
-      {!(isSearchOpen && searchQuery.trim() !== '') && (
-        <div style={{
-          backgroundColor: '#ffffff',
-          borderRadius: '14px',
-          padding: '1.25rem 1rem',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
-          marginTop: '1rem',
-          marginBottom: '1.5rem',
-        }}>
+      {!isSearching && (
+        <>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '14px',
+            padding: '1.25rem 1rem',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+            marginTop: '0.5rem',
+            marginBottom: '1.5rem',
+          }}>
           {/* Calendar Header: Título del mes y navegación DENTRO del div del mes */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
             <button
@@ -542,7 +765,7 @@ export default function Calendario() {
               // - Fuera del mes actual: #cccccc
               // - Sábado y domingo: #999999
               // - Resto de días (lunes a viernes): #666666
-              let dayColor = '#666666';
+              let dayColor;
               if (hasEvent) {
                 dayColor = '#00979d';
               } else if (!isCurrentMonth) {
@@ -578,80 +801,147 @@ export default function Calendario() {
               );
             })}
           </div>
+
+          {/* Previsualización integrada de las actividades del día seleccionado dentro del mismo div del calendario */}
+          {selectedDayEvents.length > 0 && (
+            <div
+              style={{
+                borderTop: '1px solid #e2e8f0',
+                marginTop: '1rem',
+                paddingTop: '0.85rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', padding: '0 0.25rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'capitalize' }}>
+                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                </span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#00979d' }}>
+                  {selectedDayEvents.length} {selectedDayEvents.length === 1 ? 'actividad' : 'actividades'}
+                </span>
+              </div>
+              {renderEventsList(selectedDayEvents, { insideCalendar: true })}
+            </div>
+          )}
+        </div>
+
+          {/* cambio de grafica del form: Registrar Actividad debajo del calendario */}
+          <div
+            className="form-container"
+            style={{
+              padding: isAddFormOpen ? '1.35rem' : '0.95rem 1.35rem',
+              marginTop: '3rem',
+              marginBottom: '3rem',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+              transition: 'padding 0.2s ease',
+            }}
+          >
+            <div
+              onClick={toggleAddForm}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                marginBottom: isAddFormOpen ? '1.25rem' : 0,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#000000', fontWeight: 'bold' }}>
+                Registrar Actividad
+              </h2>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleAddForm();
+                }}
+                aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Registrar Actividad'}
+                title={isAddFormOpen ? 'Cerrar formulario' : 'Registrar Actividad'}
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--primary)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
+                  transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.22s ease, background-color 0.2s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <Plus size={24} />
+              </button>
+            </div>
+
+            {isAddFormOpen && renderEventFormFields(false)}
+          </div>
+        </>
+      )}
+
+      {/* Resultados cuando el buscador superior está activo */}
+      {isSearching && (
+        <div style={{ marginTop: '0.75rem', paddingBottom: '2rem' }}>
+          <h3 style={{ fontSize: '1rem', color: 'white', marginBottom: '0.85rem' }}>
+            Resultados de búsqueda ({searchResults.length})
+          </h3>
+          {searchResults.length === 0 ? (
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '14px',
+                padding: '1.5rem 1rem',
+                textAlign: 'center',
+                color: '#64748b',
+                fontSize: '0.9rem',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+              }}
+            >
+              No se encontraron resultados.
+            </div>
+          ) : (
+            renderEventsList(searchResults, { insideCalendar: false })
+          )}
         </div>
       )}
 
-      {isFormOpen && !editingEvent && renderForm()}
-
-      {/* Event List for Selected Day or Search Results */}
-      <div style={{ marginTop: '3rem', paddingBottom: '6rem' }}>
-        {(isSearchOpen && searchQuery.trim() !== '') && (
-          <h3 style={{ fontSize: '1rem', color: 'white', marginBottom: '1rem' }}>
-            Resultados de búsqueda ({displayEvents.length})
-          </h3>
-        )}
-        
-        {displayEvents.length === 0 ? (
-          <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '2rem' }}>{(isSearchOpen && searchQuery.trim() !== '') ? 'No se encontraron resultados.' : 'No hay eventos para este día.'}</p>
-        ) : (
-          displayEvents.map((ev, i) => {
-            const evColor = ev.Category?.startsWith('RIEGO') ? categoryColors['RIEGO'] : (ev.Category?.startsWith('MANTENIMIENTO') ? categoryColors['MANTENIMIENTO'] : (categoryColors[ev.Category] || 'var(--primary)'));
-            return (
-              <div key={i} style={{ marginBottom: '0.5rem' }}>
-                {(editingEvent && editingEvent.EventID === ev.EventID && isFormOpen) ? (
-                  renderForm()
-                ) : (
-                  <div className="card" onClick={() => openEdit(ev)} style={{ cursor: 'pointer', padding: '1rem', border: 'none', borderRadius: '8px', backgroundColor: '#ffffff', color: '#000000', boxShadow: 'none' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: evColor, flexShrink: 0 }} />
-                        <strong style={{ fontSize: '1.1rem', color: '#000000' }}>{ev.Category}</strong>
-                      </div>
-                    </div>
-                    <p style={{ margin: '1.25rem 0 0.75rem 0', color: '#666', fontWeight: '500' }}>{ev.Info || 'Sin detalles adicionales'}</p>
-                    <hr style={{ border: 'none', borderTop: '1px solid #999', margin: '0.75rem -1rem' }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '0.5rem', color: '#999' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem' }}>
-                        <small style={{ color: '#999', fontWeight: '600' }}>Desde: <span style={{ color: '#999', fontWeight: '500' }}>{formatDateToDDMMYY(ev.Date)}</span> / <span style={{ color: '#999', fontWeight: '500' }}>{ev["Start Time"] ? ev["Start Time"].substring(0,5) : ''}</span></small>
-                        <small style={{ color: '#999', fontWeight: '600' }}>Hasta: <span style={{ color: '#999', fontWeight: '500' }}>{formatDateToDDMMYY(ev["End Date"] || ev.Date)}</span> / <span style={{ color: '#999', fontWeight: '500' }}>{ev["End Time"] ? ev["End Time"].substring(0,5) : ''}</span></small>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', fontSize: '0.9rem', textAlign: 'right' }}>
-                        <small style={{ color: '#999', fontWeight: '600' }}>Usuario: <span style={{ color: '#999', fontWeight: '500' }}>{ev.Responsible || 'Sin Asignar'}</span></small>
-                        <small style={{ color: '#999', fontWeight: '600' }}>Por: <span style={{ color: '#999', fontWeight: '500' }}>{currentUser}</span></small>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* Floating Action Button */}
-      {!isFormOpen && (
-        <button 
-          onClick={() => {
-            setNewDate(format(selectedDate, 'yyyy-MM-dd'));
-            setNewEndDate(format(selectedDate, 'yyyy-MM-dd'));
-            setNewStartTime('08:00');
-            setNewEndTime('09:00');
-            setNewCategory('');
-            setNewSubcategory('');
-            setNewResponsibles([]);
-            setNewInfo('');
-            setEditingEvent(null);
-            setIsFormOpen(true);
-            setTimeout(() => {
-              const formElement = document.getElementById('event-form');
-              if (formElement) formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 100);
-          }}
-          className="fab"
-        >
-          <Plus size={28} />
-        </button>
-      )}
+      {/* Barra fija inferior de Chat IA para Calendario */}
+      <SectionChatIA
+        section="calendario"
+        contextData={{
+          events: rawEvents,
+          users,
+          selectedDateIso: format(selectedDate, 'yyyy-MM-dd'),
+          currentUser,
+        }}
+        onRefresh={refetchEvents}
+        onHighlightDate={(dateIso) => {
+          if (!dateIso) return;
+          const clean = dateIso.split('T')[0];
+          const [y, m, d] = clean.split('-').map(Number);
+          if (y && m && d) {
+            const target = new Date(y, m - 1, d);
+            setSelectedDate(target);
+            setCurrentMonth(target);
+          }
+        }}
+        onSelectResultItem={(ev) => {
+          if (ev?.Date) {
+            const clean = ev.Date.split(' ')[0];
+            const [y, m, d] = clean.split('-').map(Number);
+            if (y && m && d) {
+              const target = new Date(y, m - 1, d);
+              setSelectedDate(target);
+              setCurrentMonth(target);
+            }
+          }
+          openEdit(ev);
+        }}
+        categoryColors={categoryColors}
+      />
     </div>
   );
 }

@@ -8,7 +8,7 @@ import autoTable from 'jspdf-autotable';
 /**
  * Descarga un archivo Blob en el navegador con el nombre especificado.
  */
-export function triggerFileDownload(blob, filename) {
+function triggerFileDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -674,7 +674,7 @@ export function generateCustomTXT({
 /**
  * 8. EXPORTACIÓN PERSONALIZADA A XML / KML DIRECTO DESDE EL CHAT
  */
-export function generateCustomXML({
+function generateCustomXML({
   title = null,
   content = '',
   filename = null,

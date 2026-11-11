@@ -26,7 +26,7 @@ async function main() {
     const fileBuffer = fs.readFileSync(filePath);
     
     // Subir a Supabase Storage con upsert: true para no fallar si ya existe
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(file, fileBuffer, {
         contentType: 'image/jpeg',

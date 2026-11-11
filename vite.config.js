@@ -1,25 +1,46 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // Vite plugin to mock Vercel API locally
-import { loadEnv } from 'vite';
-
 const vercelApiMock = () => {
   return {
     name: 'vercel-api-mock',
     configureServer(server) {
-      server.middlewares.use('/api/manage-users', async (req, res, next) => {
-        if (req.method === 'POST') {
-          let body = '';
-          req.on('data', chunk => { body += chunk.toString(); });
+      const apiRoutes = {
+        '/api/manage-users': './api/manage-users.js',
+        '/api/chat-job': './api/chat-job.js',
+      };
+
+      for (const [routePath, modulePath] of Object.entries(apiRoutes)) {
+        server.middlewares.use(routePath, async (req, res) => {
+          if (req.method === 'OPTIONS') {
+            res.statusCode = 200;
+            res.end();
+            return;
+          }
+
+          const chunks = [];
+          req.on('data', (chunk) => chunks.push(chunk));
           req.on('end', async () => {
             try {
-              req.body = JSON.parse(body);
-              
+              const rawBody = Buffer.concat(chunks).toString('utf8');
+              if (rawBody && rawBody.trim()) {
+                try {
+                  req.body = JSON.parse(rawBody);
+                } catch {
+                  req.body = rawBody;
+                }
+              } else {
+                req.body = {};
+              }
+
+              const urlObj = new URL(req.url || '/', 'http://localhost');
+              req.query = Object.fromEntries(urlObj.searchParams.entries());
+
               const env = loadEnv('development', process.cwd(), '');
               Object.assign(process.env, env);
-              
+
               res.status = (code) => {
                 res.statusCode = code;
                 return res;
@@ -29,17 +50,16 @@ const vercelApiMock = () => {
                 res.end(JSON.stringify(data));
               };
 
-              const handlerModule = await import('./api/manage-users.js');
+              const handlerModule = await import(modulePath);
               await handlerModule.default(req, res);
             } catch (err) {
               res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ error: err.message }));
             }
           });
-        } else {
-          next();
-        }
-      });
+        });
+      }
     }
   };
 };

@@ -52,7 +52,7 @@ export default function Auth() {
         <p style={{ color: 'var(--text-secondary)' }}>Ingresa para gestionar el calendario y la contabilidad.</p>
       </div>
 
-      <div className="card form-container" style={{ width: '100%', maxWidth: '400px' }}>
+      <div className="form-container" style={{ width: '100%', maxWidth: '400px' }}>
         {errorMsg && (
           <div style={{ backgroundColor: 'rgba(230, 57, 70, 0.1)', color: 'var(--danger)', padding: '1rem', borderRadius: '4px', marginBottom: '1.5rem', textAlign: 'center', border: '1px solid var(--danger)' }}>
             {errorMsg}

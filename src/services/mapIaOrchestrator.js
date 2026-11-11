@@ -53,13 +53,15 @@ export function parseStructuredCommands(rawText) {
       const cleanJson = batchMatch[1].replace(/,\s*([\]}])/g, '$1');
       const items = JSON.parse(cleanJson);
       if (Array.isArray(items)) points.push(...items);
-    } catch (_) {
+    } catch {
       const objMatches = batchMatch[1].match(/\{[\s\S]*?\}/g);
       if (objMatches) {
         for (const om of objMatches) {
           try {
             points.push(JSON.parse(om.replace(/,\s*([\]}])/g, '$1')));
-          } catch (e) {}
+          } catch {
+            // Ignorar fragmentos JSON malformados individuales
+          }
         }
       }
     }
@@ -73,7 +75,9 @@ export function parseStructuredCommands(rawText) {
       const cleanJson = singleMatch[1].replace(/,\s*([\]}])/g, '$1');
       const item = JSON.parse(cleanJson);
       if (item && typeof item === 'object') points.push(item);
-    } catch (_) {}
+    } catch {
+      // Ignorar comando malformado
+    }
   }
 
   // 3. Borrado: [[BORRAR_PUNTO: {...} ]]
@@ -84,7 +88,9 @@ export function parseStructuredCommands(rawText) {
       const cleanJson = delMatch[1].replace(/,\s*([\]}])/g, '$1');
       const item = JSON.parse(cleanJson);
       if (item && typeof item === 'object') deletions.push(item);
-    } catch (_) {}
+    } catch {
+      // Ignorar comando malformado
+    }
   }
 
   // 4. Camino / Trazado / Línea de riego: [[REGISTRAR_CAMINO: {...} ]]
@@ -96,7 +102,9 @@ export function parseStructuredCommands(rawText) {
       const cleanJson = pathMatch[1].replace(/,\s*([\]}])/g, '$1');
       const item = JSON.parse(cleanJson);
       if (item && typeof item === 'object') paths.push(item);
-    } catch (_) {}
+    } catch {
+      // Ignorar comando malformado
+    }
   }
 
   // 5. Edición de punto: [[EDITAR_PUNTO: {...} ]]
@@ -108,7 +116,9 @@ export function parseStructuredCommands(rawText) {
       const cleanJson = editMatch[1].replace(/,\s*([\]}])/g, '$1');
       const item = JSON.parse(cleanJson);
       if (item && typeof item === 'object') updates.push(item);
-    } catch (_) {}
+    } catch {
+      // Ignorar comando malformado
+    }
   }
 
   return { points, deletions, paths, updates };
@@ -117,19 +127,14 @@ export function parseStructuredCommands(rawText) {
 /**
  * Consulta a Gemini mediante cascada de modelos para extraer acciones de inventario.
  */
-export async function callGeminiForInventoryAction({
-  prompt,
-  audio,
-  attachment,
-  selectedTarget,
+export function buildMapSystemInstruction({
+  selectedTarget = null,
   visibleInventory = [],
   visiblePaths = [],
   mapCenter = DEFAULT_CENTER,
   currentGps = null,
-  apiKey = import.meta.env.VITE_GEMINI_API_KEY,
+  audio = null,
 }) {
-  if (!apiKey) throw new Error('API Key de Gemini no configurada.');
-
   const inventoryContext = visibleInventory.slice(0, 80).map((i) => ({
     id: i.id,
     name: i.name || i.tipo,
@@ -164,7 +169,7 @@ export async function callGeminiForInventoryAction({
 - Coordenadas: Lat ${selectedTarget.lat || centerLat}, Lng ${selectedTarget.lng || centerLng}
 *REGLA*: Si el usuario pide cambios ("cámbialo a clorosis", "ponle nota de ...", "bórralo"), aplícalos a este elemento.` : '';
 
-  const systemInstruction = `Eres el Agente Topógrafo e Inteligencia Geoespacial de Campito Jorox (Parcelas 195 y 196).
+  return `Eres el Agente Topógrafo e Inteligencia Geoespacial de Campito Jorox (Parcelas 195 y 196).
 Tu misión es interpretar órdenes de voz, fotos y texto y convertirlas en acciones de catastro e inventario sobre el mapa satelital.
 ${targetInfoStr}
 
@@ -207,6 +212,79 @@ FORMATOS ADMITIDOS:
     }
   ]
 }`;
+}
+
+export function parseMapGeminiRawText(rawText, audio = null) {
+  const parsedCmds = parseStructuredCommands(rawText);
+  if (parsedCmds.points.length > 0 || parsedCmds.deletions.length > 0) {
+    const actions = [];
+    for (const p of parsedCmds.points) {
+      actions.push({
+        type: 'ADD_POINT',
+        data: {
+          name: p.name || p.nombre || p.tipo || 'Punto registrado',
+          category: p.category || p.categoria || p.tipo || 'arbol',
+          variety_type: p.variedad || p.variety_type || p.variety || null,
+          status: p.estado || p.status || 'saludable',
+          notes: p.observaciones || p.notes || p.observacion || '',
+          latitude: p.latitude !== undefined && p.latitude !== null ? Number(p.latitude) : undefined,
+          longitude: p.longitude !== undefined && p.longitude !== null ? Number(p.longitude) : undefined,
+          timestamp_audio_s: p.timestamp_audio_s !== undefined ? Number(p.timestamp_audio_s) : undefined,
+        },
+      });
+    }
+    for (const d of parsedCmds.deletions) {
+      actions.push({
+        type: 'DELETE_POINT',
+        target: d.target || 'especifico',
+        query: d.query || d.nombre || '',
+      });
+    }
+
+    const cleanDescription = rawText
+      .replace(/\[\[REGISTRAR_PUNTOS:[\s\S]*?\]\]/gi, '')
+      .replace(/\[\[REGISTRAR_PUNTO:[\s\S]*?\]\]/gi, '')
+      .replace(/\[\[BORRAR_PUNTO:[\s\S]*?\]\]/gi, '')
+      .trim();
+
+    return {
+      description: cleanDescription || `Procesados ${actions.length} cambio(s) en el inventario`,
+      transcription: audio?.transcription || '',
+      actions,
+    };
+  }
+
+  const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+  try {
+    return JSON.parse(cleanJson);
+  } catch (e) {
+    const match = rawText.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw e;
+  }
+}
+
+export async function callGeminiForInventoryAction({
+  prompt,
+  audio,
+  attachment,
+  selectedTarget,
+  visibleInventory = [],
+  visiblePaths = [],
+  mapCenter = DEFAULT_CENTER,
+  currentGps = null,
+  apiKey = import.meta.env.VITE_GEMINI_API_KEY,
+}) {
+  if (!apiKey) throw new Error('API Key de Gemini no configurada.');
+
+  const systemInstruction = buildMapSystemInstruction({
+    selectedTarget,
+    visibleInventory,
+    visiblePaths,
+    mapCenter,
+    currentGps,
+    audio,
+  });
 
   const userParts = [];
   if (prompt) userParts.push({ text: prompt });

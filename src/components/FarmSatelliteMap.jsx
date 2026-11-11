@@ -6,32 +6,22 @@
 // - Edición de caminos existentes (renombrar, cambiar color, eliminar).
 // - Módulo inferior de acceso a Chat IA integrado para órdenes directas al mapa por voz y texto con botón de deshacer.
 
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
-  MapPin,
-  Navigation,
   Compass,
   Layers,
   Trash2,
-  Edit2,
   Plus,
   Check,
   X,
   Undo2,
-  Eye,
-  EyeOff,
-  Maximize2,
-  Minimize2,
-  Download,
-  FileSpreadsheet,
   FileText,
   Filter,
   Printer,
   ChevronDown,
   ChevronRight,
-  ArrowLeft,
   Crosshair,
   ZoomIn,
   ZoomOut,
@@ -43,13 +33,20 @@ import {
   StopCircle,
   Play,
   Pause,
-  RotateCcw,
   Sparkles,
-  Loader2,
   Route
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { useVoiceGeoTracker, setGlobalLastKnownGps } from '../hooks/useVoiceGeoTracker';
+import {
+  useVoiceGeoTracker,
+  setGlobalLastKnownGps,
+  isIosDevice,
+  checkGeolocationSupport,
+  queryGeolocationPermissionState,
+  normalizeGeoPosition,
+  requestCurrentPositionWithFallback,
+  formatGeolocationErrorMessage,
+} from '../hooks/useVoiceGeoTracker';
 import {
   getLocalInventory,
   getLocalPaths,
@@ -60,28 +57,28 @@ import {
   updateFarmPath,
   deleteFarmPath,
   BASE_CATEGORY_MAP,
-  BASE_CATEGORY_COLORS,
-  DYNAMIC_PALETTE,
   getCategoryColor,
   PATH_TYPE_COLORS,
   getItemCategory,
   getSubcategoriesForParent,
 } from '../services/farmInventoryStorage';
 import {
+  buildMapSystemInstruction,
+  parseMapGeminiRawText,
   callGeminiForInventoryAction,
   executeInventoryActions,
   parseStructuredCommands,
 } from '../services/mapIaOrchestrator';
-import { interpolateGpsAtAudioTime } from '../utils/geoAudioInterpolation';
 import {
-  exportInventoryToExcel,
-  exportInventoryToPDF,
-  exportInventoryToKML,
-  exportInventoryToGeoJSON,
-  generateCustomPDF,
-} from '../utils/exportTools';
+  startAiBackgroundJob,
+  subscribeSectionJobs,
+  acknowledgeAiJob,
+  markJobActionsApplied,
+} from '../services/aiBackgroundJobManager';
+import { generateCustomPDF } from '../utils/exportTools';
 import catastroJorox from '../data/catastroJorox.json';
-import { useNavigate } from 'react-router-dom';
+
+const mapRuntimeContextMap = new globalThis.Map();
 
 // Coordenadas por defecto: Centroide exacto de las parcelas 195 y 196 de Campito Jorox
 const DEFAULT_CENTER = [36.72595, -4.89462];
@@ -98,15 +95,6 @@ const COLOR_PALETTE = [
   { name: 'Púrpura Especial', hex: '#8b5cf6' },
   { name: 'Gris Pizarra', hex: '#64748b' },
 ];
-
-// ─── Sistema Dinámico de Categorías y Filtros (Centralizado) ─────────────────
-const CATEGORY_MAP = BASE_CATEGORY_MAP;
-const CATEGORY_COLORS = BASE_CATEGORY_COLORS;
-
-/**
- * Adaptador de compatibilidad para comandos estructurados
- */
-export const parseRegisterPointsCommands = (rawText) => parseStructuredCommands(rawText).points;
 
 // Tipos de camino para filtros
 const PATH_TYPES = ['camino', 'carril', 'sendero', 'vereda', 'acequia', 'linea_riego', 'linde', 'otro'];
@@ -162,17 +150,6 @@ function calculatePathMeters(coordinates) {
     );
   }
   return total;
-}
-
-// Determinación del color del punto (sin iconos) — usa sistema de categorías dinámico
-function getPointColor(item) {
-  const status = (item.status || item.estado || '').toLowerCase();
-  if (status === 'enfermo' || status === 'seco' || status === 'muerto') return '#ef4444'; // Rojo
-  if (status === 'clorosis') return '#eab308'; // Amarillo clorosis
-  if (status === 'poda_requerida') return '#f97316'; // Naranja poda
-
-  const parent = getItemCategory(item);
-  return getCategoryColor(parent);
 }
 
 // ─── Arquitectura Familiar de Pines (Mismas Dimensiones y Comportamientos) ───
@@ -280,23 +257,15 @@ function isDeleteIntent(text) {
   });
 }
 
-/**
- * Conector unificado con el Orquestador IA de Cartografía e Inventario
- */
-const callGeminiForMapAction = callGeminiForInventoryAction;
-
 export default function FarmSatelliteMap({
   inventory = [],
   paths = [],
   onReloadInventory,
   onReloadPaths,
-  lastRecordedGpsTrack = null,
   onPathCreated,
   isFullScreen = false,
-  onToggleFullScreen,
   isPageMode = false,   // true cuando se usa como página completa (/mapas)
   searchQuery: propSearchQuery,
-  onSearchChange,
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -305,7 +274,6 @@ export default function FarmSatelliteMap({
   const pathNodesLayerRef = useRef(null);
   const drawingLayerRef = useRef(null);
   const catastroLayerRef = useRef(null);
-  const navigate = isPageMode ? useNavigate() : () => null;
 
   // ─── Estados locales optimistas (0ms latency, respuesta inmediata en mapa) ──
   const [localInventory, setLocalInventory] = useState(() => {
@@ -368,7 +336,7 @@ export default function FarmSatelliteMap({
   const initialMapSettings = useMemo(() => loadMapSettingsFromCache(), []);
 
   // Estados de capas visibles
-  const [showPoints, setShowPoints] = useState(() => {
+  const [showPoints] = useState(() => {
     return initialMapSettings?.showPoints !== undefined ? Boolean(initialMapSettings.showPoints) : true;
   });
   const [showPaths, setShowPaths] = useState(() => {
@@ -377,7 +345,7 @@ export default function FarmSatelliteMap({
   const [showCatastro, setShowCatastro] = useState(() => {
     return initialMapSettings?.showCatastro !== undefined ? Boolean(initialMapSettings.showCatastro) : true;
   });
-  const [satelliteType, setSatelliteType] = useState(() => {
+  const [satelliteType] = useState(() => {
     return initialMapSettings?.satelliteType || 'esri';
   });
   const [showLegend, setShowLegend] = useState(() => {
@@ -395,9 +363,7 @@ export default function FarmSatelliteMap({
   const userLocationLayerRef = useRef(null);
 
   // ─── Estados de búsqueda y filtros ───────────────────────────────────────────
-  const [internalSearchQuery, setInternalSearchQuery] = useState('');
-  const searchQuery = propSearchQuery !== undefined ? propSearchQuery : internalSearchQuery;
-  const setSearchQuery = onSearchChange || setInternalSearchQuery;
+  const searchQuery = propSearchQuery !== undefined ? propSearchQuery : '';
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   // visibleCategories: Set de categorías activas (base y dinámicas)
   const [visibleCategories, setVisibleCategories] = useState(() => {
@@ -484,29 +450,17 @@ export default function FarmSatelliteMap({
     notes: '',
   });
 
-  // Estado para camino seleccionado (para ver/editar)
-  const [selectedPath, setSelectedPath] = useState(null);
-  const [isEditingPath, setIsEditingPath] = useState(false);
-  const [editPathData, setEditPathData] = useState({ name: '', color: '#f97316', stroke_width: 4, notes: '' });
-
-  // Estado para punto seleccionado
-  const [selectedPoint, setSelectedPoint] = useState(null);
-  const [isEditingPoint, setIsEditingPoint] = useState(false);
-  const [editPointData, setEditPointData] = useState({ name: '', variety_type: '', status: 'saludable', notes: '' });
-
   // ─── Elemento actualmente seleccionado (pin, camino, cota o coordenada) ────
   const [selectedTarget, setSelectedTarget] = useState(null);
-  const [isEditingTarget, setIsEditingTarget] = useState(false);
-  const [targetEditData, setTargetEditData] = useState({
-    name: '',
-    variety: '',
-    status: 'saludable',
-    path_type: 'sendero',
-    color: '#f97316',
-    notes: '',
-  });
   const highlightLayerRef = useRef(null);
   const lastLayerClickedTimeRef = useRef(0);
+
+  // Estados de interacción con Chat IA del mapa
+  const [mapIaInput, setMapIaInput] = useState('');
+  const [isProcessingIa, setIsProcessingIa] = useState(false);
+  const [iaFeedback, setIaFeedback] = useState(null); // { type: 'success'|'error'|'info', text: string }
+  const [undoStack, setUndoStack] = useState([]); // Historial de acciones para retroceder cambios
+  const [pendingVoiceAudio, setPendingVoiceAudio] = useState(null);
 
   // Inputs y estados para adjuntar fotos de cámara y documentos (+ / 📷)
   const fileInputRef = useRef(null);
@@ -646,9 +600,6 @@ export default function FarmSatelliteMap({
       if (!isDrawingRef.current) {
         const lat = Number(e.latlng.lat.toFixed(6));
         const lng = Number(e.latlng.lng.toFixed(6));
-        setIsEditingTarget(false);
-        setSelectedPoint(null);
-        setSelectedPath(null);
         setSelectedTarget({
           type: 'coord',
           id: `coord-${lat}-${lng}`,
@@ -804,9 +755,6 @@ export default function FarmSatelliteMap({
           if (e.originalEvent) e.originalEvent.stopPropagation();
         }
         lastLayerClickedTimeRef.current = Date.now();
-        setIsEditingTarget(false);
-        setSelectedPoint(item);
-        setSelectedPath(null);
 
         // Seleccionar como elemento activo en el preview con Chat IA
         setSelectedTarget({
@@ -885,9 +833,6 @@ export default function FarmSatelliteMap({
           if (e.originalEvent) e.originalEvent.stopPropagation();
         }
         lastLayerClickedTimeRef.current = Date.now();
-        setIsEditingTarget(false);
-        setSelectedPath(path);
-        setSelectedPoint(null);
 
         setSelectedTarget({
           type: 'path',
@@ -1072,7 +1017,6 @@ export default function FarmSatelliteMap({
           if (e.originalEvent) e.originalEvent.stopPropagation();
         }
         lastLayerClickedTimeRef.current = Date.now();
-        setIsEditingTarget(false);
         const lat = Number(e.latlng.lat.toFixed(6));
         const lng = Number(e.latlng.lng.toFixed(6));
         setSelectedTarget({
@@ -1085,8 +1029,6 @@ export default function FarmSatelliteMap({
           notes: `Linde catastral con ${parcel.polygon.length} vértices`,
           raw: parcel,
         });
-        setSelectedPoint(null);
-        setSelectedPath(null);
       });
 
       poly.addTo(layer);
@@ -1101,7 +1043,6 @@ export default function FarmSatelliteMap({
           if (e.originalEvent) e.originalEvent.stopPropagation();
         }
         lastLayerClickedTimeRef.current = Date.now();
-        setIsEditingTarget(false);
         setSelectedTarget({
           type: 'catastro',
           id: `cota-${cota.name}`,
@@ -1112,8 +1053,6 @@ export default function FarmSatelliteMap({
           notes: 'Vértice oficial registrado en Catastro',
           raw: cota,
         });
-        setSelectedPoint(null);
-        setSelectedPath(null);
       };
 
       const cotaIcon = createCotaPinIcon({ isSelected });
@@ -1164,7 +1103,6 @@ export default function FarmSatelliteMap({
           if (e.originalEvent) e.originalEvent.stopPropagation();
         }
         lastLayerClickedTimeRef.current = Date.now();
-        setIsEditingTarget(false);
         setSelectedTarget({
           type: 'catastro_track',
           id: `catastro-track-${track.name}`,
@@ -1173,8 +1111,6 @@ export default function FarmSatelliteMap({
           notes: 'Trazado catastral oficial',
           raw: track,
         });
-        setSelectedPoint(null);
-        setSelectedPath(null);
       });
 
       poly.addTo(layer);
@@ -1284,117 +1220,7 @@ export default function FarmSatelliteMap({
     }
   };
 
-  // ─── 8. Guardar Última Caminata GPS como Camino ──────────────────────────────
-  const handleConvertGpsTrackToPath = () => {
-    if (!lastRecordedGpsTrack || lastRecordedGpsTrack.length < 2) {
-      alert('No hay una sesión de caminata GPS registrada recientemente.');
-      return;
-    }
-
-    const pts = lastRecordedGpsTrack.map((t) => ({
-      lat: Number(t.lat.toFixed(7)),
-      lng: Number(t.lng.toFixed(7)),
-      alt: t.altitude || null,
-    }));
-
-    setDrawPoints(pts);
-    setNewPathData({
-      name: `Ruta GPS ${new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`,
-      path_type: 'sendero',
-      color: '#eab308',
-      stroke_width: 4,
-      notes: `Mapeado por voz y GPS continuo (${pts.length} puntos)`,
-    });
-    setShowSaveModal(true);
-  };
-
-  // ─── 9. Actualizar Camino Existente ──────────────────────────────────────────
-  const handleUpdatePath = async () => {
-    if (!selectedPath) return;
-
-    try {
-      await updateFarmPath(selectedPath.id, {
-        name: editPathData.name,
-        color: editPathData.color,
-        stroke_width: Number(editPathData.stroke_width) || 4,
-        notes: editPathData.notes,
-      });
-
-      setIsEditingPath(false);
-      setSelectedPath(null);
-      if (onReloadPaths) onReloadPaths();
-    } catch (err) {
-      alert(`Error al actualizar el camino: ${err.message}`);
-    }
-  };
-
-  // ─── 10. Eliminar Camino ─────────────────────────────────────────────────────
-  const handleDeletePath = async (id, e) => {
-    if (e) {
-      e.stopPropagation?.();
-      e.preventDefault?.();
-    }
-    if (!id) return;
-    if (!window.confirm('¿Seguro que deseas eliminar este camino o sendero del mapa?')) return;
-
-    try {
-      setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(id)));
-      await deleteFarmPath(id);
-      if (selectedTarget && String(selectedTarget.id) === String(id)) {
-        setSelectedTarget(null);
-      }
-      setSelectedPath(null);
-      setIaFeedback({ type: 'success', text: '🗑️ Camino eliminado del mapa' });
-      if (onReloadPaths) await onReloadPaths();
-    } catch (err) {
-      alert(`Error al eliminar camino: ${err.message}`);
-    }
-  };
-
-  // ─── 11. Eliminar Punto de Inventario ────────────────────────────────────────
-  const handleDeletePoint = async (id, e) => {
-    if (e) {
-      e.stopPropagation?.();
-      e.preventDefault?.();
-    }
-    if (!id) return;
-    if (!window.confirm('¿Seguro que deseas eliminar este punto del inventario?')) return;
-
-    try {
-      setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(id)));
-      await deleteFarmInventoryItem(id);
-      if (selectedTarget && String(selectedTarget.id) === String(id)) {
-        setSelectedTarget(null);
-      }
-      setSelectedPoint(null);
-      setIaFeedback({ type: 'success', text: '🗑️ Punto eliminado del inventario' });
-      if (onReloadInventory) await onReloadInventory();
-    } catch (err) {
-      alert(`Error al eliminar punto: ${err.message}`);
-    }
-  };
-
-  // ─── 11b. Actualizar Punto de Inventario ──────────────────────────────────
-  const handleUpdatePoint = async () => {
-    if (!selectedPoint) return;
-
-    try {
-      const data = await updateFarmInventoryItem(selectedPoint.id, {
-        name: editPointData.name,
-        variety_type: editPointData.variety_type,
-        status: editPointData.status,
-        notes: editPointData.notes,
-      });
-
-      setIsEditingPoint(false);
-      setSelectedPoint(data || { ...selectedPoint, ...editPointData });
-      if (onReloadInventory) onReloadInventory();
-    } catch (err) {
-      alert(`Error al actualizar el punto: ${err.message}`);
-    }
-  };
-
-  // ─── 12. Exportar PDF de elementos visibles ───────────────────────────────────
+  // ─── 8. Exportar PDF de elementos visibles ───────────────────────────────────
   const handleExportVisiblePDF = () => {
     const dateStr = new Date().toLocaleDateString('es-ES');
     const rows = filteredInventory.map(item => [
@@ -1505,50 +1331,19 @@ export default function FarmSatelliteMap({
     marker.addTo(layer);
   }, []);
 
-  // Seguimiento GPS continuo en el mapa para inventario en movimiento
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
-      setGpsStatus('unsupported');
-      return;
+  const gpsWatchIdRef = useRef(null);
+
+  const startGpsWatch = useCallback(() => {
+    const { supported, secure } = checkGeolocationSupport();
+    if (!supported || !secure) return;
+    if (gpsWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      gpsWatchIdRef.current = null;
     }
 
-    // 1. Obtener primera posición rápida (permite caché de 60s para pintar el punto sin espera)
-    navigator.geolocation.getCurrentPosition(
+    gpsWatchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const info = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy || 10,
-          altitude: pos.coords.altitude || null,
-          heading: pos.coords.heading || null,
-          speed: pos.coords.speed || null,
-          timestamp: pos.timestamp || Date.now(),
-        };
-        setLiveUserGps(info);
-        liveUserGpsRef.current = info;
-        setGlobalLastKnownGps(info);
-        setGpsStatus('active');
-        updateUserLocationMarker(info);
-      },
-      (err) => {
-        console.warn('[FarmMap] Lectura inicial rápida GPS no disponible:', err.message);
-        if (err.code === 1) setGpsStatus('denied');
-      },
-      { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 }
-    );
-
-    // 2. Rastreo GPS de alta precisión en tiempo real
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const info = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy || 5,
-          altitude: pos.coords.altitude || null,
-          heading: pos.coords.heading || null,
-          speed: pos.coords.speed || null,
-          timestamp: pos.timestamp || Date.now(),
-        };
+        const info = normalizeGeoPosition(pos);
         setLiveUserGps(info);
         liveUserGpsRef.current = info;
         setGlobalLastKnownGps(info);
@@ -1565,15 +1360,62 @@ export default function FarmSatelliteMap({
       },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
     );
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
   }, [updateUserLocationMarker]);
 
-  const handleCenterOnUserLocation = useCallback(() => {
-    if (!('geolocation' in navigator)) {
-      alert('Tu dispositivo o navegador no soporta geolocalización GPS.');
+  // Seguimiento GPS continuo en el mapa para inventario en movimiento
+  useEffect(() => {
+    let cancelled = false;
+    const { supported, secure } = checkGeolocationSupport();
+
+    if (!supported) {
+      Promise.resolve().then(() => {
+        if (!cancelled) setGpsStatus('unsupported');
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!secure) {
+      Promise.resolve().then(() => {
+        if (!cancelled) setGpsStatus('insecure');
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    queryGeolocationPermissionState().then((permState) => {
+      if (cancelled) return;
+      if (permState === 'denied') {
+        setGpsStatus('denied');
+        return;
+      }
+      // En iOS/Safari cuando aún no se concedió permiso ('prompt'), no quemar la petición
+      // automática sin gesto de usuario: esperar a que toque el botón GPS para mostrar el popup.
+      if (permState === 'granted' || !isIosDevice()) {
+        startGpsWatch();
+      } else {
+        setGpsStatus('prompt');
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (gpsWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+        gpsWatchIdRef.current = null;
+      }
+    };
+  }, [startGpsWatch]);
+
+  const handleCenterOnUserLocation = useCallback(async () => {
+    const { supported, secure } = checkGeolocationSupport();
+    if (!supported || !secure) {
+      const msg = formatGeolocationErrorMessage(null);
+      setGpsStatus(!supported ? 'unsupported' : 'insecure');
+      setIaFeedback({ type: 'error', text: msg.split('\n')[0] });
+      alert(msg);
       return;
     }
 
@@ -1588,153 +1430,32 @@ export default function FarmSatelliteMap({
     }
 
     setIsLocatingUser(true);
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setIsLocatingUser(false);
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        const acc = pos.coords.accuracy || 10;
-        const info = {
-          lat,
-          lng,
-          accuracy: acc,
-          altitude: pos.coords.altitude || null,
-          heading: pos.coords.heading || null,
-          speed: pos.coords.speed || null,
-          timestamp: pos.timestamp || Date.now(),
-        };
-
-        setLiveUserGps(info);
-        liveUserGpsRef.current = info;
-        setGlobalLastKnownGps(info);
-        setGpsStatus('active');
-
-        // Centrar mapa
-        map.setView([lat, lng], 19);
-        updateUserLocationMarker(info);
-      },
-      (err) => {
-        setIsLocatingUser(false);
-        console.warn('Error capturando GPS:', err);
-        if (err.code === 1) {
-          setGpsStatus('denied');
-          alert('Permiso de GPS denegado. Por favor, activa los permisos de ubicación en tu navegador o teléfono.');
-        } else {
-          alert(`No se pudo obtener la posición GPS (${err.message}). Comprueba que la ubicación esté habilitada en tu móvil.`);
-        }
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-    );
-  }, [updateUserLocationMarker]);
-
-  // ─── Control y edición de elemento seleccionado en el Mapa ────────────────
-  const handleStartEditTarget = () => {
-    if (!selectedTarget) return;
-    setIsEditingTarget(true);
-    setTargetEditData({
-      name: selectedTarget.title || '',
-      variety: selectedTarget.variety || '',
-      status: selectedTarget.status || 'saludable',
-      path_type: selectedTarget.path_type || 'sendero',
-      color: selectedTarget.color || '#f97316',
-      notes: selectedTarget.notes || '',
-    });
-  };
-
-  const handleSaveTargetEdit = async () => {
-    if (!selectedTarget) return;
-    setIsProcessingIa(true);
     try {
-      if (selectedTarget.type === 'point') {
-        const updatePayload = {
-          name: targetEditData.name.trim() || selectedTarget.title,
-          variety_type: targetEditData.variety.trim() || null,
-          status: targetEditData.status || 'saludable',
-          notes: targetEditData.notes.trim() || null,
-        };
-        setLocalInventory((prev) =>
-          prev.map((i) => (String(i.id) === String(selectedTarget.id) ? { ...i, ...updatePayload } : i))
-        );
-        await updateFarmInventoryItem(selectedTarget.id, updatePayload);
-        setSelectedTarget((prev) => ({
-          ...prev,
-          title: updatePayload.name,
-          variety: updatePayload.variety_type,
-          status: updatePayload.status,
-          notes: updatePayload.notes,
-        }));
-        setIsEditingTarget(false);
-        setIaFeedback({ type: 'success', text: `✨ Punto actualizado: ${updatePayload.name}` });
-        if (onReloadInventory) onReloadInventory();
-      } else if (selectedTarget.type === 'path') {
-        const updatePayload = {
-          name: targetEditData.name.trim() || selectedTarget.title,
-          path_type: targetEditData.path_type || 'sendero',
-          color: targetEditData.color || '#f97316',
-          notes: targetEditData.notes.trim() || null,
-        };
-        setLocalPaths((prev) =>
-          prev.map((p) => (String(p.id) === String(selectedTarget.id) ? { ...p, ...updatePayload } : p))
-        );
-        await updateFarmPath(selectedTarget.id, updatePayload);
-        setSelectedTarget((prev) => ({
-          ...prev,
-          title: updatePayload.name,
-          path_type: updatePayload.path_type,
-          color: updatePayload.color,
-          notes: updatePayload.notes,
-        }));
-        setIsEditingTarget(false);
-        setIaFeedback({ type: 'success', text: `✨ Trazado actualizado: ${updatePayload.name}` });
-        if (onReloadPaths) onReloadPaths();
-      } else if (selectedTarget.type === 'catastro' || selectedTarget.type === 'coord') {
-        // Guardar cota catastral o coordenada libre en farm_inventory
-        const cleanName = targetEditData.name.trim() || selectedTarget.title;
-        const lower = cleanName.toLowerCase();
-        let cat = selectedTarget.type === 'catastro' ? 'hito' : 'riego';
-        if (lower.includes('casa') || lower.includes('casita') || lower.includes('cueva') || lower.includes('edificio') || lower.includes('caseta') || lower.includes('taller')) {
-          cat = 'edificio';
-        } else if (lower.includes('aguacate') || lower.includes('olivo') || lower.includes('limon') || lower.includes('arbol')) {
-          cat = 'arbol';
-        }
+      const info = await requestCurrentPositionWithFallback();
+      setLiveUserGps(info);
+      liveUserGpsRef.current = info;
+      setGlobalLastKnownGps(info);
+      setGpsStatus('active');
 
-        const newItem = {
-          name: cleanName,
-          category: cat,
-          variety_type: targetEditData.variety.trim() || (selectedTarget.type === 'catastro' ? 'Cota Catastral' : null),
-          status: targetEditData.status || 'saludable',
-          latitude: selectedTarget.lat,
-          longitude: selectedTarget.lng,
-          notes: targetEditData.notes.trim() || null,
-          is_active: true,
-        };
-        const inserted = await insertFarmInventoryItem(newItem);
-        setLocalInventory((prev) => [inserted, ...prev.filter((i) => String(i.id) !== String(inserted.id))]);
-        setSelectedTarget({
-          type: 'point',
-          id: inserted.id,
-          title: inserted.name,
-          category: getItemCategory(inserted),
-          variety: inserted.variety_type,
-          status: inserted.status,
-          notes: inserted.notes,
-          lat: inserted.latitude,
-          lng: inserted.longitude,
-          raw: inserted,
-        });
-        setIsEditingTarget(false);
-        setIaFeedback({ type: 'success', text: `✨ Registrado en inventario: ${inserted.name}` });
-        if (onReloadInventory) onReloadInventory();
-      }
+      map.setView([info.lat, info.lng], 19);
+      updateUserLocationMarker(info);
+      startGpsWatch();
     } catch (err) {
-      console.error('Error guardando edición:', err);
-      setIaFeedback({ type: 'error', text: `Error al guardar: ${err.message}` });
+      console.warn('Error capturando GPS:', err);
+      const isDenied = err?.code === 1;
+      setGpsStatus(isDenied ? 'denied' : 'weak');
+      const msg = formatGeolocationErrorMessage(err);
+      setIaFeedback({
+        type: 'error',
+        text: isDenied ? 'GPS sin permiso en el navegador móvil.' : 'Señal GPS no disponible.',
+      });
+      alert(msg);
     } finally {
-      setIsProcessingIa(false);
+      setIsLocatingUser(false);
     }
-  };
+  }, [startGpsWatch, updateUserLocationMarker]);
 
+  // ─── Control y eliminación de elemento seleccionado en el Mapa ───────────────
   const handleDeleteTarget = async (e) => {
     if (e) {
       e.stopPropagation?.();
@@ -1755,14 +1476,12 @@ export default function FarmSatelliteMap({
         await deleteFarmInventoryItem(targetId);
         setIaFeedback({ type: 'success', text: `🗑️ Pin eliminado: ${targetTitle}` });
         setSelectedTarget(null);
-        setSelectedPoint(null);
         if (onReloadInventory) await onReloadInventory();
       } else if (targetType === 'path') {
         setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(targetId)));
         await deleteFarmPath(targetId);
         setIaFeedback({ type: 'success', text: `🗑️ Trazado eliminado: ${targetTitle}` });
         setSelectedTarget(null);
-        setSelectedPath(null);
         if (onReloadPaths) await onReloadPaths();
       } else {
         setSelectedTarget(null);
@@ -1784,8 +1503,6 @@ export default function FarmSatelliteMap({
       setIsDrawing(true);
       setDrawPoints([]);
       setSelectedTarget(null);
-      setSelectedPoint(null);
-      setSelectedPath(null);
     }
   };
 
@@ -1884,18 +1601,11 @@ export default function FarmSatelliteMap({
     if (onReloadPaths) onReloadPaths();
   };
 
-  const [mapIaInput, setMapIaInput] = useState('');
-  const [isProcessingIa, setIsProcessingIa] = useState(false);
-  const [iaFeedback, setIaFeedback] = useState(null); // { type: 'success'|'error'|'info', text: string }
-  const [undoStack, setUndoStack] = useState([]); // Historial de acciones para retroceder cambios
-  const [pendingVoiceAudio, setPendingVoiceAudio] = useState(null);
-
   // Hook de telemetría de voz y GPS en tiempo real
   const {
     isRecording: isVoiceRecording,
     elapsedSeconds: voiceRecordingSeconds,
     currentGps: voiceCurrentGps,
-    accuracyWarning: voiceAccuracyWarning,
     startTracking: startVoiceTracking,
     stopTracking: stopVoiceTracking,
     cancelTracking: cancelVoiceTracking,
@@ -2178,7 +1888,6 @@ export default function FarmSatelliteMap({
           setLocalInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
           if (selectedTarget && execResult.deletedItems.includes(selectedTarget.id)) {
             setSelectedTarget(null);
-            setSelectedPoint(null);
           }
         }
 
@@ -2236,53 +1945,120 @@ export default function FarmSatelliteMap({
       }
     }
 
-    try {
-      const center = mapInstanceRef.current ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng] : DEFAULT_CENTER;
-      const gpsPos = (audioOrder?.gpsTrack && audioOrder.gpsTrack.length > 0)
+    // Limpiar entrada inmediatamente y delegar a Background Job
+    setMapIaInput('');
+    setPendingVoiceAudio(null);
+    setPendingAttachment(null);
+    setIsPreviewPlaying(false);
+
+    const center = mapInstanceRef.current
+      ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng]
+      : DEFAULT_CENTER;
+    const gpsPos =
+      audioOrder?.gpsTrack && audioOrder.gpsTrack.length > 0
         ? audioOrder.gpsTrack[0]
-        : (liveUserGpsRef.current || voiceCurrentGps || null);
+        : liveUserGpsRef.current || voiceCurrentGps || null;
 
-      const result = await callGeminiForInventoryAction({
-        prompt: textOrder,
-        audio: audioOrder,
-        attachment: attOrder,
-        selectedTarget,
-        visibleInventory: filteredInventory,
-        visiblePaths: filteredPaths,
-        mapCenter: center,
-        currentGps: gpsPos,
-        apiKey,
-      });
+    const systemInstruction = buildMapSystemInstruction({
+      selectedTarget,
+      visibleInventory: filteredInventory,
+      visiblePaths: filteredPaths,
+      mapCenter: center,
+      currentGps: gpsPos,
+      audio: audioOrder,
+    });
 
-      // Limpiar entrada y archivos
-      setMapIaInput('');
-      setPendingVoiceAudio(null);
-      setPendingAttachment(null);
-      setIsPreviewPlaying(false);
+    let effectivePrompt = textOrder;
+    if (!effectivePrompt && audioOrder) {
+      effectivePrompt = selectedTarget
+        ? `Escucha atentamente este audio del agricultor para el elemento seleccionado "${selectedTarget.title}" (${selectedTarget.type} en lat ${selectedTarget.lat}, lng ${selectedTarget.lng}). Transcribe en "transcription", interpreta la orden (añadir pin, renombrar, cambiar estado, notas o borrar) y genera el JSON con la acción correspondiente.`
+        : 'Escucha atentamente este audio de campo. Transcribe en "transcription", extrae los elementos descritos y genera las acciones correspondientes (ADD_POINT, ADD_PATH, etc.) indicando timestamp_audio_s para cada uno.';
+    }
+
+    const { jobId } = startAiBackgroundJob({
+      section: 'mapas',
+      prompt: effectivePrompt,
+      systemInstruction,
+      attachment: attOrder,
+      audio: audioOrder,
+      responseMimeType: 'application/json',
+      uiMeta: { textOrder },
+      directFallbackFn: async () => {
+        const directParsed = await callGeminiForInventoryAction({
+          prompt: textOrder,
+          audio: audioOrder,
+          attachment: attOrder,
+          selectedTarget,
+          visibleInventory: filteredInventory,
+          visiblePaths: filteredPaths,
+          mapCenter: center,
+          currentGps: gpsPos,
+          apiKey,
+        });
+        return { parsed: directParsed };
+      },
+    });
+
+    mapRuntimeContextMap.set(jobId, {
+      textOrder,
+      audioOrder,
+      uploadedPhotoUrl,
+      center,
+      gpsPos,
+      targetSnapshot: selectedTarget,
+    });
+  };
+
+  const consumedMapJobsRef = useRef(new Set());
+  const applyCompletedMapJobRef = useRef(null);
+
+  const applyCompletedMapJob = async (job) => {
+    if (!job || consumedMapJobsRef.current.has(job.jobId)) return;
+    consumedMapJobsRef.current.add(job.jobId);
+    acknowledgeAiJob(job.jobId);
+
+    const ctx = mapRuntimeContextMap.get(job.jobId) || {};
+    mapRuntimeContextMap.delete(job.jobId);
+
+    const textOrder = ctx.textOrder ?? job.uiMeta?.textOrder ?? '';
+    const audioOrder = ctx.audioOrder || null;
+    const uploadedPhotoUrl = ctx.uploadedPhotoUrl || null;
+    const center = ctx.center || (mapInstanceRef.current ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng] : DEFAULT_CENTER);
+    const gpsPos = ctx.gpsPos || liveUserGpsRef.current || voiceCurrentGps || null;
+    const targetSnap = ctx.targetSnapshot !== undefined ? ctx.targetSnapshot : selectedTarget;
+
+    try {
+      let result = job.result?.parsed || null;
+      if (!result && job.result?.rawText) {
+        result = parseMapGeminiRawText(job.result.rawText, audioOrder);
+      }
+      if (!result) {
+        setIaFeedback({ type: 'info', text: 'Respuesta procesada.' });
+        return;
+      }
 
       if (!result.actions || result.actions.length === 0) {
         // 1. Si el usuario adjuntó una foto, nota o audio sobre un punto de inventario seleccionado
-        if (selectedTarget?.type === 'point' && (uploadedPhotoUrl || textOrder || audioOrder)) {
-          const prevItem = localInventory.find(i => String(i.id) === String(selectedTarget.id));
-          const updatePayload = {
-            updated_at: new Date().toISOString()
-          };
+        if (targetSnap?.type === 'point' && (uploadedPhotoUrl || textOrder || audioOrder)) {
+          const prevItem = localInventory.find((i) => String(i.id) === String(targetSnap.id));
+          const updatePayload = { updated_at: new Date().toISOString() };
           if (uploadedPhotoUrl) updatePayload.photo_url = uploadedPhotoUrl;
           const noteToAdd = textOrder || (result.transcription ? `Audio: "${result.transcription}"` : null);
           if (noteToAdd) {
             updatePayload.notes = prevItem?.notes ? `${prevItem.notes}\n${noteToAdd}` : noteToAdd;
           }
 
-          await updateFarmInventoryItem(selectedTarget.id, updatePayload);
+          await updateFarmInventoryItem(targetSnap.id, updatePayload);
+          markJobActionsApplied(job.jobId);
 
           setUndoStack((prev) => [
             ...prev,
             {
-              description: `Actualizado ${selectedTarget.title}`,
+              description: `Actualizado ${targetSnap.title}`,
               reverts: [
                 {
                   type: 'UPDATE_POINT',
-                  target_id: selectedTarget.id,
+                  target_id: targetSnap.id,
                   prevData: {
                     photo_url: prevItem?.photo_url || null,
                     notes: prevItem?.notes || '',
@@ -2292,55 +2068,46 @@ export default function FarmSatelliteMap({
               timestamp: Date.now(),
             },
           ]);
-          setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
+          setSelectedTarget((prev) => (prev ? { ...prev, ...updatePayload } : prev));
           setLocalInventory((prev) =>
-            prev.map((i) => (String(i.id) === String(selectedTarget.id) ? { ...i, ...updatePayload } : i))
+            prev.map((i) => (String(i.id) === String(targetSnap.id) ? { ...i, ...updatePayload } : i))
           );
-          setIaFeedback({ type: 'success', text: `✨ Datos guardados en ${selectedTarget.title}` });
+          setIaFeedback({ type: 'success', text: `✨ Datos guardados en ${targetSnap.title}` });
           if (onReloadInventory) await onReloadInventory();
-          setIsProcessingIa(false);
           return;
         }
 
         // 2. Si el usuario añadió una nota sobre una polilínea / camino seleccionado
-        if (selectedTarget?.type === 'path' && (uploadedPhotoUrl || textOrder || audioOrder)) {
-          const prevPath = localPaths.find(p => String(p.id) === String(selectedTarget.id));
+        if (targetSnap?.type === 'path' && (uploadedPhotoUrl || textOrder || audioOrder)) {
+          const prevPath = localPaths.find((p) => String(p.id) === String(targetSnap.id));
           const updatePayload = {};
           const noteToAdd = textOrder || (result.transcription ? `Audio: "${result.transcription}"` : null);
           if (noteToAdd) {
             updatePayload.notes = prevPath?.notes ? `${prevPath.notes}\n${noteToAdd}` : noteToAdd;
           }
 
-          await updateFarmPath(selectedTarget.id, updatePayload);
-          setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
+          await updateFarmPath(targetSnap.id, updatePayload);
+          markJobActionsApplied(job.jobId);
+          setSelectedTarget((prev) => (prev ? { ...prev, ...updatePayload } : prev));
           setLocalPaths((prev) =>
-            prev.map((p) => (String(p.id) === String(selectedTarget.id) ? { ...p, ...updatePayload } : p))
+            prev.map((p) => (String(p.id) === String(targetSnap.id) ? { ...p, ...updatePayload } : p))
           );
-          setSelectedTarget((prev) => ({ ...prev, ...updatePayload }));
-          setIaFeedback({ type: 'success', text: `✨ Notas actualizadas en ${selectedTarget.title}` });
+          setIaFeedback({ type: 'success', text: `✨ Notas actualizadas en ${targetSnap.title}` });
           if (onReloadPaths) await onReloadPaths();
-          setIsProcessingIa(false);
           return;
         }
 
         // 3. Si el usuario pinchó en una coordenada del mapa o cota catastral
-        if ((selectedTarget?.type === 'catastro' || selectedTarget?.type === 'coord') && (uploadedPhotoUrl || textOrder || audioOrder)) {
-          let rawName = textOrder;
-          if (!rawName && result.transcription) {
-            rawName = result.transcription;
-          }
+        if ((targetSnap?.type === 'catastro' || targetSnap?.type === 'coord') && (uploadedPhotoUrl || textOrder || audioOrder)) {
+          let rawName = textOrder || result.transcription || '';
           if (!rawName && result.description && !result.description.toLowerCase().includes('no se')) {
             rawName = result.description;
           }
-          if (!rawName) {
-            rawName = selectedTarget.title || 'Punto registrado';
-          }
-          if (rawName.length > 35) {
-            rawName = rawName.slice(0, 32) + '...';
-          }
+          if (!rawName) rawName = targetSnap.title || 'Punto registrado';
+          if (rawName.length > 35) rawName = rawName.slice(0, 32) + '...';
           const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
-          let category = selectedTarget.type === 'catastro' ? 'hito' : 'riego';
+          let category = targetSnap.type === 'catastro' ? 'hito' : 'riego';
           const lowerName = formattedName.toLowerCase();
           if (lowerName.includes('casa') || lowerName.includes('casita') || lowerName.includes('cueva') || lowerName.includes('edificio') || lowerName.includes('almacen') || lowerName.includes('caseta') || lowerName.includes('taller') || lowerName.includes('caravana')) {
             category = 'edificio';
@@ -2351,21 +2118,22 @@ export default function FarmSatelliteMap({
           }
 
           const notes = textOrder
-            ? (selectedTarget.notes ? `${selectedTarget.notes}\n${textOrder}` : textOrder)
-            : (result.transcription ? `Audio: "${result.transcription}"` : (selectedTarget.notes || 'Registrado con Agente IA'));
+            ? (targetSnap.notes ? `${targetSnap.notes}\n${textOrder}` : textOrder)
+            : (result.transcription ? `Audio: "${result.transcription}"` : (targetSnap.notes || 'Registrado con Agente IA'));
 
           const newItem = {
             name: formattedName,
             category,
-            variety_type: selectedTarget.type === 'catastro' ? 'Cota Catastral' : null,
+            variety_type: targetSnap.type === 'catastro' ? 'Cota Catastral' : null,
             status: 'saludable',
-            latitude: selectedTarget.lat,
-            longitude: selectedTarget.lng,
+            latitude: targetSnap.lat,
+            longitude: targetSnap.lng,
             notes,
             photo_url: uploadedPhotoUrl || null,
             is_active: true,
           };
           const inserted = await insertFarmInventoryItem(newItem);
+          markJobActionsApplied(job.jobId);
           if (inserted) {
             setSelectedTarget({
               type: 'point',
@@ -2385,13 +2153,11 @@ export default function FarmSatelliteMap({
             }
             setIaFeedback({ type: 'success', text: `✨ Registrado en inventario: ${inserted.name}` });
             if (onReloadInventory) await onReloadInventory();
-            setIsProcessingIa(false);
             return;
           }
         }
 
         setIaFeedback({ type: 'info', text: result.description || 'No se requirieron cambios en el mapa.' });
-        setIsProcessingIa(false);
         return;
       }
 
@@ -2401,25 +2167,23 @@ export default function FarmSatelliteMap({
         audio: audioOrder,
         liveGps: gpsPos,
         mapCenter: center,
-        selectedTarget,
+        selectedTarget: targetSnap,
         currentInventory: localInventory,
         currentPaths: localPaths,
         uploadedPhotoUrl,
       });
+      markJobActionsApplied(job.jobId);
 
-      // Reflejar cambios en el estado local de inventario y caminos
       if (execResult.deletedItems.length > 0) {
         setLocalInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
         if (selectedTarget && execResult.deletedItems.includes(selectedTarget.id)) {
           setSelectedTarget(null);
-          setSelectedPoint(null);
         }
       }
       if (execResult.deletedPaths.length > 0) {
         setLocalPaths((prev) => prev.filter((p) => !execResult.deletedPaths.includes(p.id)));
         if (selectedTarget && execResult.deletedPaths.includes(selectedTarget.id)) {
           setSelectedTarget(null);
-          setSelectedPath(null);
         }
       }
       if (execResult.updatedItems.length > 0) {
@@ -2514,12 +2278,35 @@ export default function FarmSatelliteMap({
       if (onReloadInventory) await onReloadInventory();
       if (onReloadPaths) await onReloadPaths();
     } catch (err) {
-      console.error('[MapAI] Error procesando orden:', err);
+      console.error('[MapAI] Error aplicando respuesta en mapa:', err);
       setIaFeedback({ type: 'error', text: `Error al ejecutar: ${err.message}` });
-    } finally {
-      setIsProcessingIa(false);
     }
   };
+
+  useEffect(() => {
+    applyCompletedMapJobRef.current = applyCompletedMapJob;
+  });
+
+  useEffect(() => {
+    const unsubscribe = subscribeSectionJobs('mapas', (snap) => {
+      setIsProcessingIa(snap.isProcessing);
+      if (snap.isProcessing) {
+        setIaFeedback({ type: 'info', text: '🤖 Analizando orden en segundo plano...' });
+      }
+      if (snap.errorUnacked.length > 0) {
+        const errJob = snap.errorUnacked[0];
+        if (!consumedMapJobsRef.current.has(errJob.jobId)) {
+          consumedMapJobsRef.current.add(errJob.jobId);
+          acknowledgeAiJob(errJob.jobId);
+          setIaFeedback({ type: 'error', text: `Error al ejecutar: ${errJob.error}` });
+        }
+      }
+      for (const finishedJob of snap.completedUnacked) {
+        applyCompletedMapJobRef.current?.(finishedJob);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   // Deshacer el último cambio realizado por la IA
   const handleUndoMapAction = async () => {
@@ -2877,7 +2664,7 @@ export default function FarmSatelliteMap({
                   ? '#f59e0b'
                   : gpsStatus === 'active'
                     ? '#10b981'
-                    : gpsStatus === 'denied'
+                    : (gpsStatus === 'denied' || gpsStatus === 'insecure')
                       ? '#ef4444'
                       : '#0284c7',
                 backgroundColor: isLocatingUser ? '#f0f9ff' : '#ffffff',
@@ -2886,9 +2673,11 @@ export default function FarmSatelliteMap({
               title={
                 gpsStatus === 'active'
                   ? `📍 GPS en vivo (±${liveUserGps?.accuracy?.toFixed(1) || '4'}m) - Centrar en mí`
-                  : gpsStatus === 'denied'
-                    ? '🔴 GPS sin permiso en el móvil'
-                    : 'Centrar en mi ubicación actual GPS'
+                  : gpsStatus === 'insecure'
+                    ? '🔴 GPS bloqueado: se requiere HTTPS en el móvil'
+                    : gpsStatus === 'denied'
+                      ? '🔴 GPS sin permiso en el móvil (pulsa para ver ayuda)'
+                      : 'Centrar en mi ubicación actual GPS'
               }
             >
               <Crosshair size={16} />
@@ -3232,8 +3021,6 @@ export default function FarmSatelliteMap({
                     type="button"
                     onClick={() => {
                       setSelectedTarget(null);
-                      setSelectedPoint(null);
-                      setSelectedPath(null);
                     }}
                     style={styles.cardCloseBtn}
                     title="Cerrar ficha"
@@ -3625,7 +3412,8 @@ export default function FarmSatelliteMap({
                 </button>
               </div>
             ) : (
-              <div style={styles.chatIaInputCapsule}>
+              <div style={{ ...styles.chatIaInputCapsule, paddingLeft: 12 }}>
+                <Bot size={18} color="#00979d" style={{ flexShrink: 0, marginRight: 8 }} />
                 <textarea
                   rows={1}
                   value={mapIaInput}
@@ -4088,14 +3876,6 @@ const styles = {
     padding: '8px 12px',
     backgroundColor: '#f8fafc',
     borderBottom: '1px solid #e2e8f0',
-  },
-  cardCloseBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: '#94a3b8',
-    padding: 2,
-    display: 'flex',
   },
   infoCardBody: {
     padding: '10px 12px',

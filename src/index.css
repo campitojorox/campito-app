@@ -63,44 +63,13 @@ button {
 .app-header {
   background-color: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 1rem;
+  padding: 0.6rem 1rem;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 100;
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.bottom-nav {
-  background-color: var(--surface);
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-around;
-  z-index: 10;
-  flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.nav-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  padding: 0.8rem 0.5rem;
-  flex: 1;
-  text-transform: uppercase;
-}
-
-.nav-item.active {
-  background-color: transparent !important;
-  color: #9edb9e !important;
-  font-weight: 600;
-}
-
-.nav-item svg {
-  margin-bottom: 0.3rem;
 }
 
 .main-content {
@@ -116,42 +85,13 @@ button {
   flex-direction: column;
 }
 
-/* AppSheet style tables */
+/* Section titles */
 .section-title {
   font-size: 1.5rem;
   font-weight: bold;
   margin-bottom: 1.5rem;
   padding: 1rem 1rem 0 1rem;
   color: white;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table th {
-  text-align: left;
-  padding: 0.8rem 1rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-primary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.data-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-secondary);
-}
-
-.data-table tbody tr {
-  transition: background-color 0.2s ease;
-}
-
-.data-table tbody tr:hover {
-  background-color: var(--surface);
 }
 
 /* Forms */
@@ -163,16 +103,16 @@ button {
   margin-bottom: 2rem;
 }
 
-/* Contabilidad Container — Café con Leche Suave */
+/* Contabilidad Container — Café con Leche Muy Suave (50% más claro) */
 .contabilidad-container {
-  background-color: #e2d7cc !important;
+  background-color: #f1ebe6 !important;
   border-radius: 16px;
   padding: 2rem 1.6rem;
   color: #2b1d14;
   margin-top: 3.5rem;
   margin-bottom: 3.5rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-  border: 1px solid #cfc0b1;
+  border: 1px solid #e7e0d8;
 }
 
 .contabilidad-table {
@@ -205,6 +145,15 @@ button {
   background-color: rgba(255, 255, 255, 0.45) !important;
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes slideInFromRight {
   from {
     transform: translateX(100%);
@@ -214,30 +163,9 @@ button {
   }
 }
 
-/* Transaction List Cards */
-.transaction-card {
-  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.transaction-card:hover {
-  background-color: #2b2b2b !important;
-  border-color: #404040 !important;
-  transform: translateY(-1px);
-}
-
-.transaction-card:active {
-  transform: translateY(0);
-}
-
-.transaction-card.deleted:hover {
-  background-color: rgba(239, 68, 68, 0.12) !important;
-  border-color: rgba(239, 68, 68, 0.45) !important;
-}
-
 .form-container h2,
 .form-container h3,
-.form-container h4,
-.form-container .form-title {
+.form-container h4 {
   color: #000000 !important;
   font-weight: 700;
 }
@@ -312,16 +240,6 @@ button {
   z-index: 10;
 }
 
-select.form-input {
-  padding: 0.75rem 1rem 0.75rem 3rem;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%232b3d41%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
-  background-repeat: no-repeat;
-  background-position: right 1rem top 50%;
-  background-size: 0.65rem auto;
-}
-
 /* Hide native date and time picker icons */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
@@ -343,27 +261,15 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background-color: var(--primary);
 }
 
-.fab {
-  position: fixed;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  right: calc(20px + env(safe-area-inset-right, 0px));
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+.btn-primary {
   background-color: var(--primary);
   color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-  z-index: 100;
-  border: none;
-  cursor: pointer;
-  transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
-.fab:active {
-  transform: scale(0.95);
+.btn-secondary {
+  background-color: var(--surface);
+  color: white;
+  border: 1px solid var(--border);
 }
 
 @keyframes pulse-color {

@@ -1,12 +1,15 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
-import { Camera, Euro, AlignLeft, Trash2, RotateCcw, Filter, X, FileText } from 'lucide-react';
+import { Euro, AlignLeft, Trash2, RotateCcw, Filter, X, FileText, Plus } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatCurrency, highlightText } from '../utils/helpers';
+import SectionChatIA from '../components/SectionChatIA';
 
-export default function GastoVenta() {
-  const { users, transactions, refetchTransactions, searchQuery = '', isSearchOpen = false } = useOutletContext();
+export default function GastoIngreso() {
+  const { users, transactions, refetchTransactions, searchQuery = '', isSearchOpen = false, currentUser = 'Usuario Login' } = useOutletContext();
+  // cambio de grafica del form: formulario colapsable inicialmente cerrado
+  const [isAddFormOpen, setIsAddFormOpen] = useState(false);
   const [type, setType] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -190,6 +193,7 @@ export default function GastoVenta() {
       setType('');
       setImage(null);
       setFormErrors({});
+      setIsAddFormOpen(false);
       refetchTransactions();
     } else {
       alert('Error guardando transacción: ' + error.message);
@@ -198,7 +202,8 @@ export default function GastoVenta() {
   };
 
   const renderEditForm = () => (
-    <div className="form-container" style={{ position: 'relative', width: '100%', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+    // cambio de grafica del form
+    <div id="edit-tx-form" className="form-container" style={{ position: 'relative', width: '100%', textAlign: 'left', padding: '1.35rem', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)' }} onClick={e => e.stopPropagation()}>
       
       {/* Custom Confirm Delete Overlay */}
       {isConfirmingDelete && (
@@ -253,11 +258,11 @@ export default function GastoVenta() {
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: '2.5rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.5rem', color: selectedRecord?.status === 'DELETED' ? '#ef4444' : '#000000', fontWeight: 'bold' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 0, marginBottom: '1.25rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1.35rem', color: selectedRecord?.status === 'DELETED' ? '#ef4444' : '#000000', fontWeight: 'bold' }}>
           {selectedRecord?.status === 'DELETED' ? 'Transacción Eliminada' : 'Editar Transacción'}
         </h2>
-        <button type="button" onClick={() => { setSelectedRecord(null); setEditErrors({}); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', padding: 0 }}>&times;</button>
+        <button type="button" onClick={() => { setSelectedRecord(null); setEditErrors({}); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', padding: 0, lineHeight: 1 }}>&times;</button>
       </div>
 
       {editErrors.general && (
@@ -266,9 +271,9 @@ export default function GastoVenta() {
           border: '1px solid var(--danger)',
           borderRadius: '8px',
           padding: '0.8rem 1rem',
-          marginBottom: '1.5rem',
-          color: '#fca5a5',
-          fontSize: '0.95rem',
+          marginBottom: '1.2rem',
+          color: '#dc2626',
+          fontSize: '0.92rem',
           fontWeight: '500',
           display: 'flex',
           alignItems: 'center',
@@ -279,11 +284,11 @@ export default function GastoVenta() {
       )}
       
       <div style={{ color: 'var(--text-primary)' }}>
-        <div className="form-group" style={{ padding: 0, marginBottom: '1.2rem' }}>
+        <div className="form-group" style={{ padding: 0, marginBottom: '0.9rem' }}>
           <div style={{
             display: 'flex',
-            gap: '1rem',
-            paddingBottom: '0.5rem',
+            flexWrap: 'nowrap',
+            gap: '0.35rem',
             width: '100%',
             borderRadius: '14px',
             border: editErrors.user ? '1.5px dashed var(--danger)' : '1.5px solid transparent',
@@ -299,13 +304,18 @@ export default function GastoVenta() {
                 }}
                 style={{
                   flex: 1,
-                  padding: '0.8rem 0',
-                  borderRadius: '12px',
-                  border: editForm.user === u.name ? `2px solid #9edb9e` : `2px solid transparent`,
+                  minWidth: 0,
+                  minHeight: '42px',
+                  padding: '0.5rem 0.2rem',
+                  borderRadius: '10px',
+                  border: editForm.user === u.name ? `2px solid #74c474` : `2px solid transparent`,
                   backgroundColor: editForm.user === u.name ? '#9edb9e' : 'var(--primary)',
                   color: editForm.user === u.name ? '#1a1a1a' : 'white',
                   fontWeight: '600',
-                  fontSize: '1rem',
+                  fontSize: 'clamp(0.74rem, 3.1vw, 0.92rem)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -323,10 +333,10 @@ export default function GastoVenta() {
           )}
         </div>
 
-        <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '1.8rem', marginBottom: '0.5rem', padding: 0, alignItems: 'stretch' }}>
-          <div style={{ flex: '1 1 33%', minWidth: 0, display: 'flex' }}>
+        <div className="form-group" style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', marginBottom: '0.4rem', padding: 0, alignItems: 'stretch' }}>
+          <div style={{ flex: '1.2 1 0', minWidth: 0, display: 'flex' }}>
             <div className="input-with-icon" style={{ marginBottom: 0, width: '100%' }}>
-              <Euro className="input-icon" size={18} style={{ left: '0.6rem' }} />
+              <Euro className="input-icon" size={18} style={{ left: '0.65rem' }} />
               <input 
                 type="number" 
                 step="0.01" 
@@ -338,11 +348,12 @@ export default function GastoVenta() {
                 }} 
                 placeholder="Cantidad"
                 style={{
-                  padding: '0.75rem 0.4rem 0.75rem 2rem',
+                  padding: '0.65rem 0.45rem 0.65rem 2.1rem',
                   width: '100%',
-                  height: '100%',
-                  minHeight: '44px',
+                  height: '48px',
+                  minHeight: '48px',
                   fontSize: '0.95rem',
+                  borderRadius: '10px',
                   border: editErrors.amount ? '1.5px solid var(--danger)' : undefined
                 }} 
               />
@@ -355,15 +366,16 @@ export default function GastoVenta() {
               setEditErrors(prev => ({ ...prev, type: null, general: null }));
             }}
             style={{
-              flex: '1 1 33%',
+              flex: '0.95 1 0',
               minWidth: 0,
-              padding: '0.6rem 0.2rem',
-              borderRadius: '8px',
-              border: (editErrors.type && !editForm.type) ? '1.5px dashed var(--danger)' : 'none',
+              minHeight: '48px',
+              padding: '0.45rem 0.35rem',
+              borderRadius: '10px',
+              border: (editErrors.type && !editForm.type) ? '1.5px dashed var(--danger)' : (editForm.type === 'Gasto' ? '2px solid #74c474' : '2px solid transparent'),
               backgroundColor: editForm.type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
               color: editForm.type === 'Gasto' ? '#1a1a1a' : 'white',
               fontWeight: '600',
-              fontSize: '0.95rem',
+              fontSize: '0.92rem',
               cursor: 'pointer',
               display: 'flex',
               flexDirection: 'column',
@@ -373,7 +385,7 @@ export default function GastoVenta() {
             }}
           >
             <span>Gasto</span>
-            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(invertido)</span>
+            <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>(invertido)</span>
           </button>
           <button 
             type="button"
@@ -382,15 +394,16 @@ export default function GastoVenta() {
               setEditErrors(prev => ({ ...prev, type: null, general: null }));
             }}
             style={{
-              flex: '1 1 33%',
+              flex: '0.95 1 0',
               minWidth: 0,
-              padding: '0.6rem 0.2rem',
-              borderRadius: '8px',
-              border: (editErrors.type && !editForm.type) ? '1.5px dashed var(--danger)' : 'none',
+              minHeight: '48px',
+              padding: '0.45rem 0.35rem',
+              borderRadius: '10px',
+              border: (editErrors.type && !editForm.type) ? '1.5px dashed var(--danger)' : (editForm.type === 'Retiro' ? '2px solid #74c474' : '2px solid transparent'),
               backgroundColor: editForm.type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
               color: editForm.type === 'Retiro' ? '#1a1a1a' : 'white',
               fontWeight: '600',
-              fontSize: '0.95rem',
+              fontSize: '0.92rem',
               cursor: 'pointer',
               display: 'flex',
               flexDirection: 'column',
@@ -400,11 +413,11 @@ export default function GastoVenta() {
             }}
           >
             <span>Ingreso</span>
-            <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
+            <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>(generado)</span>
           </button>
         </div>
         {(editErrors.amount || editErrors.type) && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
             {editErrors.amount ? (
               <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {editErrors.amount}</span>
             ) : <span />}
@@ -414,9 +427,9 @@ export default function GastoVenta() {
           </div>
         )}
 
-        <div className="form-group" style={{ padding: 0, marginTop: '1.2rem' }}>
-          <div className="input-with-icon">
-            <AlignLeft className="input-icon" size={20} />
+        <div className="form-group" style={{ padding: 0, marginTop: '0.95rem', marginBottom: '0' }}>
+          <div className="input-with-icon" style={{ marginBottom: 0 }}>
+            <AlignLeft className="input-icon" size={19} />
             <input 
               type="text" 
               className="form-input" 
@@ -427,6 +440,9 @@ export default function GastoVenta() {
               }} 
               placeholder="Descripción / Concepto" 
               style={{
+                height: '48px',
+                borderRadius: '10px',
+                fontSize: '0.95rem',
                 border: editErrors.description ? '1.5px solid var(--danger)' : undefined
               }}
             />
@@ -438,16 +454,17 @@ export default function GastoVenta() {
           )}
         </div>
 
-        <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
+        <div className="form-group" style={{ padding: 0, marginTop: '0.95rem', marginBottom: '0' }}>
           <label style={{
             display: 'flex',
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '0.6rem',
-            padding: (editForm.currentImage || editForm.image) ? '0' : '0.8rem 1rem',
-            border: '1.5px solid #e2e8f0',
-            borderRadius: '8px',
+            minHeight: '48px',
+            padding: (editForm.currentImage || editForm.image) ? '0' : '0.65rem 1rem',
+            border: '1.5px solid #cbd5e1',
+            borderRadius: '10px',
             backgroundColor: '#f8fafc',
             cursor: 'pointer',
             color: '#1e293b',
@@ -513,7 +530,7 @@ export default function GastoVenta() {
           </label>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem', marginTop: '3.2rem' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1.35rem' }}>
           <button type="button" onClick={async () => {
             const errs = {};
             if (!editForm.user) errs.user = 'Selecciona un usuario';
@@ -559,7 +576,7 @@ export default function GastoVenta() {
 
             refetchTransactions();
             setSelectedRecord(null);
-          }} className="btn btn-primary" style={{ flex: 1, margin: 0, padding: '0.75rem 0' }}>Guardar / Cerrar</button>
+          }} className="btn btn-primary" style={{ flex: 1, margin: 0, minHeight: '46px', padding: '0.65rem 0', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 700 }}>Guardar / Cerrar</button>
           
           {selectedRecord.status === 'DELETED' ? (
             <button 
@@ -573,39 +590,38 @@ export default function GastoVenta() {
                 setSelectedRecord(null);
               }} 
               className="btn" 
-              style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: '#10b981', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: 'none', fontWeight: 'bold' }}
+              style={{ flex: 1, margin: 0, minHeight: '46px', padding: '0.65rem 0', borderRadius: '10px', fontSize: '0.95rem', backgroundColor: '#10b981', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: 'none', fontWeight: 'bold' }}
             >
               <RotateCcw size={18} />
               Restaurar
             </button>
           ) : (
-            <button type="button" onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, padding: '0.75rem 0', backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
+            <button type="button" onClick={() => setIsConfirmingDelete(true)} className="btn" style={{ flex: 1, margin: 0, minHeight: '46px', padding: '0.65rem 0', borderRadius: '10px', fontSize: '0.95rem', fontWeight: 700, backgroundColor: 'var(--danger)', color: 'white' }}>Borrar</button>
           )}
         </div>
       </div>
     </div>
   );
 
-  const renderItem = (r, i) => {
+  const renderItem = (r, i, totalLen = 1) => {
     const key = r.TransactionID || i;
     const isDeleted = r.status === 'DELETED';
     const isRetiro = r.Category === 'Retiro';
     const activeSearchHighlight = (isSearchOpen && searchQuery.trim()) ? searchQuery : filterSearchTerm;
     
-    // Regla exacta de color:
-    // "que el verde sea el mismo de antes para ingreso, y que gasto siga en gris claro"
+    // Colores adaptados al fondo marrón clarito (#f1ebe6) de Contabilidad
     const itemColor = isDeleted 
-      ? '#ef4444' 
-      : (isRetiro ? '#8ab98a' : 'var(--text-secondary)');
+      ? '#b91c1c' 
+      : (isRetiro ? '#166534' : '#5c4436');
 
     return (
       <div 
         key={key} 
         style={{ 
           cursor: 'pointer',
-          padding: '0.8rem 0.4rem',
-          borderBottom: '1px solid var(--border)',
-          backgroundColor: isDeleted ? 'rgba(239, 68, 68, 0.06)' : 'transparent',
+          padding: '0.78rem 0.25rem',
+          borderBottom: i < totalLen - 1 ? '1px solid rgba(43, 29, 20, 0.12)' : 'none',
+          backgroundColor: isDeleted ? 'rgba(239, 68, 68, 0.08)' : 'transparent',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -626,39 +642,35 @@ export default function GastoVenta() {
           setEditErrors({});
         }}
       >
-        {/* Lado izquierdo: Usuario simple a la izquierda sin bordes redondos, fecha, archivo adjunto y concepto */}
+        {/* Lado izquierdo: Usuario, fecha, archivo adjunto y concepto */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Nombre de usuario simple a la izquierda */}
             <span style={{
               fontWeight: 700,
               fontSize: '0.92rem',
-              color: isDeleted ? '#ef4444' : 'var(--text-primary)'
+              color: isDeleted ? '#b91c1c' : '#2b1d14'
             }}>
               {highlightText(r.User, activeSearchHighlight)}
             </span>
-            {/* Fecha simple */}
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', opacity: 0.85 }}>
+            <span style={{ fontSize: '0.78rem', color: '#5c4436', opacity: 0.9 }}>
               {r.Date ? r.Date.split(' ')[0] : ''}
             </span>
-            {/* Icono de archivo para justificante adjunto */}
             {r.Imagen && (
-              <span title="Justificante adjunto" style={{ display: 'inline-flex', color: 'var(--text-secondary)' }}>
+              <span title="Justificante adjunto" style={{ display: 'inline-flex', color: '#5c4436' }}>
                 <FileText size={15} />
               </span>
             )}
             {isDeleted && (
-              <span style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 600 }}>
+              <span style={{ fontSize: '0.7rem', color: '#b91c1c', fontWeight: 600 }}>
                 (Eliminada)
               </span>
             )}
           </div>
 
-          {/* Concepto / Descripción */}
           {r.Description && (
             <span style={{
               fontSize: '0.83rem',
-              color: 'var(--text-secondary)',
+              color: '#5c4436',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
@@ -668,7 +680,7 @@ export default function GastoVenta() {
           )}
         </div>
 
-        {/* Lado derecho: Cantidad y Categoría sin flechas, con verde anterior para ingreso y gris claro para gasto */}
+        {/* Lado derecho: Cantidad y Categoría */}
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
           <div style={{
             fontWeight: 700,
@@ -693,596 +705,694 @@ export default function GastoVenta() {
   };
 
   return (
-    <div className="container" style={{ padding: '1rem', paddingBottom: '2.5rem' }}>
+    <div className="container" style={{ padding: '1rem', paddingBottom: '8rem' }}>
       {!(isSearchOpen && searchQuery.trim() !== '') && (
         <>
-          <div className="form-container">
-            <h2 style={{ marginTop: 0, marginBottom: '2.5rem', fontSize: '1.5rem', color: '#000000', fontWeight: 'bold' }}>Agregar Movimiento</h2>
-
-            {formErrors.general && (
-              <div style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid var(--danger)',
-                borderRadius: '8px',
-                padding: '0.8rem 1rem',
-                marginBottom: '1.5rem',
-                color: '#dc2626',
-                fontSize: '0.95rem',
-                fontWeight: '500',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}>
-                <span>⚠️ {formErrors.general}</span>
+          {/* Sección Contabilidad dentro de un div con bordes redondos, café con leche muy suave */}
+          <div className="contabilidad-container" style={{ marginTop: '0.5rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.8rem' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.45rem', color: '#2b1d14', fontWeight: 800 }}>Contabilidad</h2>
+                <span style={{ fontSize: '0.82rem', color: '#5f4434', fontWeight: 500 }}>Balance financiero por socio</span>
               </div>
-            )}
-            
-            <div>
-              <form onSubmit={handleAdd}>
-          <div className="form-group" style={{ padding: 0, marginBottom: '1.2rem' }}>
-            <div style={{
-              display: 'flex',
-              gap: '1rem',
-              paddingBottom: '0.5rem',
-              width: '100%',
-              borderRadius: '14px',
-              border: formErrors.user ? '1.5px dashed var(--danger)' : '1.5px solid transparent',
-              padding: formErrors.user ? '4px' : '0'
-            }}>
-              {users.map(u => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => {
-                    setUser(u.name);
-                    setFormErrors(prev => ({ ...prev, user: null, general: null }));
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '0.8rem 0',
-                    borderRadius: '12px',
-                    border: user === u.name ? `2px solid #9edb9e` : `2px solid transparent`,
-                    backgroundColor: user === u.name ? '#9edb9e' : 'var(--primary)',
-                    color: user === u.name ? '#1a1a1a' : 'white',
-                    fontWeight: '600',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  {u.name}
-                </button>
-              ))}
-            </div>
-            {formErrors.user && (
-              <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
-                * Selecciona un usuario
-              </span>
-            )}
-          </div>
-
-          <div className="form-group" style={{ display: 'flex', gap: '0.6rem', marginTop: '1.8rem', marginBottom: '0.5rem', padding: 0, alignItems: 'stretch' }}>
-            <div style={{ flex: '1 1 33%', minWidth: 0, display: 'flex' }}>
-              <div className="input-with-icon" style={{ marginBottom: 0, width: '100%' }}>
-                <Euro className="input-icon" size={18} style={{ left: '0.6rem' }} />
-                <input 
-                  type="number" 
-                  step="0.01" 
-                  className="form-input" 
-                  value={amount} 
-                  onChange={(e) => {
-                    setAmount(e.target.value);
-                    setFormErrors(prev => ({ ...prev, amount: null, general: null }));
-                  }} 
-                  placeholder="Cantidad"
-                  style={{
-                    padding: '0.75rem 0.4rem 0.75rem 2rem',
-                    width: '100%',
-                    height: '100%',
-                    minHeight: '44px',
-                    fontSize: '0.95rem',
-                    border: formErrors.amount ? '1.5px solid var(--danger)' : undefined
-                  }} 
-                />
-              </div>
-            </div>
-            <button 
-              type="button"
-              onClick={() => {
-                setType('Gasto');
-                setFormErrors(prev => ({ ...prev, type: null, general: null }));
-              }}
-              style={{
-                flex: '1 1 33%',
-                minWidth: 0,
-                padding: '0.6rem 0.2rem',
-                borderRadius: '8px',
-                border: formErrors.type && !type ? '1.5px dashed var(--danger)' : 'none',
-                backgroundColor: type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
-                color: type === 'Gasto' ? '#1a1a1a' : 'white',
-                fontWeight: '600',
-                fontSize: '0.95rem',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: 1.15
-              }}
-            >
-              <span>Gasto</span>
-              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(invertido)</span>
-            </button>
-            <button 
-              type="button"
-              onClick={() => {
-                setType('Retiro');
-                setFormErrors(prev => ({ ...prev, type: null, general: null }));
-              }}
-              style={{
-                flex: '1 1 33%',
-                minWidth: 0,
-                padding: '0.6rem 0.2rem',
-                borderRadius: '8px',
-                border: formErrors.type && !type ? '1.5px dashed var(--danger)' : 'none',
-                backgroundColor: type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
-                color: type === 'Retiro' ? '#1a1a1a' : 'white',
-                fontWeight: '600',
-                fontSize: '0.95rem',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: 1.15
-              }}
-            >
-              <span>Ingreso</span>
-              <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>(generado)</span>
-            </button>
-          </div>
-          {(formErrors.amount || formErrors.type) && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-              {formErrors.amount ? (
-                <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {formErrors.amount}</span>
-              ) : <span />}
-              {formErrors.type && (
-                <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {formErrors.type}</span>
-              )}
-            </div>
-          )}
-          
-          <div className="form-group" style={{ padding: 0, marginTop: '1.2rem' }}>
-            <div className="input-with-icon">
-              <AlignLeft className="input-icon" size={20} />
-              <input 
-                type="text" 
-                className="form-input" 
-                value={description} 
-                onChange={(e) => {
-                  setDescription(e.target.value);
-                  setFormErrors(prev => ({ ...prev, description: null, general: null }));
-                }} 
-                placeholder="Descripción / Concepto" 
+              <button
+                type="button"
+                onClick={() => setShowFinanceDetails(!showFinanceDetails)}
                 style={{
-                  border: formErrors.description ? '1.5px solid var(--danger)' : undefined
+                  padding: '0.35rem 0.75rem',
+                  borderRadius: '20px',
+                  backgroundColor: showFinanceDetails ? '#2b1d14' : 'rgba(43, 29, 20, 0.1)',
+                  color: showFinanceDetails ? '#ffffff' : '#2b1d14',
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
                 }}
-              />
+              >
+                {showFinanceDetails ? 'Ocultar Desglose' : 'Ver Gasto/Ingreso'}
+              </button>
             </div>
-            {formErrors.description && (
-              <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
-                * {formErrors.description}
-              </span>
-            )}
-          </div>
 
-          <div className="form-group" style={{ padding: 0, marginTop: '1.5rem' }}>
-            <label style={{
+            <div style={{ overflowX: 'auto' }}>
+              <table className="contabilidad-table" style={{ whiteSpace: 'nowrap' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>USUARIO</th>
+                    {showFinanceDetails && (
+                      <>
+                        <th style={{ textAlign: 'right' }}>GASTO</th>
+                        <th style={{ textAlign: 'right' }}>INGRESO</th>
+                      </>
+                    )}
+                    <th style={{ textAlign: 'right' }}>BALANCE</th>
+                    <th style={{ textAlign: 'right' }}>DIFERENCIA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finances.map((f, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 700, color: '#2b1d14' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{
+                            width: '26px',
+                            height: '26px',
+                            borderRadius: '50%',
+                            backgroundColor: 'rgba(43, 29, 20, 0.12)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            color: '#2b1d14'
+                          }}>
+                            {f.user ? f.user.charAt(0).toUpperCase() : '?'}
+                          </span>
+                          <span>{f.user}</span>
+                        </div>
+                      </td>
+                      {showFinanceDetails && (
+                        <>
+                          <td style={{ textAlign: 'right', color: '#5c4436', fontWeight: 600 }}>
+                            {formatCurrency(f.gasto)}
+                          </td>
+                          <td style={{ textAlign: 'right', color: '#166534', fontWeight: 600 }}>
+                            {formatCurrency(f.venta)}
+                          </td>
+                        </>
+                      )}
+                      <td style={{ textAlign: 'right' }}>
+                        <span style={{
+                          fontWeight: 700,
+                          color: f.balance < 0 ? '#991b1b' : (f.balance > 0 ? '#14532d' : '#2b1d14')
+                        }}>
+                          {formatCurrency(f.balance)}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {f.diferencia === 0 ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            backgroundColor: 'rgba(20, 83, 45, 0.12)',
+                            color: '#14532d',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontWeight: 700,
+                            fontSize: '0.82rem'
+                          }}>
+                            0,00 € <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>✓ Al día</span>
+                          </span>
+                        ) : (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            backgroundColor: 'rgba(153, 27, 27, 0.1)',
+                            color: '#991b1b',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontWeight: 700,
+                            fontSize: '0.82rem'
+                          }}>
+                            {formatCurrency(f.diferencia)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Resumen Finca */}
+            <div style={{
+              marginTop: '1.2rem',
+              paddingTop: '0.9rem',
+              borderTop: '1px solid rgba(43, 29, 20, 0.15)',
               display: 'flex',
-              flexDirection: 'row',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.6rem',
-              padding: image ? '0' : '0.8rem 1rem',
-              border: '1.5px solid #e2e8f0',
-              borderRadius: '8px',
-              backgroundColor: '#f8fafc',
-              cursor: 'pointer',
-              color: '#1e293b',
-              overflow: 'hidden'
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              fontSize: '0.82rem',
+              color: '#5c4436'
             }}>
-              {image ? (
-                <div style={{ position: 'relative', width: '100%', padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {image.type === 'application/pdf' ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '1.2rem', color: '#1e293b' }}>
-                      <FileText size={28} color="#00979d" />
-                      <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{image.name || 'Documento PDF'}</span>
-                    </div>
-                  ) : (
-                    <img src={URL.createObjectURL(image)} alt="Preview" style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block', borderRadius: '8px' }} />
-                  )}
-                  <button 
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setImage(null); }}
-                    style={{
-                      position: 'absolute', top: '10px', right: '10px', width: '32px', height: '32px', borderRadius: '50%',
-                      backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem',
-                      paddingBottom: '3px', zIndex: 10
-                    }}
-                  >
-                    &times;
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <FileText size={22} color="#00979d" />
-                  <span style={{ fontSize: '0.95rem', fontWeight: '500' }}>Subir justificante</span>
-                </>
-              )}
-              <input 
-                type="file" 
-                accept="*/*" 
-                style={{ display: 'none' }} 
-                onChange={(e) => setImage(e.target.files[0])}
-              />
-            </label>
+              <span style={{ fontWeight: 600 }}>Balance Total Comunidad:</span>
+              <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#2b1d14' }}>
+                {formatCurrency(finances.reduce((acc, f) => acc + f.balance, 0))}
+              </span>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '3.2rem' }}>
-            <button type="submit" className="btn" style={{ width: '100%', margin: 0 }} disabled={loading}>
-              {loading ? 'Agregando...' : 'AGREGAR'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-      {/* Sección Contabilidad dentro de un div con bordes redondos, café con leche */}
-      <div className="contabilidad-container">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.8rem' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.45rem', color: '#2b1d14', fontWeight: 800 }}>Contabilidad</h2>
-            <span style={{ fontSize: '0.82rem', color: '#5f4434', fontWeight: 500 }}>Balance financiero por socio</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowFinanceDetails(!showFinanceDetails)}
+          {/* cambio de grafica del form: formulario colapsable debajo de Contabilidad con botón verde + y usuarios en una sola línea */}
+          <div
+            className="form-container"
             style={{
-              padding: '0.35rem 0.75rem',
-              borderRadius: '20px',
-              backgroundColor: showFinanceDetails ? '#2b1d14' : 'rgba(43, 29, 20, 0.1)',
-              color: showFinanceDetails ? '#ffffff' : '#2b1d14',
-              border: 'none',
-              fontSize: '0.78rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              padding: isAddFormOpen ? '1.35rem' : '0.95rem 1.35rem',
+              marginTop: '3rem',
+              marginBottom: '3rem',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+              transition: 'padding 0.2s ease',
             }}
           >
-            {showFinanceDetails ? 'Ocultar Desglose' : 'Ver Gasto/Ingreso'}
-          </button>
-        </div>
+            <div
+              onClick={() => setIsAddFormOpen((prev) => !prev)}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                cursor: 'pointer',
+                marginBottom: isAddFormOpen ? '1.25rem' : 0,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#000000', fontWeight: 'bold' }}>
+                Agregar Movimiento
+              </h2>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsAddFormOpen((prev) => !prev);
+                }}
+                aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Agregar Movimiento'}
+                title={isAddFormOpen ? 'Cerrar formulario' : 'Agregar Movimiento'}
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--primary)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
+                  transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.22s ease, background-color 0.2s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <Plus size={24} />
+              </button>
+            </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table className="contabilidad-table" style={{ whiteSpace: 'nowrap' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left' }}>USUARIO</th>
-                {showFinanceDetails && (
-                  <>
-                    <th style={{ textAlign: 'right' }}>GASTO</th>
-                    <th style={{ textAlign: 'right' }}>INGRESO</th>
-                  </>
+            {isAddFormOpen && (
+              <div>
+                {formErrors.general && (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid var(--danger)',
+                    borderRadius: '8px',
+                    padding: '0.8rem 1rem',
+                    marginBottom: '1.2rem',
+                    color: '#dc2626',
+                    fontSize: '0.92rem',
+                    fontWeight: '500',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    <span>⚠️ {formErrors.general}</span>
+                  </div>
                 )}
-                <th style={{ textAlign: 'right' }}>BALANCE</th>
-                <th style={{ textAlign: 'right' }}>DIFERENCIA</th>
-              </tr>
-            </thead>
-            <tbody>
-              {finances.map((f, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 700, color: '#2b1d14' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        backgroundColor: 'rgba(43, 29, 20, 0.12)',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        color: '#2b1d14'
-                      }}>
-                        {f.user ? f.user.charAt(0).toUpperCase() : '?'}
-                      </span>
-                      <span>{f.user}</span>
-                    </div>
-                  </td>
-                  {showFinanceDetails && (
-                    <>
-                      <td style={{ textAlign: 'right', color: '#5c4436', fontWeight: 600 }}>
-                        {formatCurrency(f.gasto)}
-                      </td>
-                      <td style={{ textAlign: 'right', color: '#166534', fontWeight: 600 }}>
-                        {formatCurrency(f.venta)}
-                      </td>
-                    </>
-                  )}
-                  <td style={{ textAlign: 'right' }}>
-                    <span style={{
-                      fontWeight: 700,
-                      color: f.balance < 0 ? '#991b1b' : (f.balance > 0 ? '#14532d' : '#2b1d14')
+
+                <form onSubmit={handleAdd}>
+                  <div className="form-group" style={{ padding: 0, marginBottom: '0.9rem' }}>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'nowrap',
+                      gap: '0.35rem',
+                      width: '100%',
+                      borderRadius: '14px',
+                      border: formErrors.user ? '1.5px dashed var(--danger)' : '1.5px solid transparent',
+                      padding: formErrors.user ? '4px' : '0'
                     }}>
-                      {formatCurrency(f.balance)}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    {f.diferencia === 0 ? (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        backgroundColor: 'rgba(20, 83, 45, 0.12)',
-                        color: '#14532d',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontWeight: 700,
-                        fontSize: '0.82rem'
-                      }}>
-                        0,00 € <span style={{ fontSize: '0.7rem', fontWeight: 600 }}>✓ Al día</span>
-                      </span>
-                    ) : (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        backgroundColor: 'rgba(153, 27, 27, 0.1)',
-                        color: '#991b1b',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        fontWeight: 700,
-                        fontSize: '0.82rem'
-                      }}>
-                        {formatCurrency(f.diferencia)}
+                      {users.map(u => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => {
+                            setUser(u.name);
+                            setFormErrors(prev => ({ ...prev, user: null, general: null }));
+                          }}
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            minHeight: '42px',
+                            padding: '0.5rem 0.2rem',
+                            borderRadius: '10px',
+                            border: user === u.name ? `2px solid #74c474` : `2px solid transparent`,
+                            backgroundColor: user === u.name ? '#9edb9e' : 'var(--primary)',
+                            color: user === u.name ? '#1a1a1a' : 'white',
+                            fontWeight: '600',
+                            fontSize: 'clamp(0.74rem, 3.1vw, 0.92rem)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          {u.name}
+                        </button>
+                      ))}
+                    </div>
+                    {formErrors.user && (
+                      <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
+                        * Selecciona un usuario
                       </span>
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
 
-        {/* Resumen Finca */}
-        <div style={{
-          marginTop: '1.2rem',
-          paddingTop: '0.9rem',
-          borderTop: '1px solid rgba(43, 29, 20, 0.15)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          fontSize: '0.82rem',
-          color: '#5c4436'
-        }}>
-          <span style={{ fontWeight: 600 }}>Balance Total Comunidad:</span>
-          <span style={{ fontWeight: 800, fontSize: '0.95rem', color: '#2b1d14' }}>
-            {formatCurrency(finances.reduce((acc, f) => acc + f.balance, 0))}
-          </span>
-        </div>
-      </div>
+                  <div className="form-group" style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', marginBottom: '0.4rem', padding: 0, alignItems: 'stretch' }}>
+                    <div style={{ flex: '1.2 1 0', minWidth: 0, display: 'flex' }}>
+                      <div className="input-with-icon" style={{ marginBottom: 0, width: '100%' }}>
+                        <Euro className="input-icon" size={18} style={{ left: '0.65rem' }} />
+                        <input 
+                          type="number" 
+                          step="0.01" 
+                          className="form-input" 
+                          value={amount} 
+                          onChange={(e) => {
+                            setAmount(e.target.value);
+                            setFormErrors(prev => ({ ...prev, amount: null, general: null }));
+                          }} 
+                          placeholder="Cantidad"
+                          style={{
+                            padding: '0.65rem 0.45rem 0.65rem 2.1rem',
+                            width: '100%',
+                            height: '48px',
+                            minHeight: '48px',
+                            fontSize: '0.95rem',
+                            borderRadius: '10px',
+                            border: formErrors.amount ? '1.5px solid var(--danger)' : undefined
+                          }} 
+                        />
+                      </div>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setType('Gasto');
+                        setFormErrors(prev => ({ ...prev, type: null, general: null }));
+                      }}
+                      style={{
+                        flex: '0.95 1 0',
+                        minWidth: 0,
+                        minHeight: '48px',
+                        padding: '0.45rem 0.35rem',
+                        borderRadius: '10px',
+                        border: formErrors.type && !type ? '1.5px dashed var(--danger)' : (type === 'Gasto' ? '2px solid #74c474' : '2px solid transparent'),
+                        backgroundColor: type === 'Gasto' ? '#9edb9e' : 'var(--primary)',
+                        color: type === 'Gasto' ? '#1a1a1a' : 'white',
+                        fontWeight: '600',
+                        fontSize: '0.92rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        lineHeight: 1.15
+                      }}
+                    >
+                      <span>Gasto</span>
+                      <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>(invertido)</span>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setType('Retiro');
+                        setFormErrors(prev => ({ ...prev, type: null, general: null }));
+                      }}
+                      style={{
+                        flex: '0.95 1 0',
+                        minWidth: 0,
+                        minHeight: '48px',
+                        padding: '0.45rem 0.35rem',
+                        borderRadius: '10px',
+                        border: formErrors.type && !type ? '1.5px dashed var(--danger)' : (type === 'Retiro' ? '2px solid #74c474' : '2px solid transparent'),
+                        backgroundColor: type === 'Retiro' ? '#9edb9e' : 'var(--primary)',
+                        color: type === 'Retiro' ? '#1a1a1a' : 'white',
+                        fontWeight: '600',
+                        fontSize: '0.92rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        lineHeight: 1.15
+                      }}
+                    >
+                      <span>Ingreso</span>
+                      <span style={{ fontSize: '0.68rem', opacity: 0.85 }}>(generado)</span>
+                    </button>
+                  </div>
+                  {(formErrors.amount || formErrors.type) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.8rem' }}>
+                      {formErrors.amount ? (
+                        <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {formErrors.amount}</span>
+                      ) : <span />}
+                      {formErrors.type && (
+                        <span style={{ color: 'var(--danger)', fontSize: '0.85rem', fontWeight: '500' }}>* {formErrors.type}</span>
+                      )}
+                    </div>
+                  )}
+                  
+                  <div className="form-group" style={{ padding: 0, marginTop: '0.95rem', marginBottom: '0' }}>
+                    <div className="input-with-icon" style={{ marginBottom: 0 }}>
+                      <AlignLeft className="input-icon" size={19} />
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        value={description} 
+                        onChange={(e) => {
+                          setDescription(e.target.value);
+                          setFormErrors(prev => ({ ...prev, description: null, general: null }));
+                        }} 
+                        placeholder="Descripción / Concepto" 
+                        style={{
+                          height: '48px',
+                          borderRadius: '10px',
+                          fontSize: '0.95rem',
+                          border: formErrors.description ? '1.5px solid var(--danger)' : undefined
+                        }}
+                      />
+                    </div>
+                    {formErrors.description && (
+                      <span style={{ color: 'var(--danger)', fontSize: '0.85rem', marginTop: '0.3rem', display: 'block', fontWeight: '500' }}>
+                        * {formErrors.description}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="form-group" style={{ padding: 0, marginTop: '0.95rem', marginBottom: '0' }}>
+                    <label style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.6rem',
+                      minHeight: '48px',
+                      padding: image ? '0' : '0.65rem 1rem',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '10px',
+                      backgroundColor: '#f8fafc',
+                      cursor: 'pointer',
+                      color: '#1e293b',
+                      overflow: 'hidden'
+                    }}>
+                      {image ? (
+                        <div style={{ position: 'relative', width: '100%', padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {image.type === 'application/pdf' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '1.2rem', color: '#1e293b' }}>
+                              <FileText size={28} color="#00979d" />
+                              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{image.name || 'Documento PDF'}</span>
+                            </div>
+                          ) : (
+                            <img src={URL.createObjectURL(image)} alt="Preview" style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block', borderRadius: '8px' }} />
+                          )}
+                          <button 
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setImage(null); }}
+                            style={{
+                              position: 'absolute', top: '10px', right: '10px', width: '32px', height: '32px', borderRadius: '50%',
+                              backgroundColor: 'var(--danger)', color: 'white', border: '1px solid var(--border)', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem',
+                              paddingBottom: '3px', zIndex: 10
+                            }}
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <FileText size={20} color="#00979d" />
+                          <span style={{ fontSize: '0.92rem', fontWeight: '600' }}>Subir justificante</span>
+                        </>
+                      )}
+                      <input 
+                        type="file" 
+                        accept="*/*" 
+                        style={{ display: 'none' }} 
+                        onChange={(e) => setImage(e.target.files[0])}
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1.35rem' }}>
+                    <button
+                      type="submit"
+                      className="btn"
+                      style={{
+                        width: '100%',
+                        margin: 0,
+                        minHeight: '46px',
+                        padding: '0.65rem 0',
+                        borderRadius: '10px',
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                      }}
+                      disabled={loading}
+                    >
+                      {loading ? 'Agregando...' : 'AGREGAR'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
         </>
       )}
 
-      {/* Cabecera de Transacciones con Filtros estilo Mapas */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4.5rem', marginBottom: '1.2rem' }}>
-        <h2 className="section-title" style={{ margin: 0, color: 'white', padding: 0 }}>
-          {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
-        </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          {/* Botón Filtros (estilo Mapas) */}
-          <button
-            type="button"
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-            title={isFilterOpen ? 'Cerrar filtros' : 'Filtrar transacciones o ver papelera'}
+      {/* Contenedor único de Transacciones con título, filtros y listado dentro del div marrón claro */}
+      <div
+        style={{
+          backgroundColor: '#f1ebe6',
+          borderRadius: '14px',
+          border: '1px solid #e7e0d8',
+          padding: '1.15rem 1rem 0.5rem 1rem',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+          marginTop: '1.5rem',
+        }}
+      >
+        {/* Cabecera de Transacciones dentro del div (mismo tamaño que antes) */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: (hasActiveFilters || displayRecords.length > 0 || selectedRecord) ? '0.65rem' : '0.35rem',
+          }}
+        >
+          <h2
+            className="section-title"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0.45rem',
-              borderRadius: '6px',
-              backgroundColor: (isFilterOpen || hasActiveFilters) ? 'rgba(0, 151, 157, 0.2)' : 'transparent',
-              color: (isFilterOpen || hasActiveFilters) ? '#00979d' : '#888888',
-              border: (isFilterOpen || hasActiveFilters) ? '1px solid #00979d' : '1px solid transparent',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              position: 'relative'
+              margin: 0,
+              padding: 0,
+              fontSize: '1.5rem',
+              fontWeight: 'bold',
+              color: '#2b1d14',
             }}
           >
-            <Filter size={24} />
-            {hasActiveFilters && (
-              <span style={{
-                position: 'absolute',
-                top: '3px',
-                right: '3px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor: filterCategory === 'TRASH' ? '#ef4444' : '#00979d',
-                boxShadow: '0 0 0 2px var(--bg-color)'
-              }} />
-            )}
-          </button>
+            {(isSearchOpen && searchQuery.trim() !== '') ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
+          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            {/* Botón Filtros (estilo Mapas) */}
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              title={isFilterOpen ? 'Cerrar filtros' : 'Filtrar transacciones o ver papelera'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.45rem',
+                borderRadius: '6px',
+                backgroundColor: (isFilterOpen || hasActiveFilters) ? 'rgba(0, 151, 157, 0.16)' : 'transparent',
+                color: (isFilterOpen || hasActiveFilters) ? '#00979d' : '#5c4436',
+                border: (isFilterOpen || hasActiveFilters) ? '1px solid #00979d' : '1px solid transparent',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                position: 'relative'
+              }}
+            >
+              <Filter size={24} />
+              {hasActiveFilters && (
+                <span style={{
+                  position: 'absolute',
+                  top: '3px',
+                  right: '3px',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: filterCategory === 'TRASH' ? '#ef4444' : '#00979d',
+                  boxShadow: '0 0 0 2px #f1ebe6'
+                }} />
+              )}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Chips de filtros activos */}
-      {hasActiveFilters && (
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          alignItems: 'center',
-          marginBottom: '1.2rem',
-          padding: '0.6rem 0.8rem',
-          backgroundColor: 'rgba(0, 151, 157, 0.08)',
-          borderRadius: '8px',
-          border: '1px solid rgba(0, 151, 157, 0.2)'
-        }}>
-          <span style={{ fontSize: '0.78rem', color: '#00979d', fontWeight: 600 }}>Filtros activos:</span>
-          {filterCategory === 'Gasto' && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '0.75rem',
-              backgroundColor: 'rgba(239, 68, 68, 0.15)',
-              color: '#ef4444',
-              fontWeight: 600,
-              border: '1px solid rgba(239, 68, 68, 0.3)'
-            }}>
-              Categoría: Gasto
-              <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
-            </span>
-          )}
-          {filterCategory === 'Retiro' && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '0.75rem',
-              backgroundColor: 'rgba(16, 185, 129, 0.15)',
-              color: '#10b981',
-              fontWeight: 600,
-              border: '1px solid rgba(16, 185, 129, 0.3)'
-            }}>
-              Categoría: Ingreso
-              <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
-            </span>
-          )}
-          {filterCategory === 'TRASH' && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '0.75rem',
-              backgroundColor: 'rgba(239, 68, 68, 0.2)',
-              color: '#ef4444',
-              fontWeight: 700,
-              border: '1px solid rgba(239, 68, 68, 0.45)'
-            }}>
-              <Trash2 size={13} />
-              Papelera (Eliminadas)
-              <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
-            </span>
-          )}
-          {filterCategory === 'ALL_WITH_TRASH' && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '0.75rem',
-              backgroundColor: 'rgba(148, 163, 184, 0.15)',
-              color: '#cbd5e1',
-              fontWeight: 600,
-              border: '1px solid rgba(148, 163, 184, 0.3)'
-            }}>
-              Todas (con Papelera)
-              <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
-            </span>
-          )}
-          {filterUser !== 'ALL' && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '0.75rem',
-              backgroundColor: 'rgba(0, 151, 157, 0.15)',
-              color: '#00979d',
-              fontWeight: 600,
-              border: '1px solid rgba(0, 151, 157, 0.3)'
-            }}>
-              Usuario: {filterUser}
-              <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterUser('ALL')} />
-            </span>
-          )}
-          {filterSearchTerm.trim() !== '' && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '0.75rem',
-              backgroundColor: 'rgba(99, 102, 241, 0.15)',
-              color: '#a5b4fc',
-              fontWeight: 600,
-              border: '1px solid rgba(99, 102, 241, 0.3)'
-            }}>
-              "{filterSearchTerm}"
-              <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterSearchTerm('')} />
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setFilterCategory('ALL');
-              setFilterUser('ALL');
-              setFilterSearchTerm('');
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#888888',
-              fontSize: '0.75rem',
-              cursor: 'pointer',
-              textDecoration: 'underline',
-              marginLeft: 'auto'
-            }}
-          >
-            Limpiar todos
-          </button>
-        </div>
-      )}
-      
-      {/* Lista estética de transacciones */}
-      {!selectedRecord ? (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {displayRecords.map((r, i) => renderItem(r, i))}
-          {displayRecords.length === 0 && (
+        {/* Chips de filtros activos */}
+        {hasActiveFilters && (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            alignItems: 'center',
+            marginBottom: '0.9rem',
+            padding: '0.6rem 0.8rem',
+            backgroundColor: 'rgba(0, 151, 157, 0.08)',
+            borderRadius: '8px',
+            border: '1px solid rgba(0, 151, 157, 0.2)'
+          }}>
+            <span style={{ fontSize: '0.78rem', color: '#00979d', fontWeight: 600 }}>Filtros activos:</span>
+            {filterCategory === 'Gasto' && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                color: '#dc2626',
+                fontWeight: 600,
+                border: '1px solid rgba(239, 68, 68, 0.3)'
+              }}>
+                Categoría: Gasto
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
+              </span>
+            )}
+            {filterCategory === 'Retiro' && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                color: '#059669',
+                fontWeight: 600,
+                border: '1px solid rgba(16, 185, 129, 0.3)'
+              }}>
+                Categoría: Ingreso
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
+              </span>
+            )}
+            {filterCategory === 'TRASH' && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                color: '#dc2626',
+                fontWeight: 700,
+                border: '1px solid rgba(239, 68, 68, 0.45)'
+              }}>
+                <Trash2 size={13} />
+                Papelera (Eliminadas)
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
+              </span>
+            )}
+            {filterCategory === 'ALL_WITH_TRASH' && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                backgroundColor: 'rgba(148, 163, 184, 0.18)',
+                color: '#475569',
+                fontWeight: 600,
+                border: '1px solid rgba(148, 163, 184, 0.35)'
+              }}>
+                Todas (con Papelera)
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
+              </span>
+            )}
+            {filterUser !== 'ALL' && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                backgroundColor: 'rgba(0, 151, 157, 0.15)',
+                color: '#007a7f',
+                fontWeight: 600,
+                border: '1px solid rgba(0, 151, 157, 0.3)'
+              }}>
+                Usuario: {filterUser}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterUser('ALL')} />
+              </span>
+            )}
+            {filterSearchTerm.trim() !== '' && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                color: '#4338ca',
+                fontWeight: 600,
+                border: '1px solid rgba(99, 102, 241, 0.3)'
+              }}>
+                "{filterSearchTerm}"
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterSearchTerm('')} />
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setFilterCategory('ALL');
+                setFilterUser('ALL');
+                setFilterSearchTerm('');
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#5c4436',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                marginLeft: 'auto'
+              }}
+            >
+              Limpiar todos
+            </button>
+          </div>
+        )}
+
+        {/* Lista estética de transacciones dentro del mismo div marrón claro */}
+        {!selectedRecord ? (
+          displayRecords.length === 0 ? (
             <div style={{
               textAlign: 'center',
-              padding: '3rem 1.5rem',
-              backgroundColor: 'var(--surface)',
-              borderRadius: '12px',
-              border: '1px dashed var(--border)',
-              color: '#888888',
-              marginTop: '0.5rem'
+              padding: '1.6rem 1rem 1.8rem 1rem',
+              color: '#5c4436',
             }}>
-              <div style={{ fontSize: '2.2rem', marginBottom: '0.5rem' }}>
+              <div style={{ fontSize: '2.1rem', marginBottom: '0.45rem' }}>
                 {filterCategory === 'TRASH' ? '🗑️' : '🍃'}
               </div>
-              <div style={{ fontWeight: 600, fontSize: '1rem', color: '#ffffff' }}>
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: '#2b1d14' }}>
                 {filterCategory === 'TRASH' ? 'La papelera está vacía' : 'No hay transacciones'}
               </div>
-              <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', color: '#aaaaaa' }}>
-                {filterCategory === 'TRASH' 
-                  ? 'No hay movimientos eliminados actualmente.' 
+              <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', color: '#5c4436' }}>
+                {filterCategory === 'TRASH'
+                  ? 'No hay movimientos eliminados actualmente.'
                   : (hasActiveFilters ? 'No se encontraron resultados con los filtros aplicados.' : 'No se han registrado movimientos todavía.')}
               </div>
               {hasActiveFilters && (
@@ -1309,36 +1419,50 @@ export default function GastoVenta() {
                 </button>
               )}
             </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {(() => {
-            const selectedIdx = displayRecords.findIndex(r => r.TransactionID === selectedRecord.TransactionID);
-            if (selectedIdx === -1) {
+          ) : (
+            <div>
+              {displayRecords.map((r, i) => renderItem(r, i, displayRecords.length))}
+            </div>
+          )
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {(() => {
+              const selectedIdx = displayRecords.findIndex(r => r.TransactionID === selectedRecord.TransactionID);
+              if (selectedIdx === -1) {
+                return (
+                  <>
+                    {renderEditForm()}
+                    {displayRecords.length > 0 && (
+                      <div>
+                        {displayRecords.map((r, i) => renderItem(r, i, displayRecords.length))}
+                      </div>
+                    )}
+                  </>
+                );
+              }
+              const before = displayRecords.slice(0, selectedIdx);
+              const after = displayRecords.slice(selectedIdx + 1);
               return (
                 <>
-                  <div style={{ marginBottom: '1.2rem' }}>
-                    {renderEditForm()}
-                  </div>
-                  {displayRecords.map((r, i) => renderItem(r, i))}
+                  {before.length > 0 && (
+                    <div>
+                      {before.map((r, i) => renderItem(r, i, before.length))}
+                    </div>
+                  )}
+
+                  {renderEditForm()}
+
+                  {after.length > 0 && (
+                    <div>
+                      {after.map((r, i) => renderItem(r, i, after.length))}
+                    </div>
+                  )}
                 </>
               );
-            }
-            return (
-              <>
-                {displayRecords.slice(0, selectedIdx).map((r, i) => renderItem(r, i))}
-                
-                <div style={{ margin: '0.75rem 0 1.2rem 0' }}>
-                  {renderEditForm()}
-                </div>
-                
-                {displayRecords.slice(selectedIdx + 1).map((r, i) => renderItem(r, i))}
-              </>
-            );
-          })()}
-        </div>
-      )}
+            })()}
+          </div>
+        )}
+      </div>
 
       {/* Panel de Filtros estilo Mapas (Overlay Slide-in) */}
       {isFilterOpen && createPortal((
@@ -1807,6 +1931,36 @@ export default function GastoVenta() {
           </div>
         </div>
       ), document.body)}
+
+      {/* Barra fija inferior de Chat IA para Gasto-Ingreso */}
+      <SectionChatIA
+        section="gasto-ingreso"
+        contextData={{
+          records,
+          finances,
+          users,
+          currentUser,
+        }}
+        onRefresh={refetchTransactions}
+        onSelectResultItem={(r) => {
+          if (!r) return;
+          setSelectedRecord(r);
+          setEditForm({
+            amount: Math.abs(r.Amount),
+            desc: r.Description || '',
+            user: r.User || '',
+            type: r.Category === 'Retiro' ? 'Retiro' : 'Gasto',
+            image: null,
+            currentImage: r.Imagen || null,
+          });
+          setIsConfirmingDelete(false);
+          setEditErrors({});
+          setTimeout(() => {
+            const el = document.getElementById('edit-tx-form');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 80);
+        }}
+      />
     </div>
   );
 }

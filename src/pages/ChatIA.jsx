@@ -39,8 +39,15 @@ import {
   Pause
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
-import { useVoiceGeoTracker, setGlobalLastKnownGps, getGlobalLastKnownGps } from '../hooks/useVoiceGeoTracker';
-import { interpolateGpsAtAudioTime } from '../utils/geoAudioInterpolation';
+import {
+  useVoiceGeoTracker,
+  setGlobalLastKnownGps,
+  getGlobalLastKnownGps,
+  isIosDevice,
+  checkGeolocationSupport,
+  queryGeolocationPermissionState,
+  normalizeGeoPosition,
+} from '../hooks/useVoiceGeoTracker';
 import {
   exportInventoryToExcel,
   exportInventoryToPDF,
@@ -50,13 +57,21 @@ import {
   generateCustomPDF,
   generateCustomExcel,
   generateCustomTXT,
-  generateCustomXML,
   extractTableFromMarkdown,
 } from '../utils/exportTools';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
-import { getLocalInventory, getLocalPaths, insertFarmInventoryItem, deleteFarmInventoryItem } from '../services/farmInventoryStorage';
+import { getLocalInventory, getLocalPaths } from '../services/farmInventoryStorage';
 import { parseStructuredCommands, executeInventoryActions } from '../services/mapIaOrchestrator';
 import { deleteCalendarEvent } from '../services/calendarService';
+import {
+  startAiBackgroundJob,
+  subscribeSectionJobs,
+  acknowledgeAiJob,
+  markJobActionsApplied,
+} from '../services/aiBackgroundJobManager';
+
+// Caché en memoria (sobrevive cambios de ruta SPA) para adjuntos, GPS y contexto de jobs activos
+const chatIaRuntimeContextMap = new globalThis.Map();
 
 // ─── Configuración de Modelos de Gemini (Ordenados de más a menos potente) ─────
 const GEMINI_SERVERS = [
@@ -956,7 +971,7 @@ function TypingIndicator({ currentServer }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <span style={styles.statusDot(currentServer?.badgeColor || '#00979d')} />
           <span style={{ fontSize: '0.72rem', color: '#666', fontWeight: 600 }}>
-            {currentServer?.name} ({currentServer?.level}) procesando...
+            {currentServer?.name} ({currentServer?.level}) procesando en segundo plano...
           </span>
         </div>
         <div style={styles.typingDots}>
@@ -973,6 +988,9 @@ function TypingIndicator({ currentServer }) {
               }}
             />
           ))}
+        </div>
+        <div style={{ fontSize: '0.67rem', color: '#888', marginTop: 4 }}>
+          Puedes cambiar de vista o recargar sin interrumpir la consulta
         </div>
       </div>
     </div>
@@ -1034,6 +1052,10 @@ export default function ChatIA() {
   }, [farmInventory]);
 
   const [farmPaths, setFarmPaths] = useState([]);
+  const farmPathsRef = useRef(farmPaths);
+  useEffect(() => {
+    farmPathsRef.current = farmPaths;
+  }, [farmPaths]);
   const [lastRecordedGpsTrack, setLastRecordedGpsTrack] = useState(null);
   const [inventoryModalTab, setInventoryModalTab] = useState('map'); // 'map' | 'inventory' | 'paths'
   const [inventorySearch, setInventorySearch] = useState('');
@@ -1104,7 +1126,6 @@ export default function ChatIA() {
   const [pendingAttachment, setPendingAttachment] = useState(null); // { file, name, size, type, dataUrl, textContent, isImage, isPdf, isSpreadsheet, isText }
 
   // Telemetría GPS en tiempo real del teléfono para el Chat
-  const [deviceGps, setDeviceGps] = useState(null); // { lat, lng, accuracy, altitude }
   const deviceGpsRef = useRef(null);
 
   const contextDataRef = useRef('');
@@ -1273,50 +1294,35 @@ export default function ChatIA() {
 
   // Captura y seguimiento continuo de GPS del móvil para el Chat
   useEffect(() => {
-    if (!('geolocation' in navigator)) return;
+    const { supported, secure } = checkGeolocationSupport();
+    if (!supported || !secure) return;
 
-    // Lectura inicial rápida (permite ubicación de caché para disponibilidad inmediata)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const info = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          altitude: pos.coords.altitude,
-          timestamp: pos.timestamp,
-        };
-        setDeviceGps(info);
-        deviceGpsRef.current = info;
-        setGlobalLastKnownGps(info);
-      },
-      (err) => {
-        console.warn('[ChatIA] Lectura inicial GPS no disponible:', err.message);
-      },
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
-    );
+    let cancelled = false;
+    let watchId = null;
 
-    // Muestreo continuo tolerante para móviles
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const info = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          altitude: pos.coords.altitude,
-          timestamp: pos.timestamp,
-        };
-        setDeviceGps(info);
-        deviceGpsRef.current = info;
-        setGlobalLastKnownGps(info);
-      },
-      (err) => {
-        console.warn('[ChatIA] watchPosition error:', err.message);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
-    );
+    queryGeolocationPermissionState().then((permState) => {
+      if (cancelled || permState === 'denied') return;
+      // En iOS/Safari no solicitar GPS automáticamente en frío antes del gesto del usuario
+      if (permState !== 'granted' && isIosDevice()) return;
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const info = normalizeGeoPosition(pos);
+          deviceGpsRef.current = info;
+          setGlobalLastKnownGps(info);
+        },
+        (err) => {
+          console.warn('[ChatIA] watchPosition error:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
+      );
+    });
 
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      cancelled = true;
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
     };
   }, []);
 
@@ -1537,7 +1543,528 @@ export default function ChatIA() {
     }
   };
 
-  // ── Enviar mensaje con cascada/fallback entre los 3 servidores ────────────────
+  const consumedChatJobsRef = useRef(new Set());
+  const activeServerRef = useRef(activeServer);
+  useEffect(() => {
+    activeServerRef.current = activeServer;
+  }, [activeServer]);
+
+  // ── Procesador de respuesta completada (Background Job) para ChatIA ────────
+  const processCompletedChatJob = useCallback(
+    async (job) => {
+      if (!job || consumedChatJobsRef.current.has(job.jobId)) return;
+      consumedChatJobsRef.current.add(job.jobId);
+      acknowledgeAiJob(job.jobId);
+
+      const runtimeCtx = chatIaRuntimeContextMap.get(job.jobId) || {};
+      chatIaRuntimeContextMap.delete(job.jobId);
+
+      const text = runtimeCtx.text ?? job.uiMeta?.text ?? '';
+      const att = runtimeCtx.att || null;
+      const aud = runtimeCtx.aud || null;
+      const effectivePt = runtimeCtx.effectivePt || deviceGpsRef.current || null;
+      const currentEvents = runtimeCtx.currentEvents || (fincaEvents.length > 0 ? fincaEvents : outletEvents);
+
+      const successResult = job.result?.rawText || job.result?.displayedContent || '';
+      const modelUsed = job.result?.modelUsed;
+      const serverThatAnswered =
+        GEMINI_SERVERS.find((s) => s.id === modelUsed) || activeServerRef.current;
+
+      if (!successResult) return;
+
+      const primaryIdx = job.uiMeta?.primaryIndex ?? selectedServerIndex;
+      if (modelUsed && GEMINI_SERVERS[primaryIdx] && GEMINI_SERVERS[primaryIdx].id !== modelUsed) {
+        setFallbackNotice({
+          from: GEMINI_SERVERS[primaryIdx],
+          to: serverThatAnswered,
+          reason: 'disponibilidad o tiempo de respuesta',
+        });
+      }
+
+      let displayedContent = job.result?.displayedContent || successResult;
+      let learnedMemory = job.result?.learnedMemory || null;
+      let newlyAddedBatch = [];
+
+      if (!learnedMemory) {
+        const memMatch = successResult.match(/\[\[MEMORIA:\s*(\{.*?\})\s*\]\]/s);
+        if (memMatch) {
+          try {
+            learnedMemory = JSON.parse(memMatch[1]);
+            displayedContent = displayedContent.replace(memMatch[0], '').trim();
+          } catch (e) {
+            console.warn('Error al parsear bloque de memoria:', e);
+          }
+        }
+      }
+
+      // ─── Procesamiento Unificado de Acciones de Inventario y Cartografía ───
+      const structured = parseStructuredCommands(successResult);
+
+      displayedContent = displayedContent
+        .replace(/\[\[REGISTRAR_PUNTOS:\s*(\[[\s\S]*?\])\s*\]\]/gi, '')
+        .replace(/\[\[REGISTRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .replace(/\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .replace(/\[\[REGISTRAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .replace(/\[\[EDITAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .replace(/\[\[CREAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .replace(/\[\[BORRAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .replace(/\[\[ELIMINAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .replace(/\[\[CREAR_TRANSACCION:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+        .trim();
+
+      const actionsToExecute = [
+        ...structured.points.map((p) => ({ type: 'ADD_POINT', data: p })),
+        ...structured.deletions.map((d) => ({ type: 'DELETE_POINT', data: d })),
+        ...structured.paths.map((pth) => ({ type: 'ADD_PATH', data: pth })),
+        ...structured.updates.map((u) => ({ type: 'UPDATE_POINT', data: u })),
+      ];
+
+      if (text && actionsToExecute.filter((a) => a.type === 'DELETE_POINT').length === 0) {
+        const lower = text.toLowerCase().trim();
+        const isDeleteLast =
+          lower.includes('borra el último árbol') ||
+          lower.includes('borra el ultimo arbol') ||
+          lower.includes('elimina el último árbol') ||
+          lower.includes('elimina el ultimo arbol') ||
+          lower.includes('borra el último punto') ||
+          lower.includes('borra el ultimo punto') ||
+          lower.includes('elimina el último punto') ||
+          lower.includes('cancela el último');
+
+        if (isDeleteLast && farmInventoryRef.current.length > 0) {
+          actionsToExecute.push({
+            type: 'DELETE_POINT',
+            data: { target: 'ultimo' },
+          });
+        }
+      }
+
+      if (actionsToExecute.length > 0) {
+        try {
+          const execResult = await executeInventoryActions({
+            actions: actionsToExecute,
+            audio: aud,
+            liveGps: effectivePt,
+            currentInventory: farmInventoryRef.current,
+            currentPaths: farmPathsRef.current,
+          });
+
+          if (execResult.addedItems.length > 0) {
+            newlyAddedBatch.push(...execResult.addedItems);
+            setFarmInventory((prev) => [
+              ...execResult.addedItems,
+              ...prev.filter((i) => !execResult.addedItems.some((a) => String(a.id) === String(i.id))),
+            ]);
+            execResult.addedItems.forEach((newRow) => {
+              contextDataRef.current += `\n- [${(newRow.category || 'arbol').toUpperCase()}] ${newRow.name} (${newRow.variety_type || ''}) | Lat/Lng: ${newRow.latitude}, ${newRow.longitude}`;
+            });
+          }
+
+          if (execResult.deletedItems.length > 0) {
+            setFarmInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
+          }
+
+          if (execResult.updatedItems.length > 0) {
+            setFarmInventory((prev) =>
+              prev.map((i) => {
+                const upd = execResult.updatedItems.find((u) => String(u.id) === String(i.id));
+                return upd ? { ...i, ...upd } : i;
+              })
+            );
+          }
+
+          if (execResult.addedPaths.length > 0) {
+            setFarmPaths((prev) => [
+              ...execResult.addedPaths,
+              ...prev.filter((p) => !execResult.addedPaths.some((a) => String(a.id) === String(p.id))),
+            ]);
+          }
+
+          if (execResult.deletedPaths.length > 0) {
+            setFarmPaths((prev) => prev.filter((p) => !execResult.deletedPaths.includes(p.id)));
+          }
+
+          if (execResult.updatedPaths.length > 0) {
+            setFarmPaths((prev) =>
+              prev.map((p) => {
+                const upd = execResult.updatedPaths.find((u) => String(u.id) === String(p.id));
+                return upd ? { ...p, ...upd } : p;
+              })
+            );
+          }
+        } catch (e) {
+          console.warn('[ChatIA] Error ejecutando acciones de inventario:', e);
+        }
+      }
+
+      // Acciones de calendario / transacciones: si el servidor ya las ejecutó, solo refrescar UI
+      if (job.actionsApplied) {
+        if (job.result?.eventsChanged && refetchEvents) refetchEvents();
+        if (job.result?.txChanged && refetchTransactions) refetchTransactions();
+      } else {
+        // 3. Crear evento
+        const evMatch = successResult.match(/\[\[CREAR_EVENTO:\s*(\{.*?\})\s*\]\]/s);
+        if (evMatch) {
+          try {
+            const evData = JSON.parse(evMatch[1]);
+            displayedContent = displayedContent.replace(evMatch[0], '').trim();
+
+            const evDate = evData.date ? `${evData.date.split('T')[0]}T00:00:00Z` : new Date().toISOString();
+            const evEndDate = evData.end_date ? `${evData.end_date.split('T')[0]}T00:00:00Z` : evDate;
+            const evStartTime = evData.start_time ? (evData.start_time.substring(0, 5) + ':00') : '08:00:00';
+            const evEndTime = evData.end_time ? (evData.end_time.substring(0, 5) + ':00') : '10:00:00';
+            const evCat = evData.category || 'RIEGO - La Nana';
+            const evResp = Array.isArray(evData.responsibles)
+              ? evData.responsibles
+              : (evData.responsibles ? [evData.responsibles] : ['Ariel']);
+            const evInfo = evData.info || 'Programado desde Chat IA';
+
+            const { data: newEvRow, error: evInsErr } = await supabase
+              .from('events')
+              .insert({
+                date: evDate,
+                end_date: evEndDate,
+                start_time: evStartTime,
+                end_time: evEndTime,
+                category: evCat,
+                responsibles: evResp,
+                info: evInfo,
+              })
+              .select()
+              .single();
+
+            if (!evInsErr && newEvRow) {
+              setFincaEvents((prev) => [...prev, newEvRow]);
+              if (refetchEvents) refetchEvents();
+            }
+          } catch (e) {
+            console.warn('Error al procesar bloque CREAR_EVENTO:', e);
+          }
+        }
+
+        // 3b. Borrar evento
+        const delEventMatches = [
+          ...successResult.matchAll(/\[\[(?:BORRAR_EVENTO|ELIMINAR_EVENTO):\s*(\{[\s\S]*?\})\s*\]\]/gi),
+        ];
+        for (const delMatch of delEventMatches) {
+          try {
+            const delData = JSON.parse(delMatch[1]);
+            displayedContent = displayedContent.replace(delMatch[0], '').trim();
+
+            const delRes = await deleteCalendarEvent({
+              event_id: delData.event_id || delData.id,
+              date: delData.date,
+              query: delData.query || delData.info || delData.category || delData.description,
+              currentEvents,
+            });
+
+            if (delRes.success && delRes.deletedId) {
+              setFincaEvents((prev) => prev.filter((ev) => ev.id?.toString() !== delRes.deletedId.toString()));
+              if (refetchEvents) refetchEvents();
+            }
+          } catch (e) {
+            console.warn('[ChatIA] Error al procesar bloque BORRAR_EVENTO/ELIMINAR_EVENTO:', e);
+          }
+        }
+
+        // 4. Crear transacción
+        const txMatch = successResult.match(/\[\[CREAR_TRANSACCION:\s*(\{.*?\})\s*\]\]/s);
+        if (txMatch) {
+          try {
+            const txData = JSON.parse(txMatch[1]);
+            displayedContent = displayedContent.replace(txMatch[0], '').trim();
+
+            const rawType = txData.type || 'Gasto';
+            const rawAmt = Math.abs(parseFloat(txData.amount || 0));
+            const isRetiro = ['retiro', 'venta', 'ingreso'].includes(rawType.toLowerCase());
+            const finalAmount = isRetiro ? -rawAmt : rawAmt;
+
+            const { data: authData } = await supabase.auth.getUser();
+            const currUser = authData?.user;
+
+            const { data: newTxRow, error: txInsErr } = await supabase
+              .from('transactions')
+              .insert({
+                date: new Date().toISOString(),
+                user_id: currUser?.id || null,
+                type: rawType,
+                amount: finalAmount,
+                description: txData.description || 'Registrado desde Chat IA',
+                status: 'ACTIVE',
+              })
+              .select()
+              .single();
+
+            if (!txInsErr && newTxRow) {
+              setFincaTransactions((prev) => [newTxRow, ...prev]);
+              if (refetchTransactions) refetchTransactions();
+            }
+          } catch (e) {
+            console.warn('Error al procesar bloque CREAR_TRANSACCION:', e);
+          }
+        }
+        markJobActionsApplied(job.jobId);
+      }
+
+      // 5. Archivos exportables
+      const exportFiles = Array.isArray(job.result?.exportFiles) ? [...job.result.exportFiles] : [];
+      const exportMatches = [...successResult.matchAll(/\[\[EXPORTAR_ARCHIVO:\s*(\{.*?\})\s*\]\]/gs)];
+      for (const match of exportMatches) {
+        try {
+          const fileData = JSON.parse(match[1]);
+          if (exportFiles.length === 0) exportFiles.push(fileData);
+          displayedContent = displayedContent.replace(match[0], '').trim();
+        } catch (e) {
+          console.warn('Error al procesar bloque EXPORTAR_ARCHIVO:', e);
+        }
+      }
+
+      const codeExportMatches = [...successResult.matchAll(/```(?:export_file|download_file|export)\s*(\{.*?\})\s*```/gs)];
+      for (const match of codeExportMatches) {
+        try {
+          const fileData = JSON.parse(match[1]);
+          exportFiles.push(fileData);
+          displayedContent = displayedContent.replace(match[0], '').trim();
+        } catch (e) {
+          console.warn('Error al procesar bloque code export_file:', e);
+        }
+      }
+
+      if (exportFiles.length === 0 && text) {
+        const lowerText = text.toLowerCase();
+        const wantsPdf = lowerText.includes('pdf') || lowerText.includes('informe descargable');
+        const wantsExcel = lowerText.includes('excel') || lowerText.includes('csv') || lowerText.includes('hoja de cálculo');
+        const wantsTxt = lowerText.includes('txt') || lowerText.includes('texto plano');
+        const wantsXml = lowerText.includes('xml') || lowerText.includes('kml');
+
+        if (wantsPdf || wantsExcel || wantsTxt || wantsXml) {
+          const parsedTable = extractTableFromMarkdown(displayedContent);
+          const dateStr = new Date().toISOString().split('T')[0];
+
+          if (wantsPdf) {
+            exportFiles.push({
+              type: 'pdf',
+              filename: `CAMPITO_JOROX_INFORME_${dateStr}.pdf`,
+              title: 'Informe Campito Jorox',
+              subtitle: 'Generado a petición del usuario',
+              content: displayedContent,
+              table: parsedTable,
+            });
+          } else if (wantsExcel) {
+            exportFiles.push({
+              type: 'excel',
+              filename: `CAMPITO_JOROX_DATOS_${dateStr}.csv`,
+              title: 'Exportación Campito Jorox',
+              table: parsedTable,
+              content: displayedContent,
+            });
+          } else if (wantsTxt) {
+            exportFiles.push({
+              type: 'txt',
+              filename: `CAMPITO_JOROX_NOTAS_${dateStr}.txt`,
+              title: 'Notas Campito Jorox',
+              content: displayedContent,
+            });
+          } else if (wantsXml) {
+            exportFiles.push({
+              type: 'xml',
+              filename: `CAMPITO_JOROX_${dateStr}.xml`,
+              title: 'Datos Campito Jorox',
+              content: displayedContent,
+            });
+          }
+        }
+      }
+
+      if (!learnedMemory && text) {
+        const lowerText = text.toLowerCase().trim();
+        const triggers = ['recuerda que', 'recuerda:', 'aprende que', 'aprende:', 'guarda que', 'guarda este dato:', 'anota que', 'toma nota de que'];
+        for (const trig of triggers) {
+          if (lowerText.startsWith(trig)) {
+            const contentToSave = text.substring(trig.length).replace(/^[:\s]+/, '').trim();
+            if (contentToSave.length > 5) {
+              learnedMemory = {
+                category: 'general',
+                title: contentToSave.substring(0, 45) + (contentToSave.length > 45 ? '...' : ''),
+                content: contentToSave,
+              };
+              break;
+            }
+          }
+        }
+      }
+
+      setActiveServer(serverThatAnswered);
+      const assistantMsgId = `ast_${job.jobId}`;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === assistantMsgId)) return prev;
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === displayedContent) return prev;
+        const nextList = [
+          ...prev,
+          {
+            id: assistantMsgId,
+            role: 'assistant',
+            content: displayedContent,
+            serverUsed: serverThatAnswered,
+            learnedMemory: learnedMemory || null,
+            inventoryExportBatch: newlyAddedBatch.length > 0 ? newlyAddedBatch : null,
+            exportFiles: exportFiles.length > 0 ? exportFiles : null,
+          },
+        ];
+        if (currentUserId) {
+          try {
+            localStorage.setItem(`campito_chat_messages_${currentUserId}`, JSON.stringify(nextList.slice(-60)));
+          } catch {
+            // ignore
+          }
+        }
+        return nextList;
+      });
+
+      // Actualizar estado local de memoria permanente si hubo aprendizaje
+      if (learnedMemory && learnedMemory.content) {
+        const geoTag = effectivePt ? ` [📍 GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
+        const enrichedContent = learnedMemory.content.includes('[📍')
+          ? learnedMemory.content
+          : `${learnedMemory.content}${geoTag}`;
+
+        const memoryEntry = {
+          id: 'mem-' + Date.now(),
+          category: learnedMemory.category || 'general',
+          title: learnedMemory.title || 'Dato aprendido',
+          content: enrichedContent,
+          source: 'chat',
+          created_at: new Date().toISOString(),
+          is_active: true,
+        };
+
+        setFarmKnowledge((prev) => {
+          const updated = [memoryEntry, ...prev.filter((p) => p.title !== memoryEntry.title || p.content !== memoryEntry.content)];
+          try {
+            localStorage.setItem('campito_farm_knowledge_all', JSON.stringify(updated));
+          } catch {
+            // ignore
+          }
+          return updated;
+        });
+
+        contextDataRef.current += `\n- [${(memoryEntry.category || 'general').toUpperCase()}] ${memoryEntry.title}: ${memoryEntry.content}`;
+
+        if (!job.actionsApplied) {
+          supabase
+            .from('farm_knowledge')
+            .insert({
+              category: memoryEntry.category,
+              title: memoryEntry.title,
+              content: memoryEntry.content,
+              source: 'chat',
+              user_id: currentUserId || null,
+              is_active: true,
+            })
+            .then(() => {})
+            .catch(() => {});
+        }
+      }
+
+      // Persistir en chat_history si el backend no lo guardó ya
+      if (!job.persistedToDb) {
+        (async () => {
+          try {
+            let uploadedFileUrl = null;
+            let uploadedFileName = null;
+
+            if (att && att.file) {
+              const fileExt = att.name ? att.name.split('.').pop() : (att.isPdf ? 'pdf' : 'jpg');
+              const cleanFileName = `chat-ia/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+              try {
+                const { error: uploadErr } = await supabase.storage
+                  .from('comprobantes')
+                  .upload(cleanFileName, att.file, { contentType: att.type || 'application/octet-stream' });
+
+                if (!uploadErr) {
+                  const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
+                  uploadedFileUrl = pubUrl?.publicUrl || null;
+                  uploadedFileName = cleanFileName;
+                }
+              } catch (fileErr) {
+                console.warn('[ChatIA] No se pudo subir archivo a storage:', fileErr);
+              }
+            } else if (aud && aud.blob) {
+              const ext = aud.mimeType?.includes('mp4') ? 'm4a' : (aud.mimeType?.includes('ogg') ? 'ogg' : 'webm');
+              const cleanAudioName = `chat-ia/audio-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+              try {
+                const { error: uploadAudioErr } = await supabase.storage
+                  .from('comprobantes')
+                  .upload(cleanAudioName, aud.blob, { contentType: aud.mimeType || 'audio/webm' });
+                if (!uploadAudioErr) {
+                  const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanAudioName);
+                  uploadedFileUrl = pubUrl?.publicUrl || null;
+                  uploadedFileName = cleanAudioName;
+                }
+              } catch (audioUpErr) {
+                console.warn('No se pudo subir audio a storage:', audioUpErr);
+              }
+            }
+
+            const { data: authData } = await supabase.auth.getUser();
+            const u = authData?.user;
+            const currentUserName = u?.user_metadata?.name || u?.email?.split('@')[0] || 'Admin';
+
+            const gpsLabel = effectivePt ? ` [GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
+            await supabase.from('chat_history').insert({
+              role: 'user',
+              content: (text || (att ? `[Archivo adjunto: ${att.name}]` : (aud ? `[Audio grabado: ${aud.duration}s]` : ''))) + gpsLabel,
+              file_url: uploadedFileUrl,
+              file_name: uploadedFileName,
+              user_id: u?.id || null,
+              user_name: currentUserName,
+              model_used: null,
+            });
+
+            await supabase.from('chat_history').insert({
+              role: 'assistant',
+              content: displayedContent,
+              file_url: null,
+              file_name: null,
+              user_id: u?.id || null,
+              user_name: 'Asistente IA',
+              model_used: `${serverThatAnswered.name} (${serverThatAnswered.level})`,
+            });
+          } catch (persistErr) {
+            console.warn('[ChatIA] Aviso al persistir para backup:', persistErr.message);
+          }
+        })();
+      }
+    },
+    [currentUserId, fincaEvents, outletEvents, refetchEvents, refetchTransactions, selectedServerIndex]
+  );
+
+  const processCompletedChatJobRef = useRef(processCompletedChatJob);
+  useEffect(() => {
+    processCompletedChatJobRef.current = processCompletedChatJob;
+  }, [processCompletedChatJob]);
+
+  // Suscripción persistente a trabajos en segundo plano de ChatIA (sobrevive navegación y recargas)
+  useEffect(() => {
+    const unsubscribe = subscribeSectionJobs('chat-ia', (snap) => {
+      setIsLoading(snap.isProcessing);
+      if (snap.errorUnacked.length > 0) {
+        const errJob = snap.errorUnacked[0];
+        if (!consumedChatJobsRef.current.has(errJob.jobId)) {
+          consumedChatJobsRef.current.add(errJob.jobId);
+          acknowledgeAiJob(errJob.jobId);
+          setError(errJob.error || 'Error al conectar con el asistente. Intenta de nuevo.');
+        }
+      }
+      for (const finishedJob of snap.completedUnacked) {
+        processCompletedChatJobRef.current(finishedJob);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // ── Enviar mensaje mediante Background Job (no se interrumpe al salir o recargar) ──
   const sendMessage = useCallback(
     async (textOverride = null, attachmentData = null, audioData = null) => {
       const text = textOverride ?? input.trim();
@@ -1564,14 +2091,18 @@ export default function ChatIA() {
 
       const updatedMessages = [...messages, userMsg];
       setMessages(updatedMessages);
-      setInput('');
-      if (currentUserId) {
+      // Persistir inmediatamente en localStorage para que sobreviva una recarga inmediata (F5)
+      const uidForCache = currentUserId || localStorage.getItem('campito_last_user_id');
+      if (uidForCache) {
         try {
-          localStorage.removeItem(`campito_chat_draft_${currentUserId}`);
+          localStorage.setItem(`campito_chat_messages_${uidForCache}`, JSON.stringify(updatedMessages.slice(-60)));
+          localStorage.removeItem(`campito_chat_draft_${uidForCache}`);
         } catch {
           // ignore
         }
       }
+
+      setInput('');
       setPendingAttachment(null);
       setPendingAudio(null);
       setIsLoading(true);
@@ -1583,6 +2114,7 @@ export default function ChatIA() {
       const orderToTry = autoFallback
         ? [primaryIndex, ...GEMINI_SERVERS.map((_, i) => i).filter((i) => i !== primaryIndex && GEMINI_SERVERS[i].available)]
         : [primaryIndex];
+      const modelsList = orderToTry.map((idx) => GEMINI_SERVERS[idx].id);
 
       const history = updatedMessages
         .slice(-20, -1)
@@ -1618,8 +2150,6 @@ RESPONDE SIEMPRE ROTUNDAMENTE QUE SÍ:
 "¡Sí! La app de Campito Jorox obtiene continuamente tu posición GPS en tiempo real. Ahora mismo tu teléfono está transmitiendo las coordenadas [${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}] con precisión de ±${effectivePt.accuracy ? effectivePt.accuracy.toFixed(1) + 'm' : '3.5m'}."
 Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si te pide aprender una regla o dato de la finca, usa [[MEMORIA: {...}]]. Si te pide programar un turno, usa [[CREAR_EVENTO: {...}]]. Si te pide borrar o cancelar un evento del calendario, usa [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "...", "event_id": "..."}]] o [[ELIMINAR_EVENTO: {"event_id": "..."}]].*`;
 
-      // 1. Refrescar datos en vivo de Supabase para que el asistente tenga el calendario,
-      // la contabilidad y la memoria permanente 100% actualizados en cada respuesta
       let currentEvents = fincaEvents.length > 0 ? fincaEvents : outletEvents;
       let currentTransactions = fincaTransactions.length > 0 ? fincaTransactions : outletTransactions;
       let currentUsers = fincaUsers.length > 0 ? fincaUsers : outletUsers;
@@ -1677,506 +2207,70 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
       contextDataRef.current = freshFincaContext;
 
       const systemInstruction = SYSTEM_PROMPT + '\n' + freshFincaContext + '\n' + gpsContextSnippet;
+      const gpsLabel = effectivePt ? ` [GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
 
-      let lastError = null;
-      let successResult = null;
-      let serverThatAnswered = null;
-
-      for (let i = 0; i < orderToTry.length; i++) {
-        const sIndex = orderToTry[i];
-        const server = GEMINI_SERVERS[sIndex];
-
-        try {
-          const aiResponse = await callGeminiDirect({
-            modelId: server.id,
-            prompt: text,
-            attachment: att,
-            image: att?.isImage ? att : null,
-            audio: aud,
-            history,
-            systemInstruction,
-            apiKey,
-            timeoutMs: (aud || att) ? 35000 : 18000,
-          });
-
-          successResult = aiResponse;
-          serverThatAnswered = server;
-
-          // Si respondió un servidor distinto al principal, avisar al usuario
-          if (i > 0) {
-            setFallbackNotice({
-              from: GEMINI_SERVERS[primaryIndex],
-              to: server,
-              reason: lastError?.isQuota ? 'límite de cuota' : 'tiempo de respuesta',
-            });
-          }
-
-          break; // Éxito, salir del loop
-        } catch (err) {
-          console.warn(`[ChatIA] Error en ${server.name} (${server.level}):`, err.message);
-          lastError = err;
-          // Continuar con el siguiente servidor en cascada
-        }
+      let effectivePrompt = text;
+      if (!effectivePrompt && aud) {
+        effectivePrompt =
+          'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Transcribe o interpreta lo que dice y responde a su consulta o petición. Si consulta sobre el calendario o turnos de riego, revisa el calendario inyectado y responde con el horario exacto. Si pide programar un turno o evento, usa [[CREAR_EVENTO: {...}]]. Si pide borrar o cancelar un evento del calendario, usa [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "...", "event_id": "..."}]] o [[ELIMINAR_EVENTO: {"event_id": "..."}]]. Si consulta sobre la contabilidad, responde con los balances reales. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla de la finca, guárdala con [[MEMORIA: {...} ]]. Si pide borrar un punto, usa [[BORRAR_PUNTO: {...}]]. Responde detalladamente en español.';
+      } else if (!effectivePrompt && att) {
+        effectivePrompt = `Por favor analiza detalladamente el archivo adjunto ("${att.name || 'documento'}") para Campito Jorox. Sintetiza la información relevante y, si contiene pautas o reglas para alimentar el conocimiento de la finca, guárdalas con [[MEMORIA: {"category": "suelo|cultivo|riego|fertilizacion|general", "title": "...", "content": "..."}]]. Si contiene árboles o parcelas, regístralos con [[REGISTRAR_PUNTOS: [...] ]].`;
       }
 
-      if (successResult && serverThatAnswered) {
-        // Detección y extracción de aprendizaje para la memoria permanente de la finca
-        let displayedContent = successResult;
-        let learnedMemory = null;
-        let newlyAddedBatch = [];
+      const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: {} }));
+      const authUser = authData?.user;
+      const currentUserName = authUser?.user_metadata?.name || authUser?.email?.split('@')[0] || 'Admin';
 
-        const memMatch = successResult.match(/\[\[MEMORIA:\s*(\{.*?\})\s*\]\]/s);
-        if (memMatch) {
-          try {
-            learnedMemory = JSON.parse(memMatch[1]);
-            displayedContent = successResult.replace(memMatch[0], '').trim();
-          } catch (e) {
-            console.warn('Error al parsear bloque de memoria:', e);
-          }
-        }
-
-        // ─── Procesamiento Unificado de Acciones de Inventario y Cartografía ───
-        const structured = parseStructuredCommands(successResult);
-
-        // Limpiar comandos estructurados del texto visible al usuario
-        displayedContent = displayedContent
-          .replace(/\[\[REGISTRAR_PUNTOS:\s*(\[[\s\S]*?\])\s*\]\]/gi, '')
-          .replace(/\[\[REGISTRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-          .replace(/\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-          .replace(/\[\[REGISTRAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-          .replace(/\[\[EDITAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-          .replace(/\[\[CREAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-          .replace(/\[\[BORRAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-          .replace(/\[\[ELIMINAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-          .trim();
-
-        const actionsToExecute = [
-          ...structured.points.map((p) => ({ type: 'ADD_POINT', data: p })),
-          ...structured.deletions.map((d) => ({ type: 'DELETE_POINT', data: d })),
-          ...structured.paths.map((pth) => ({ type: 'ADD_PATH', data: pth })),
-          ...structured.updates.map((u) => ({ type: 'UPDATE_POINT', data: u })),
-        ];
-
-        // Heurística de respaldo si el usuario pidió explícitamente borrar por voz o texto
-        if (text && actionsToExecute.filter((a) => a.type === 'DELETE_POINT').length === 0) {
-          const lower = text.toLowerCase().trim();
-          const isDeleteLast =
-            lower.includes('borra el último árbol') ||
-            lower.includes('borra el ultimo arbol') ||
-            lower.includes('elimina el último árbol') ||
-            lower.includes('elimina el ultimo arbol') ||
-            lower.includes('borra el último punto') ||
-            lower.includes('borra el ultimo punto') ||
-            lower.includes('elimina el último punto') ||
-            lower.includes('cancela el último');
-
-          if (isDeleteLast && farmInventoryRef.current.length > 0) {
-            actionsToExecute.push({
-              type: 'DELETE_POINT',
-              data: { target: 'ultimo' },
-            });
-          }
-        }
-
-        if (actionsToExecute.length > 0) {
-          try {
-            const execResult = await executeInventoryActions({
-              actions: actionsToExecute,
-              audio: aud,
-              liveGps: effectivePt,
-              currentInventory: farmInventoryRef.current,
-              currentPaths: farmPathsRef.current,
-            });
-
-            if (execResult.addedItems.length > 0) {
-              newlyAddedBatch.push(...execResult.addedItems);
-              setFarmInventory((prev) => [
-                ...execResult.addedItems,
-                ...prev.filter((i) => !execResult.addedItems.some((a) => String(a.id) === String(i.id))),
-              ]);
-              execResult.addedItems.forEach((newRow) => {
-                contextDataRef.current += `\n- [${(newRow.category || 'arbol').toUpperCase()}] ${newRow.name} (${newRow.variety_type || ''}) | Lat/Lng: ${newRow.latitude}, ${newRow.longitude}`;
+      const { jobId } = startAiBackgroundJob({
+        section: 'chat-ia',
+        prompt: effectivePrompt,
+        systemInstruction,
+        history,
+        attachment: att,
+        audio: aud,
+        models: modelsList,
+        userMeta: { userId: authUser?.id || currentUserId || null, userName: currentUserName },
+        meta: { gpsLabel },
+        persistToChatHistory: true,
+        uiMeta: {
+          text: text || '',
+          primaryIndex,
+          userMsgId: userMsg.id,
+        },
+        directFallbackFn: async () => {
+          let lastError = null;
+          for (let i = 0; i < orderToTry.length; i++) {
+            const sIndex = orderToTry[i];
+            const server = GEMINI_SERVERS[sIndex];
+            try {
+              const aiResponse = await callGeminiDirect({
+                modelId: server.id,
+                prompt: text,
+                attachment: att,
+                image: att?.isImage ? att : null,
+                audio: aud,
+                history,
+                systemInstruction,
+                apiKey,
+                timeoutMs: aud || att ? 35000 : 18000,
               });
-            }
-
-            if (execResult.deletedItems.length > 0) {
-              setFarmInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
-            }
-
-            if (execResult.updatedItems.length > 0) {
-              setFarmInventory((prev) =>
-                prev.map((i) => {
-                  const upd = execResult.updatedItems.find((u) => String(u.id) === String(i.id));
-                  return upd ? { ...i, ...upd } : i;
-                })
-              );
-            }
-
-            if (execResult.addedPaths.length > 0) {
-              setFarmPaths((prev) => [
-                ...execResult.addedPaths,
-                ...prev.filter((p) => !execResult.addedPaths.some((a) => String(a.id) === String(p.id))),
-              ]);
-            }
-
-            if (execResult.deletedPaths.length > 0) {
-              setFarmPaths((prev) => prev.filter((p) => !execResult.deletedPaths.includes(p.id)));
-            }
-
-            if (execResult.updatedPaths.length > 0) {
-              setFarmPaths((prev) =>
-                prev.map((p) => {
-                  const upd = execResult.updatedPaths.find((u) => String(u.id) === String(p.id));
-                  return upd ? { ...p, ...upd } : p;
-                })
-              );
-            }
-          } catch (e) {
-            console.warn('[ChatIA] Error ejecutando acciones de inventario:', e);
-          }
-        }
-
-        // 3. Detección y ejecución de orden de creación de evento en el calendario
-        const evMatch = successResult.match(/\[\[CREAR_EVENTO:\s*(\{.*?\})\s*\]\]/s);
-        if (evMatch) {
-          try {
-            const evData = JSON.parse(evMatch[1]);
-            displayedContent = displayedContent.replace(evMatch[0], '').trim();
-
-            const evDate = evData.date ? `${evData.date.split('T')[0]}T00:00:00Z` : new Date().toISOString();
-            const evEndDate = evData.end_date ? `${evData.end_date.split('T')[0]}T00:00:00Z` : evDate;
-            const evStartTime = evData.start_time ? (evData.start_time.substring(0, 5) + ':00') : '08:00:00';
-            const evEndTime = evData.end_time ? (evData.end_time.substring(0, 5) + ':00') : '10:00:00';
-            const evCat = evData.category || 'RIEGO - La Nana';
-            const evResp = Array.isArray(evData.responsibles)
-              ? evData.responsibles
-              : (evData.responsibles ? [evData.responsibles] : ['Ariel']);
-            const evInfo = evData.info || 'Programado desde Chat IA';
-
-            const { data: newEvRow, error: evInsErr } = await supabase
-              .from('events')
-              .insert({
-                date: evDate,
-                end_date: evEndDate,
-                start_time: evStartTime,
-                end_time: evEndTime,
-                category: evCat,
-                responsibles: evResp,
-                info: evInfo,
-              })
-              .select()
-              .single();
-
-            if (!evInsErr && newEvRow) {
-              setFincaEvents((prev) => [...prev, newEvRow]);
-              if (refetchEvents) refetchEvents();
-            }
-          } catch (e) {
-            console.warn('Error al procesar bloque CREAR_EVENTO:', e);
-          }
-        }
-
-        // 3b. Detección y ejecución de orden de borrado o cancelación de evento en el calendario
-        const delEventMatches = [
-          ...successResult.matchAll(/\[\[(?:BORRAR_EVENTO|ELIMINAR_EVENTO):\s*(\{[\s\S]*?\})\s*\]\]/gi),
-        ];
-        for (const delMatch of delEventMatches) {
-          try {
-            const delData = JSON.parse(delMatch[1]);
-            displayedContent = displayedContent.replace(delMatch[0], '').trim();
-
-            const delRes = await deleteCalendarEvent({
-              event_id: delData.event_id || delData.id,
-              date: delData.date,
-              query: delData.query || delData.info || delData.category || delData.description,
-              currentEvents,
-            });
-
-            if (delRes.success && delRes.deletedId) {
-              setFincaEvents((prev) => prev.filter((ev) => ev.id?.toString() !== delRes.deletedId.toString()));
-              if (refetchEvents) refetchEvents();
-            } else {
-              console.warn('[ChatIA] No se pudo borrar el evento:', delRes.error);
-            }
-          } catch (e) {
-            console.warn('[ChatIA] Error al procesar bloque BORRAR_EVENTO/ELIMINAR_EVENTO:', e);
-          }
-        }
-
-        // 4. Detección y ejecución de creación de transacción / gasto / venta
-        const txMatch = successResult.match(/\[\[CREAR_TRANSACCION:\s*(\{.*?\})\s*\]\]/s);
-        if (txMatch) {
-          try {
-            const txData = JSON.parse(txMatch[1]);
-            displayedContent = displayedContent.replace(txMatch[0], '').trim();
-
-            const rawType = txData.type || 'Gasto';
-            const rawAmt = Math.abs(parseFloat(txData.amount || 0));
-            const isRetiro = ['retiro', 'venta', 'ingreso'].includes(rawType.toLowerCase());
-            const finalAmount = isRetiro ? -rawAmt : rawAmt;
-
-            const { data: authData } = await supabase.auth.getUser();
-            const currUser = authData?.user;
-
-            const { data: newTxRow, error: txInsErr } = await supabase
-              .from('transactions')
-              .insert({
-                date: new Date().toISOString(),
-                user_id: currUser?.id || null,
-                type: rawType,
-                amount: finalAmount,
-                description: txData.description || 'Registrado desde Chat IA',
-                status: 'ACTIVE',
-              })
-              .select()
-              .single();
-
-            if (!txInsErr && newTxRow) {
-              setFincaTransactions((prev) => [newTxRow, ...prev]);
-              if (refetchTransactions) refetchTransactions();
-            }
-          } catch (e) {
-            console.warn('Error al procesar bloque CREAR_TRANSACCION:', e);
-          }
-        }
-
-        // 5. Detección y extracción de archivos exportables (PDF, EXCEL, TXT, XML, KML)
-        const exportFiles = [];
-
-        // Coincidencia con [[EXPORTAR_ARCHIVO: { ... }]]
-        const exportMatches = [...successResult.matchAll(/\[\[EXPORTAR_ARCHIVO:\s*(\{.*?\})\s*\]\]/gs)];
-        for (const match of exportMatches) {
-          try {
-            const fileData = JSON.parse(match[1]);
-            exportFiles.push(fileData);
-            displayedContent = displayedContent.replace(match[0], '').trim();
-          } catch (e) {
-            console.warn('Error al procesar bloque EXPORTAR_ARCHIVO:', e);
-          }
-        }
-
-        // Coincidencia alternativa con bloques de código ```export_file { ... } ```
-        const codeExportMatches = [...successResult.matchAll(/```(?:export_file|download_file|export)\s*(\{.*?\})\s*```/gs)];
-        for (const match of codeExportMatches) {
-          try {
-            const fileData = JSON.parse(match[1]);
-            exportFiles.push(fileData);
-            displayedContent = displayedContent.replace(match[0], '').trim();
-          } catch (e) {
-            console.warn('Error al procesar bloque code export_file:', e);
-          }
-        }
-
-        // Heurística de respaldo: si el usuario solicitó explícitamente un PDF, Excel, TXT o XML
-        // pero el modelo no generó el comando estructurado
-        if (exportFiles.length === 0 && text) {
-          const lowerText = text.toLowerCase();
-          const wantsPdf = lowerText.includes('pdf') || lowerText.includes('informe descargable');
-          const wantsExcel = lowerText.includes('excel') || lowerText.includes('csv') || lowerText.includes('hoja de cálculo');
-          const wantsTxt = lowerText.includes('txt') || lowerText.includes('texto plano');
-          const wantsXml = lowerText.includes('xml') || lowerText.includes('kml');
-
-          if (wantsPdf || wantsExcel || wantsTxt || wantsXml) {
-            const parsedTable = extractTableFromMarkdown(displayedContent);
-            const dateStr = new Date().toISOString().split('T')[0];
-
-            if (wantsPdf) {
-              exportFiles.push({
-                type: 'pdf',
-                filename: `CAMPITO_JOROX_INFORME_${dateStr}.pdf`,
-                title: 'Informe Campito Jorox',
-                subtitle: 'Generado a petición del usuario',
-                content: displayedContent,
-                table: parsedTable,
-              });
-            } else if (wantsExcel) {
-              exportFiles.push({
-                type: 'excel',
-                filename: `CAMPITO_JOROX_DATOS_${dateStr}.csv`,
-                title: 'Exportación Campito Jorox',
-                table: parsedTable,
-                content: displayedContent,
-              });
-            } else if (wantsTxt) {
-              exportFiles.push({
-                type: 'txt',
-                filename: `CAMPITO_JOROX_NOTAS_${dateStr}.txt`,
-                title: 'Notas Campito Jorox',
-                content: displayedContent,
-              });
-            } else if (wantsXml) {
-              exportFiles.push({
-                type: 'xml',
-                filename: `CAMPITO_JOROX_${dateStr}.xml`,
-                title: 'Datos Campito Jorox',
-                content: displayedContent,
-              });
+              return { rawText: aiResponse, modelUsed: server.id };
+            } catch (err) {
+              console.warn(`[ChatIA] Error en ${server.name} (${server.level}):`, err.message);
+              lastError = err;
             }
           }
-        }
+          throw lastError || new Error('Error al conectar con el asistente.');
+        },
+      });
 
-        // Heurística de respaldo si el usuario pidió recordar algo y el modelo no generó la etiqueta
-        if (!learnedMemory && text) {
-          const lowerText = text.toLowerCase().trim();
-          const triggers = ['recuerda que', 'recuerda:', 'aprende que', 'aprende:', 'guarda que', 'guarda este dato:', 'anota que', 'toma nota de que'];
-          for (const trig of triggers) {
-            if (lowerText.startsWith(trig)) {
-              const contentToSave = text.substring(trig.length).replace(/^[:\s]+/, '').trim();
-              if (contentToSave.length > 5) {
-                learnedMemory = {
-                  category: 'general',
-                  title: contentToSave.substring(0, 45) + (contentToSave.length > 45 ? '...' : ''),
-                  content: contentToSave
-                };
-                break;
-              }
-            }
-          }
-        }
-
-        setActiveServer(serverThatAnswered);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: displayedContent,
-            serverUsed: serverThatAnswered,
-            learnedMemory: learnedMemory || null,
-            inventoryExportBatch: newlyAddedBatch.length > 0 ? newlyAddedBatch : null,
-            exportFiles: exportFiles.length > 0 ? exportFiles : null,
-          },
-        ]);
-
-        // Persistir en segundo plano en Supabase para respaldo automático a Drive y memoria viva
-        (async () => {
-          try {
-            let uploadedFileUrl = null;
-            let uploadedFileName = null;
-
-            // Subir archivo adjunto (documento, foto o PDF) si se adjuntó alguno
-            if (att && att.file) {
-              const fileExt = att.name ? att.name.split('.').pop() : (att.isPdf ? 'pdf' : 'jpg');
-              const cleanFileName = `chat-ia/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-              try {
-                const { error: uploadErr } = await supabase.storage
-                  .from('comprobantes')
-                  .upload(cleanFileName, att.file, { contentType: att.type || 'application/octet-stream' });
-
-                if (!uploadErr) {
-                  const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
-                  uploadedFileUrl = pubUrl?.publicUrl || null;
-                  uploadedFileName = cleanFileName;
-                }
-              } catch (fileErr) {
-                console.warn('[ChatIA] No se pudo subir archivo a storage:', fileErr);
-              }
-            } else if (aud && aud.blob) {
-              // Subir audio si se grabó nota de voz
-              const ext = aud.mimeType?.includes('mp4') ? 'm4a' : (aud.mimeType?.includes('ogg') ? 'ogg' : 'webm');
-              const cleanAudioName = `chat-ia/audio-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-              try {
-                const { error: uploadAudioErr } = await supabase.storage
-                  .from('comprobantes')
-                  .upload(cleanAudioName, aud.blob, { contentType: aud.mimeType || 'audio/webm' });
-                if (!uploadAudioErr) {
-                  const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanAudioName);
-                  uploadedFileUrl = pubUrl?.publicUrl || null;
-                  uploadedFileName = cleanAudioName;
-                }
-              } catch (audioUpErr) {
-                console.warn('No se pudo subir audio a storage:', audioUpErr);
-              }
-            }
-
-            const { data: authData } = await supabase.auth.getUser();
-            const u = authData?.user;
-            const currentUserName = u?.user_metadata?.name || u?.email?.split('@')[0] || 'Admin';
-
-            // Si se detectó conocimiento nuevo, guardarlo de inmediato en memoria local y Supabase
-            if (learnedMemory && learnedMemory.content) {
-              const geoTag = effectivePt ? ` [📍 GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
-              const enrichedContent = learnedMemory.content.includes('[📍')
-                ? learnedMemory.content
-                : `${learnedMemory.content}${geoTag}`;
-
-              const memoryEntry = {
-                id: 'mem-' + Date.now(),
-                category: learnedMemory.category || 'general',
-                title: learnedMemory.title || 'Dato aprendido',
-                content: enrichedContent,
-                source: 'chat',
-                user_id: u?.id || null,
-                user_name: currentUserName,
-                created_at: new Date().toISOString(),
-                is_active: true,
-              };
-
-              // Guardar siempre en estado y en localStorage (nunca se pierde)
-              setFarmKnowledge((prev) => {
-                const updated = [memoryEntry, ...prev.filter((p) => p.title !== memoryEntry.title || p.content !== memoryEntry.content)];
-                try {
-                  localStorage.setItem('campito_farm_knowledge_all', JSON.stringify(updated));
-                } catch {
-                  // ignore
-                }
-                return updated;
-              });
-
-              contextDataRef.current += `\n- [${(memoryEntry.category || 'general').toUpperCase()}] ${memoryEntry.title}: ${memoryEntry.content}`;
-
-              // Intentar sincronizar en Supabase si la tabla existe
-              try {
-                await supabase.from('farm_knowledge').insert({
-                  category: memoryEntry.category,
-                  title: memoryEntry.title,
-                  content: memoryEntry.content,
-                  source: 'chat',
-                  user_id: u?.id || null,
-                  user_name: currentUserName,
-                  is_active: true,
-                });
-              } catch (memErr) {
-                console.warn('[ChatIA] Aviso sincronizando memoria con Supabase:', memErr?.message);
-              }
-            }
-
-            // Guardar mensaje del usuario en chat_history
-            const gpsLabel = effectivePt ? ` [GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
-            await supabase.from('chat_history').insert({
-              role: 'user',
-              content: (text || (att ? `[Archivo adjunto: ${att.name}]` : (aud ? `[Audio grabado: ${aud.duration}s]` : ''))) + gpsLabel,
-              file_url: uploadedFileUrl,
-              file_name: uploadedFileName,
-              user_id: u?.id || null,
-              user_name: currentUserName,
-              model_used: null,
-            });
-
-            // Guardar respuesta del asistente en chat_history
-            await supabase.from('chat_history').insert({
-              role: 'assistant',
-              content: displayedContent,
-              file_url: null,
-              file_name: null,
-              user_id: u?.id || null,
-              user_name: 'Asistente IA',
-              model_used: `${serverThatAnswered.name} (${serverThatAnswered.level})`,
-            });
-          } catch (persistErr) {
-            console.warn('[ChatIA] Aviso al persistir para backup:', persistErr.message);
-          }
-        })();
-      } else {
-        const isQuota = lastError?.isQuota;
-        setError(
-          isQuota
-            ? 'Todos los modelos de Gemini superaron su límite de cuota actual. Intenta de nuevo en unos minutos.'
-            : (lastError?.message || 'Error al conectar con el asistente. Intenta de nuevo.')
-        );
-      }
-
-      setIsLoading(false);
+      chatIaRuntimeContextMap.set(jobId, {
+        text,
+        att,
+        aud,
+        effectivePt,
+        currentEvents,
+      });
     },
     [
       input,
@@ -2196,8 +2290,6 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
       outletEvents,
       outletTransactions,
       outletUsers,
-      refetchEvents,
-      refetchTransactions,
     ]
   );
 
@@ -4237,7 +4329,8 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             </button>
           </div>
         ) : (
-          <div style={styles.inputCapsule}>
+          <div style={{ ...styles.inputCapsule, paddingLeft: 12 }}>
+            <Bot size={18} color="#00979d" style={{ flexShrink: 0, marginRight: 8 }} />
             <textarea
               ref={inputRef}
               className="chatia-input"

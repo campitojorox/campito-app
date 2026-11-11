@@ -13,7 +13,7 @@ const DELETED_PATHS_KEY = 'campito_deleted_paths_ids';
 /**
  * Validador de formato UUID v4
  */
-export function isValidUUID(str) {
+function isValidUUID(str) {
   if (typeof str !== 'string') return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 }
@@ -21,7 +21,7 @@ export function isValidUUID(str) {
 /**
  * Generador universal de UUID v4 compatible con navegadores y Node
  */
-export function generateUUID() {
+function generateUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -33,16 +33,16 @@ export function generateUUID() {
 }
 
 // ─── Gestión de IDs eliminados para evitar resurrección por caché / polling ───
-export function getDeletedInventoryIds() {
+function getDeletedInventoryIds() {
   try {
     const raw = localStorage.getItem(DELETED_INVENTORY_KEY);
     return raw ? new Set(JSON.parse(raw).map(String)) : new Set();
-  } catch (e) {
+  } catch {
     return new Set();
   }
 }
 
-export function addDeletedInventoryId(id) {
+function addDeletedInventoryId(id) {
   if (!id) return;
   try {
     const current = getDeletedInventoryIds();
@@ -53,7 +53,7 @@ export function addDeletedInventoryId(id) {
   }
 }
 
-export function removeDeletedInventoryId(id) {
+function removeDeletedInventoryId(id) {
   if (!id) return;
   try {
     const current = getDeletedInventoryIds();
@@ -64,16 +64,16 @@ export function removeDeletedInventoryId(id) {
   }
 }
 
-export function getDeletedPathIds() {
+function getDeletedPathIds() {
   try {
     const raw = localStorage.getItem(DELETED_PATHS_KEY);
     return raw ? new Set(JSON.parse(raw).map(String)) : new Set();
-  } catch (e) {
+  } catch {
     return new Set();
   }
 }
 
-export function addDeletedPathId(id) {
+function addDeletedPathId(id) {
   if (!id) return;
   try {
     const current = getDeletedPathIds();
@@ -84,7 +84,7 @@ export function addDeletedPathId(id) {
   }
 }
 
-export function removeDeletedPathId(id) {
+function removeDeletedPathId(id) {
   if (!id) return;
   try {
     const current = getDeletedPathIds();
@@ -146,7 +146,7 @@ export function getLocalInventory() {
   }
 }
 
-export function setLocalInventory(items) {
+function setLocalInventory(items) {
   try {
     localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
   } catch (e) {
@@ -166,7 +166,7 @@ export function getLocalPaths() {
   }
 }
 
-export function setLocalPaths(paths) {
+function setLocalPaths(paths) {
   try {
     localStorage.setItem(PATHS_STORAGE_KEY, JSON.stringify(paths));
   } catch (e) {
@@ -476,7 +476,7 @@ export const BASE_CATEGORY_MAP = {
   'Otros': [],
 };
 
-export const BASE_CATEGORY_COLORS = {
+const BASE_CATEGORY_COLORS = {
   'Árboles': '#16a34a',           // Verde oscuro
   'Plantas': '#4ade80',           // Verde claro
   'Riego / Agua': '#0284c7',      // Azul
@@ -487,7 +487,7 @@ export const BASE_CATEGORY_COLORS = {
   'Otros': '#64748b',             // Pizarra
 };
 
-export const DYNAMIC_PALETTE = [
+const DYNAMIC_PALETTE = [
   '#06b6d4', // Cian
   '#ec4899', // Rosa fucsia
   '#14b8a6', // Teal esmeralda

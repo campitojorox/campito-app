@@ -28,7 +28,7 @@ function openIndexedDB() {
   });
 }
 
-export async function saveTrackOffline(record) {
+async function saveTrackOffline(record) {
   try {
     const db = await openIndexedDB();
     if (!db) return null;
@@ -45,7 +45,7 @@ export async function saveTrackOffline(record) {
   }
 }
 
-export async function getPendingOfflineTracks() {
+async function getPendingOfflineTracks() {
   try {
     const db = await openIndexedDB();
     if (!db) return [];
@@ -59,22 +59,6 @@ export async function getPendingOfflineTracks() {
   } catch (err) {
     console.warn('[VoiceGeoTracker] Error leyendo tracks offline:', err);
     return [];
-  }
-}
-
-export async function removeOfflineTrack(id) {
-  try {
-    const db = await openIndexedDB();
-    if (!db) return;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  } catch (err) {
-    console.warn('[VoiceGeoTracker] Error eliminando track offline:', err);
   }
 }
 
@@ -100,40 +84,6 @@ export function stopMediaStream(stream) {
   }
 }
 
-/**
- * Solicita acceso al micrófono por primera vez para comprobar o conceder permisos
- * y apaga inmediatamente el hardware de captura.
- */
-export async function requestMicrophonePermission() {
-  if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error('Navegador no compatible con grabación de audio');
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
-  stopMediaStream(stream);
-  return true;
-}
-
-/**
- * Consulta el estado actual de permisos de micrófono si el navegador lo admite.
- */
-export async function checkMicrophonePermission() {
-  if (typeof window === 'undefined' || !navigator.permissions || !navigator.permissions.query) {
-    return 'unknown';
-  }
-  try {
-    const res = await navigator.permissions.query({ name: 'microphone' });
-    return res.state; // 'granted' | 'prompt' | 'denied'
-  } catch {
-    return 'unknown';
-  }
-}
-
 // Caché global del último punto GPS conocido para respuesta inmediata en frío
 let moduleLastKnownGps = null;
 
@@ -148,6 +98,105 @@ export function setGlobalLastKnownGps(gpsInfo) {
 
 export function getGlobalLastKnownGps() {
   return moduleLastKnownGps;
+}
+
+// ─── Helpers Compartidos de Geolocalización Segura (iOS / Safari / PWA / HTTPS) ───
+export function isIosDevice() {
+  if (typeof navigator === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+export function checkGeolocationSupport() {
+  if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+    return { supported: false, secure: false };
+  }
+  const secure = window.isSecureContext !== false;
+  return { supported: true, secure };
+}
+
+export async function queryGeolocationPermissionState() {
+  if (typeof navigator === 'undefined' || !navigator.permissions || !navigator.permissions.query) {
+    return 'unknown';
+  }
+  try {
+    const status = await navigator.permissions.query({ name: 'geolocation' });
+    return status?.state || 'unknown'; // 'granted' | 'prompt' | 'denied'
+  } catch {
+    return 'unknown';
+  }
+}
+
+export function normalizeGeoPosition(pos) {
+  return {
+    lat: pos.coords.latitude,
+    lng: pos.coords.longitude,
+    accuracy: pos.coords.accuracy || 10,
+    altitude: pos.coords.altitude || null,
+    heading: pos.coords.heading || null,
+    speed: pos.coords.speed || null,
+    timestamp: pos.timestamp || Date.now(),
+  };
+}
+
+/**
+ * Solicita posición actual intentando alta precisión (GPS) con fallback automático
+ * a red/Wi-Fi si ocurre timeout o indisponibilidad temporal.
+ */
+export function requestCurrentPositionWithFallback() {
+  return new Promise((resolve, reject) => {
+    const { supported, secure } = checkGeolocationSupport();
+    if (!supported) {
+      reject(Object.assign(new Error('Geolocalización no soportada en este navegador.'), { code: 0 }));
+      return;
+    }
+    if (!secure) {
+      reject(Object.assign(new Error('Contexto no seguro (sin HTTPS).'), { code: 1, reason: 'insecure_context' }));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(normalizeGeoPosition(pos)),
+      (err) => {
+        if (err && (err.code === 2 || err.code === 3)) {
+          navigator.geolocation.getCurrentPosition(
+            (fallbackPos) => resolve(normalizeGeoPosition(fallbackPos)),
+            (fallbackErr) => reject(fallbackErr),
+            { enableHighAccuracy: false, timeout: 12000, maximumAge: 30000 }
+          );
+          return;
+        }
+        reject(err);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+  });
+}
+
+export function formatGeolocationErrorMessage(err) {
+  const { supported, secure } = checkGeolocationSupport();
+  if (!supported) {
+    return 'Tu navegador o dispositivo no soporta geolocalización GPS.';
+  }
+  if (!secure || err?.reason === 'insecure_context') {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'HTTP';
+    return `El móvil bloquea el GPS porque estás accediendo sin HTTPS (${origin}).\n\nPara usar el GPS desde el móvil debes abrir la app mediante HTTPS (por ejemplo, la URL de Vercel o un túnel HTTPS).`;
+  }
+  if (err?.code === 1) {
+    if (isIosDevice()) {
+      return (
+        'Permiso de GPS bloqueado en iPhone/Safari.\n\n' +
+        'Nota: la app web NO aparece con su propio nombre en Ajustes; comparte permisos con Safari:\n' +
+        '1. Ve a Ajustes → Privacidad y seguridad → Localización → "Sitios web de Safari" y elige "Mientras se usa la app".\n' +
+        '2. En Safari, pulsa el icono a la izquierda de la barra de dirección → Ajustes del sitio web → Ubicación → "Permitir".\n' +
+        '3. Si abres la app desde el icono de Pantalla de inicio y sigue bloqueada, quítala de la pantalla de inicio, abre primero la web en Safari, concede el permiso y vuelve a añadirla.'
+      );
+    }
+    return 'Permiso de GPS denegado. Activa el permiso de ubicación para este sitio en los ajustes del navegador (icono de candado junto a la URL).';
+  }
+  return `No se pudo obtener la posición GPS (${err?.message || 'tiempo agotado'}). Comprueba que la Localización esté activa en el teléfono e inténtalo al aire libre.`;
 }
 
 // ─── Hook useVoiceGeoTracker ──────────────────────────────────────────────────
@@ -348,7 +397,9 @@ export function useVoiceGeoTracker({
               () => {},
               { enableHighAccuracy: false, maximumAge: 15000, timeout: 6000 }
             );
-          } catch {}
+          } catch {
+            // Ignorar si falla lectura GPS de respaldo
+          }
         }
       };
 
@@ -501,7 +552,9 @@ export function useVoiceGeoTracker({
       try {
         mediaRecorderRef.current.onstop = null;
         mediaRecorderRef.current.stop();
-      } catch {}
+      } catch {
+        // Ignorar si el recorder ya estaba detenido
+      }
       mediaRecorderRef.current = null;
     }
     if (streamRef.current) {

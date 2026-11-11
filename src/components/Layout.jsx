@@ -1,9 +1,10 @@
 import { useState, Suspense, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Calendar, Euro, Menu as MenuIcon, Search, Trees, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle, Bot } from 'lucide-react';
+import { Calendar, Euro, Menu as MenuIcon, Search, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle, Bot } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { subscribeGlobalJobs, getGlobalJobsSummary } from '../services/aiBackgroundJobManager';
 
 export default function Layout({ session }) {
   const location = useLocation();
@@ -22,6 +23,41 @@ export default function Layout({ session }) {
   const [isMapasModalOpen, setIsMapasModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [bgJobsSummary, setBgJobsSummary] = useState(() => getGlobalJobsSummary());
+
+  useEffect(() => {
+    const unsubscribe = subscribeGlobalJobs((summary) => {
+      setBgJobsSummary(summary);
+    });
+    return unsubscribe;
+  }, []);
+
+  const renderSectionJobIndicator = (sectionKey, routePath) => {
+    const isProcessing = (bgJobsSummary.processingBySection?.[sectionKey] || 0) > 0;
+    const hasUnackedElsewhere =
+      location.pathname !== routePath &&
+      (bgJobsSummary.unackedBySection?.[sectionKey] || 0) > 0;
+
+    if (!isProcessing && !hasUnackedElsewhere) return null;
+
+    return (
+      <span
+        title={isProcessing ? 'IA procesando en segundo plano...' : 'Respuesta IA lista'}
+        style={{
+          position: 'absolute',
+          top: '3px',
+          right: '2px',
+          width: '8px',
+          height: '8px',
+          borderRadius: '50%',
+          backgroundColor: isProcessing ? '#00b4bb' : '#10b981',
+          border: '1.5px solid #181818',
+          animation: isProcessing ? 'pulse-color 1.4s ease-in-out infinite' : 'none',
+          pointerEvents: 'none',
+        }}
+      />
+    );
+  };
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e) => {
@@ -61,7 +97,7 @@ export default function Layout({ session }) {
 
   const getSearchPlaceholder = () => {
     if (location.pathname.startsWith('/mapas')) return 'Buscar árboles, hitos, caminos, parcelas...';
-    if (location.pathname.startsWith('/gasto-venta')) return 'Buscar gastos, ingresos, conceptos, personas...';
+    if (location.pathname.startsWith('/gasto-ingreso') || location.pathname.startsWith('/gasto-venta')) return 'Buscar gastos, ingresos, conceptos, personas...';
     if (location.pathname.startsWith('/calendario')) return 'Buscar eventos, tareas, turnos de riego...';
     if (location.pathname.startsWith('/chat-ia')) return 'Buscar en mensajes del chat...';
     return 'Buscar en esta sección...';
@@ -69,8 +105,8 @@ export default function Layout({ session }) {
 
   return (
     <div className="app-container">
-      {/* Top App Bar con navegación integrada — Orden: Menú 3 rayitas, Calendario, Robot CHAT IA, Mapas, Contabilidad, Buscador */}
-      <header className="app-header" style={{ padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'var(--surface)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
+      {/* Top App Bar con navegación integrada — Orden: Menú 3 rayitas, Chat IA, Contabilidad, Calendario, Mapa, Buscar */}
+      <header className="app-header">
         {/* 1. Menú 3 rayitas */}
         <button
           style={{ background: 'none', border: 'none', color: isMenuOpen ? '#9edb9e' : '#888888', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '6px' }}
@@ -98,26 +134,11 @@ export default function Layout({ session }) {
           )}
         </button>
 
-        {/* 2. Calendario */}
-        <NavLink
-          to="/calendario"
-          style={({ isActive }) => ({
-            color: isActive ? '#9edb9e' : '#888888',
-            background: 'transparent',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '6px'
-          })}
-          title="Calendario"
-        >
-          <Calendar size={24} />
-        </NavLink>
-
-        {/* 3. Robot CHAT IA */}
+        {/* 2. Robot CHAT IA */}
         <NavLink
           to="/chat-ia"
           style={({ isActive }) => ({
+            position: 'relative',
             color: isActive ? '#9edb9e' : '#888888',
             background: 'transparent',
             display: 'flex',
@@ -128,28 +149,14 @@ export default function Layout({ session }) {
           title="Chat IA"
         >
           <Bot size={24} />
+          {renderSectionJobIndicator('chat-ia', '/chat-ia')}
         </NavLink>
 
-        {/* 4. Mapas */}
+        {/* 3. Contabilidad */}
         <NavLink
-          to="/mapas"
+          to="/gasto-ingreso"
           style={({ isActive }) => ({
-            color: isActive ? '#9edb9e' : '#888888',
-            background: 'transparent',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '6px'
-          })}
-          title="Mapas"
-        >
-          <Globe size={24} />
-        </NavLink>
-
-        {/* 5. Contabilidad */}
-        <NavLink
-          to="/gasto-venta"
-          style={({ isActive }) => ({
+            position: 'relative',
             color: isActive ? '#9edb9e' : '#888888',
             background: 'transparent',
             display: 'flex',
@@ -160,6 +167,43 @@ export default function Layout({ session }) {
           title="Contabilidad"
         >
           <Euro size={24} />
+          {renderSectionJobIndicator('gasto-ingreso', '/gasto-ingreso')}
+        </NavLink>
+
+        {/* 4. Calendario */}
+        <NavLink
+          to="/calendario"
+          style={({ isActive }) => ({
+            position: 'relative',
+            color: isActive ? '#9edb9e' : '#888888',
+            background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px'
+          })}
+          title="Calendario"
+        >
+          <Calendar size={24} />
+          {renderSectionJobIndicator('calendario', '/calendario')}
+        </NavLink>
+
+        {/* 5. Mapa */}
+        <NavLink
+          to="/mapas"
+          style={({ isActive }) => ({
+            position: 'relative',
+            color: isActive ? '#9edb9e' : '#888888',
+            background: 'transparent',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '6px'
+          })}
+          title="Mapas"
+        >
+          <Globe size={24} />
+          {renderSectionJobIndicator('mapas', '/mapas')}
         </NavLink>
 
         {/* 6. Buscador */}
@@ -283,7 +327,7 @@ export default function Layout({ session }) {
           position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
           backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 4000, padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', position: 'relative' }}>
+          <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', position: 'relative' }}>
             <button onClick={() => setIsMapasModalOpen(false)} style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
               <X size={24} />
             </button>
@@ -321,7 +365,7 @@ export default function Layout({ session }) {
           backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 5000, padding: '1rem',
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <div className="card" style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', position: 'relative' }}>
+          <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '8px', padding: '1.5rem', position: 'relative' }}>
             <button onClick={() => setIsEditModalOpen(false)} style={{ position: 'absolute', top: '10px', right: '10px', color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
               <X size={24} />
             </button>
@@ -387,7 +431,7 @@ export default function Layout({ session }) {
                 </div>
               </div>
             )}
-          <div className="card form-container" style={{ width: '100%', maxWidth: '420px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="form-container" style={{ width: '100%', maxWidth: '420px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h3 style={{ margin: 0, color: '#000000', fontWeight: 'bold' }}>{editingUser ? (editingUser.id ? 'Editar Usuario' : 'Nuevo Usuario') : 'Gestionar Usuarios'}</h3>
               <button onClick={() => { setIsUsersModalOpen(false); setEditingUser(null); }} style={{ background: 'none', border: 'none', color: '#000000', cursor: 'pointer', fontSize: '1.8rem', paddingBottom: '3px' }}>&times;</button>

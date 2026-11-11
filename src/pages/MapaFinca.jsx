@@ -42,7 +42,7 @@ export default function MapaFinca() {
       setError(null);
       try {
         await Promise.all([loadInventory(), loadPaths()]);
-      } catch (err) {
+      } catch {
         setError('Error cargando datos del mapa.');
       } finally {
         setLoading(false);
