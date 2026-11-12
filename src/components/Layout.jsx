@@ -126,6 +126,12 @@ export default function Layout({ session }) {
       console.log('SW registration error', error);
     },
   });
+
+  useEffect(() => {
+    if (needRefresh) {
+      updateServiceWorker(true);
+    }
+  }, [needRefresh, updateServiceWorker]);
   
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
   const isChatIA = location.pathname.startsWith('/chat-ia');

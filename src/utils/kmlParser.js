@@ -68,50 +68,51 @@ export function parseKmlString(kmlText) {
         }
       }
 
-      // 2. Extraer Camino o Polilínea (<LineString> o <Polygon>)
-      const lineElem = pm.getElementsByTagName('LineString')[0] || pm.getElementsByTagName('LinearRing')[0];
-      if (lineElem) {
+      // 2. Extraer todos los Caminos o Polilíneas (<LineString>, <LinearRing>, <Polygon>, <MultiGeometry>)
+      const lineElements = Array.from(pm.getElementsByTagName('LineString'))
+        .concat(Array.from(pm.getElementsByTagName('LinearRing')));
+
+      lineElements.forEach((lineElem, lineIdx) => {
         const coordElem = lineElem.getElementsByTagName('coordinates')[0];
-        if (coordElem && coordElem.textContent) {
-          const rawCoordStrings = coordElem.textContent.trim().split(/\s+/);
-          const coordinates = [];
+        if (!coordElem || !coordElem.textContent) return;
+        const rawCoordStrings = coordElem.textContent.trim().split(/\s+/);
+        const coordinates = [];
 
-          for (const rawPoint of rawCoordStrings) {
-            if (!rawPoint.includes(',')) continue;
-            const parts = rawPoint.split(',');
-            if (parts.length >= 2) {
-              const lng = parseFloat(parts[0]);
-              const lat = parseFloat(parts[1]);
-              if (!isNaN(lat) && !isNaN(lng)) {
-                // En nuestra base de datos y Leaflet guardamos [lat, lng]
-                coordinates.push([lat, lng]);
-              }
+        for (const rawPoint of rawCoordStrings) {
+          if (!rawPoint.includes(',')) continue;
+          const parts = rawPoint.split(',');
+          if (parts.length >= 2) {
+            const lng = parseFloat(parts[0]);
+            const lat = parseFloat(parts[1]);
+            if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+              coordinates.push({ lat, lng });
             }
-          }
-
-          if (coordinates.length >= 2) {
-            const lengthMeters = calculateTrackLengthMeters(coordinates.map((c) => ({ lat: c[0], lng: c[1] })));
-            let path_type = 'camino';
-            const nameLower = name.toLowerCase();
-            if (nameLower.includes('riego') || nameLower.includes('tuber') || nameLower.includes('manguera')) {
-              path_type = 'linea_riego';
-            } else if (nameLower.includes('sendero') || nameLower.includes('paso')) {
-              path_type = 'sendero';
-            } else if (nameLower.includes('linde') || nameLower.includes('catastro')) {
-              path_type = 'linde';
-            }
-
-            result.paths.push({
-              name,
-              path_type,
-              coordinates,
-              length_meters: lengthMeters,
-              color: path_type === 'linea_riego' ? '#00979d' : '#f97316',
-              notes,
-            });
           }
         }
-      }
+
+        if (coordinates.length >= 2) {
+          const lengthMeters = calculateTrackLengthMeters(coordinates);
+          let path_type = 'camino';
+          const nameLower = name.toLowerCase();
+          if (nameLower.includes('riego') || nameLower.includes('tuber') || nameLower.includes('manguera')) {
+            path_type = 'linea_riego';
+          } else if (nameLower.includes('sendero') || nameLower.includes('paso')) {
+            path_type = 'sendero';
+          } else if (nameLower.includes('linde') || nameLower.includes('catastro')) {
+            path_type = 'linde';
+          }
+
+          const pathTitle = lineElements.length > 1 ? `${name} (Tramo ${lineIdx + 1})` : name;
+          result.paths.push({
+            name: pathTitle,
+            path_type,
+            coordinates,
+            length_meters: lengthMeters,
+            color: path_type === 'linea_riego' ? '#00979d' : '#f97316',
+            notes,
+          });
+        }
+      });
     }
   } catch (err) {
     result.errors.push(`Error parseando KML: ${err.message}`);

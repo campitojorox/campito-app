@@ -16,29 +16,29 @@ export default function MapFilterDrawer({
   onClose,
   selectAllFilters,
   clearAllFilters,
-  allCategories,
-  localInventory,
-  visibleCategories,
+  allCategories = [],
+  localInventory = [],
+  visibleCategories = new Set(),
   toggleParentCategory,
-  expandedParents,
+  expandedParents = new Set(),
   setExpandedParents,
   visibleSubcats,
   setVisibleSubcats,
-  localPaths,
-  showPaths,
+  localPaths = [],
+  showPaths = true,
   setShowPaths,
-  visiblePathTypes,
+  visiblePathTypes = new Set(),
   setVisiblePathTypes,
   togglePathType,
 }) {
-  const nonEmptyCategories = allCategories
+  const nonEmptyCategories = (allCategories || [])
     .map((parent) => {
-      const count = localInventory.filter((i) => getItemCategory(i) === parent).length;
+      const count = (localInventory || []).filter((i) => getItemCategory(i) === parent).length;
       if (count === 0) return null;
-      const subcats = getSubcategoriesForParent(localInventory, parent)
+      const subcats = getSubcategoriesForParent(localInventory || [], parent)
         .map((sub) => ({
           sub,
-          subCount: localInventory.filter(
+          subCount: (localInventory || []).filter(
             (i) => getItemCategory(i) === parent && (i.variety_type || i.category || i.tipo) === sub
           ).length,
         }))
@@ -47,7 +47,7 @@ export default function MapFilterDrawer({
     })
     .filter(Boolean);
 
-  const nonLindePaths = localPaths.filter((p) => (p.path_type || 'otro') !== 'linde');
+  const nonLindePaths = (localPaths || []).filter((p) => (p.path_type || 'otro') !== 'linde');
 
   const nonEmptyPathTypes = FILTERABLE_PATH_TYPES
     .map((pt) => ({

@@ -8,7 +8,7 @@ import { styles } from './mapStyles';
 export default function MapSelectionCard({
   selectedTarget,
   setSelectedTarget,
-  localPaths,
+  localPaths = [],
   allCategories = [],
   handleDirectFieldUpdate,
   handleDeleteTarget,
@@ -351,7 +351,7 @@ export default function MapSelectionCard({
             <button
               type="button"
               onClick={() => {
-                const path = localPaths.find((p) => String(p.id) === String(selectedTarget.pathId));
+                const path = (localPaths || []).find((p) => String(p.id) === String(selectedTarget.pathId));
                 if (path) {
                   setSelectedTarget({
                     type: 'path',

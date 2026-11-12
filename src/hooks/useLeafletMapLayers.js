@@ -354,7 +354,7 @@ export function useLeafletMapLayers({
           length_meters: path.length_meters,
           stroke_width: path.stroke_width,
           notes: path.notes || '',
-          coordinates: coords,
+          coordinates: latlngs,
           raw: path,
         });
       });

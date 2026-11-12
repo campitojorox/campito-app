@@ -40,7 +40,6 @@ import { extractKmlFromKmz } from '../utils/kmzReader';
 import {
   DEFAULT_CENTER,
   isDeleteIntent,
-  normalizeLatLng,
   normalizeLatLngObj,
   normalizeCoordinatesArray,
 } from '../components/map/mapUtils';

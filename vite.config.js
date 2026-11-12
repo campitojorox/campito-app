@@ -94,7 +94,7 @@ export default defineConfig({
     react(),
     vercelApiMock(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       devOptions: {
         enabled: false
       },
