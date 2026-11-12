@@ -7,8 +7,8 @@ import { supabase } from '../supabaseClient.js';
 import { createCalendarEvent, deleteCalendarEvent, findEventToMatch } from './calendarService.js';
 
 const FAST_MODELS_CASCADE = [
-  'gemini-3.5-flash',
   'gemini-2.5-flash',
+  'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-3.1-pro-preview',
 ];

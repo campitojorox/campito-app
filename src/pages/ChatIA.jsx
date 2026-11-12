@@ -41,7 +41,7 @@ const WELCOME_MESSAGE = {
   role: 'assistant',
   content:
     '¡Hola! Soy el asistente IA de **Campito Jorox** 🌿\n\nPuedo ayudarte con:\n- Consultas sobre la finca y cultivos\n- Análisis de tus transacciones y gastos\n- Planificación de tareas y eventos\n- Fotos de plagas o documentos de la finca\n\n¿En qué te puedo ayudar hoy?',
-  serverUsed: GEMINI_SERVERS[2] || GEMINI_SERVERS[0],
+  serverUsed: GEMINI_SERVERS.find((s) => s.id === 'gemini-2.5-flash') || GEMINI_SERVERS[0],
 };
 
 export default function ChatIA() {
@@ -60,7 +60,7 @@ export default function ChatIA() {
   const [fincaTransactions, setFincaTransactions] = useState(() => outletTransactions);
   const [fincaUsers, setFincaUsers] = useState(() => outletUsers);
 
-  const initialIndex = GEMINI_SERVERS.findIndex((s) => s.id === 'gemini-3.5-flash');
+  const initialIndex = GEMINI_SERVERS.findIndex((s) => s.id === 'gemini-2.5-flash');
   const [selectedServerIndex, setSelectedServerIndex] = useState(initialIndex >= 0 ? initialIndex : 0);
   const [activeServer, setActiveServer] = useState(GEMINI_SERVERS[initialIndex >= 0 ? initialIndex : 0]);
   const [fallbackNotice, setFallbackNotice] = useState(null);
@@ -758,7 +758,7 @@ export default function ChatIA() {
       );
       const fallbackPriority = isComplexRequest
         ? ['gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite']
-        : ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
+        : ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
       const availableFallbackIndices = fallbackPriority
         .map((id) => GEMINI_SERVERS.findIndex((s) => s.id === id && s.available))
         .filter((i) => i !== -1 && i !== primaryIndex);

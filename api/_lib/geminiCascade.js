@@ -2,8 +2,8 @@
 // Enrutamiento de modelos Gemini (rápido vs complejo) y llamada REST con cascada automática.
 
 export const FAST_MODELS = [
-  'gemini-3.5-flash',
   'gemini-2.5-flash',
+  'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-3.1-pro-preview',
 ];

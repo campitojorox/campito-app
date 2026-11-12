@@ -26,9 +26,9 @@ import {
 const DEFAULT_CENTER = [36.72595, -4.89462];
 
 const GEMINI_MODELS_CASCADE = [
+  'gemini-2.5-flash',
   'gemini-3.5-flash',
   'gemini-3.1-pro-preview',
-  'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-3.1-flash-lite',
