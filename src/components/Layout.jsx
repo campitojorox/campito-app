@@ -1,4 +1,4 @@
-import { useState, Suspense, useEffect } from 'react';
+import { useState, Suspense, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Calendar, Euro, Menu as MenuIcon, Search, X, User, Mail, Lock, Globe, Copy, Download, RefreshCw, CheckCircle, Bot } from 'lucide-react';
 import { supabase } from '../supabaseClient';
@@ -9,7 +9,15 @@ import { subscribeGlobalJobs, getGlobalJobsSummary } from '../services/aiBackgro
 export default function Layout({ session }) {
   const location = useLocation();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchState, setSearchState] = useState({ pathname: location.pathname, query: '' });
+  const searchQuery = searchState.pathname === location.pathname ? searchState.query : '';
+  const setSearchQuery = useCallback((nextQuery) => {
+    setSearchState((prev) => {
+      const current = prev.pathname === location.pathname ? prev.query : '';
+      const resolved = typeof nextQuery === 'function' ? nextQuery(current) : nextQuery;
+      return { pathname: location.pathname, query: resolved };
+    });
+  }, [location.pathname]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -89,11 +97,6 @@ export default function Layout({ session }) {
   const currentUser = session?.user?.user_metadata?.name || session?.user?.email?.split('@')[0];
   const isChatIA = location.pathname.startsWith('/chat-ia');
   const isMapas = location.pathname.startsWith('/mapas');
-
-  // Limpiar término de búsqueda al cambiar de sección
-  useEffect(() => {
-    setSearchQuery('');
-  }, [location.pathname]);
 
   const getSearchPlaceholder = () => {
     if (location.pathname.startsWith('/mapas')) return 'Buscar árboles, hitos, caminos, parcelas...';

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext, useLocation } from 'react-router-dom';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
@@ -43,20 +43,25 @@ export default function Calendario() {
   const isSearchOpen = context?.isSearchOpen || false;
   const searchQuery = context?.searchQuery || '';
   const users = useMemo(() => context?.users || [], [context?.users]);
-  const rawEvents = context?.events || [];
+  const rawEvents = useMemo(() => context?.events || [], [context?.events]);
   const refetchEvents = context?.refetchEvents || (() => {});
   const currentUser = context?.currentUser || 'Usuario Login';
 
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  
-  useEffect(() => {
-    if (location.state && location.state.targetDate) {
-      const target = new Date(location.state.targetDate);
-      setSelectedDate(target);
-      setCurrentMonth(target);
-    }
-  }, [location.state]);
+  const targetDateProp = location.state?.targetDate || null;
+  const [prevTargetDateProp, setPrevTargetDateProp] = useState(targetDateProp);
+  const [currentMonth, setCurrentMonth] = useState(() =>
+    targetDateProp ? new Date(targetDateProp) : new Date()
+  );
+  const [selectedDate, setSelectedDate] = useState(() =>
+    targetDateProp ? new Date(targetDateProp) : new Date()
+  );
+
+  if (targetDateProp && targetDateProp !== prevTargetDateProp) {
+    setPrevTargetDateProp(targetDateProp);
+    const target = new Date(targetDateProp);
+    setSelectedDate(target);
+    setCurrentMonth(target);
+  }
   
   // Form state
   // cambio de grafica del form: formulario superior colapsable (isAddFormOpen) separado de edición inline (isFormOpen)

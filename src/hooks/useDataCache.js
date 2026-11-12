@@ -28,10 +28,21 @@ export function useDataCache() {
   }, []);
 
   useEffect(() => {
-    fetchUsers();
-    fetchEvents();
-    fetchTransactions();
-  }, [fetchUsers, fetchEvents, fetchTransactions]);
+    let cancelled = false;
+    Promise.all([
+      supabase.from('profiles').select('*').order('name'),
+      supabase.from('events').select('*, profiles(name)').order('date', { ascending: true }),
+      supabase.from('transactions').select('*, profiles(name)').order('date', { ascending: false }),
+    ]).then(([usersRes, eventsRes, txRes]) => {
+      if (cancelled) return;
+      if (usersRes.data) setUsers(usersRes.data);
+      if (eventsRes.data) setEvents(eventsRes.data);
+      if (txRes.data) setTransactions(txRes.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return {
     users,

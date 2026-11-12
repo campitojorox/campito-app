@@ -6,12 +6,30 @@
 import { supabase } from '../supabaseClient.js';
 import { createCalendarEvent, deleteCalendarEvent, findEventToMatch } from './calendarService.js';
 
-const GEMINI_MODELS_CASCADE = [
+const FAST_MODELS_CASCADE = [
+  'gemini-3.5-flash',
+  'gemini-2.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-pro-preview',
+];
+
+const COMPLEX_MODELS_CASCADE = [
   'gemini-3.1-pro-preview',
   'gemini-3.5-flash',
   'gemini-2.5-flash',
   'gemini-3.1-flash-lite',
 ];
+
+function selectSectionModels({ prompt, audio, attachment }) {
+  const hasHeavyAttachment = Boolean(attachment?.dataUrl);
+  const hasLongAudio = Boolean(
+    audio?.dataUrl && ((audio?.duration || 0) >= 45 || audio.dataUrl.length > 600000)
+  );
+  const hasLongPrompt = typeof prompt === 'string' && prompt.length > 1500;
+  return hasHeavyAttachment || hasLongAudio || hasLongPrompt
+    ? COMPLEX_MODELS_CASCADE
+    : FAST_MODELS_CASCADE;
+}
 
 /**
  * Carga conocimiento permanente de la finca ('farm_knowledge') de forma segura
@@ -301,8 +319,9 @@ export async function callSectionGemini({
     },
   };
 
+  const modelsCascade = selectSectionModels({ prompt, audio, attachment });
   let lastError = null;
-  for (const modelId of GEMINI_MODELS_CASCADE) {
+  for (const modelId of modelsCascade) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), audio || attachment ? 45000 : 22000);

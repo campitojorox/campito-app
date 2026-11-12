@@ -2,8 +2,14 @@
 // Utilidades de exportación y descarga directa en EXCEL, PDF, KML y GeoJSON
 // para el inventario y catastro georreferenciado de Campito Jorox.
 
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+// Carga diferida bajo demanda de jspdf y jspdf-autotable (~350 KB fuera del bundle inicial)
+async function loadPdfLibraries() {
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
+  return { jsPDF, autoTable };
+}
 
 /**
  * Descarga un archivo Blob en el navegador con el nombre especificado.
@@ -121,13 +127,14 @@ export function exportInventoryToExcel(items = [], paths = [], filename = null) 
 /**
  * 2. EXPORTACIÓN A PDF (Membrete oficial, métricas y tabla con jspdf)
  */
-export function exportInventoryToPDF(items = [], paths = [], filename = null, title = 'CATASTRO E INVENTARIO AGRÍCOLA') {
+export async function exportInventoryToPDF(items = [], paths = [], filename = null, title = 'CATASTRO E INVENTARIO AGRÍCOLA') {
   // Manejo de llamada con solo (items, filename) o (items, paths, filename)
   if (typeof paths === 'string') {
     filename = paths;
     paths = [];
   }
 
+  const { jsPDF, autoTable } = await loadPdfLibraries();
   const dateStr = new Date().toISOString().split('T')[0];
   const finalFilename = filename || `CAMPITO_JOROX_INVENTARIO_${dateStr}.pdf`;
 
@@ -487,13 +494,14 @@ export function exportInventoryToGeoJSON(items = [], paths = [], filename = null
 /**
  * 5. EXPORTACIÓN PERSONALIZADA A PDF DIRECTO DESDE EL CHAT
  */
-export function generateCustomPDF({
+export async function generateCustomPDF({
   title = 'INFORME CAMPITO JOROX',
   subtitle = null,
   content = '',
   table = null,
   filename = null,
 }) {
+  const { jsPDF, autoTable } = await loadPdfLibraries();
   const dateStr = new Date().toLocaleDateString('es-ES', {
     day: '2-digit',
     month: '2-digit',
