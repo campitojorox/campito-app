@@ -540,9 +540,23 @@ export async function executeUnifiedActions({
       delete payload.target_id;
       delete payload.id;
       if (Array.isArray(payload.coordinates)) {
-        payload.length_meters = calculateTrackLengthMeters(
-          payload.coordinates.map((c) => (Array.isArray(c) ? { lat: c[0], lng: c[1] } : c))
-        );
+        payload.coordinates = payload.coordinates
+          .map((c) => {
+            if (!c) return null;
+            if (Array.isArray(c) && c.length >= 2) {
+              const lat = Number(c[0]);
+              const lng = Number(c[1]);
+              return !Number.isNaN(lat) && !Number.isNaN(lng) ? { lat, lng } : null;
+            }
+            if (typeof c === 'object') {
+              const lat = Number(c.lat ?? c.latitude);
+              const lng = Number(c.lng ?? c.longitude);
+              return !Number.isNaN(lat) && !Number.isNaN(lng) ? { lat, lng } : null;
+            }
+            return null;
+          })
+          .filter(Boolean);
+        payload.length_meters = calculateTrackLengthMeters(payload.coordinates);
       }
       await updateFarmPath(targetId, payload);
       result.updatedPaths.push({ id: targetId, ...payload });
@@ -561,8 +575,23 @@ export async function executeUnifiedActions({
   // 6. CAMINOS: CREAR
   for (const p of parsedCommands.paths || []) {
     const rawCoords = Array.isArray(p.coordinates) ? p.coordinates : [];
-    const normalizedCoords = rawCoords.map((c) => (Array.isArray(c) ? [Number(c[0]), Number(c[1])] : [Number(c.lat), Number(c.lng)]));
-    const lengthM = p.length_meters || calculateTrackLengthMeters(normalizedCoords.map((c) => ({ lat: c[0], lng: c[1] })));
+    const normalizedCoords = rawCoords
+      .map((c) => {
+        if (!c) return null;
+        if (Array.isArray(c) && c.length >= 2) {
+          const lat = Number(c[0]);
+          const lng = Number(c[1]);
+          return !Number.isNaN(lat) && !Number.isNaN(lng) ? { lat, lng } : null;
+        }
+        if (typeof c === 'object') {
+          const lat = Number(c.lat ?? c.latitude);
+          const lng = Number(c.lng ?? c.longitude);
+          return !Number.isNaN(lat) && !Number.isNaN(lng) ? { lat, lng } : null;
+        }
+        return null;
+      })
+      .filter(Boolean);
+    const lengthM = p.length_meters || calculateTrackLengthMeters(normalizedCoords);
 
     const newPath = {
       name: p.name || 'Nuevo Camino',

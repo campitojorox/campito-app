@@ -16,6 +16,9 @@ import {
   calculatePathMeters,
   createFamilyPinIcon,
   createCotaPinIcon,
+  normalizeLatLng,
+  normalizeLatLngObj,
+  normalizeCoordinatesArray,
 } from '../components/map/mapUtils';
 
 export function useLeafletMapLayers({
@@ -191,14 +194,17 @@ export function useLeafletMapLayers({
         pane: 'highlightPane',
         interactive: false,
       }).addTo(layer);
-    } else if (selectedTarget.type === 'path' && selectedTarget.raw?.coordinates) {
-      const coords = selectedTarget.raw.coordinates.map((c) => [c.lat, c.lng]);
-      L.polyline(coords, {
-        color: '#00d1da',
-        weight: (Number(selectedTarget.raw.stroke_width) || 4) + 6,
-        opacity: 0.45,
-        dashArray: '5, 5',
-      }).addTo(layer);
+    } else if (selectedTarget.type === 'path' && (selectedTarget.coordinates || selectedTarget.raw?.coordinates)) {
+      const rawCoords = selectedTarget.coordinates || selectedTarget.raw?.coordinates;
+      const coords = normalizeCoordinatesArray(rawCoords);
+      if (coords.length >= 2) {
+        L.polyline(coords, {
+          color: '#00d1da',
+          weight: (Number(selectedTarget.raw?.stroke_width) || 4) + 6,
+          opacity: 0.45,
+          dashArray: '5, 5',
+        }).addTo(layer);
+      }
     }
   }, [selectedTarget, highlightLayerRef]);
 
@@ -221,20 +227,21 @@ export function useLeafletMapLayers({
     if (!layer) return;
     layer.clearLayers();
 
-    if (drawPoints.length === 0) return;
+    const validDrawPoints = (drawPoints || []).map(normalizeLatLngObj).filter(Boolean);
+    if (validDrawPoints.length === 0) return;
 
-    drawPoints.forEach((pt, idx) => {
+    validDrawPoints.forEach((pt, idx) => {
       L.circleMarker([pt.lat, pt.lng], {
-        radius: idx === drawPoints.length - 1 ? 5 : 4,
-        fillColor: idx === 0 ? '#10b981' : idx === drawPoints.length - 1 ? '#ef4444' : '#f97316',
+        radius: idx === validDrawPoints.length - 1 ? 5 : 4,
+        fillColor: idx === 0 ? '#10b981' : idx === validDrawPoints.length - 1 ? '#ef4444' : '#f97316',
         fillOpacity: 1,
         color: '#ffffff',
         weight: 1.5,
       }).addTo(layer);
     });
 
-    if (drawPoints.length >= 2) {
-      const latlngs = drawPoints.map((p) => [p.lat, p.lng]);
+    if (validDrawPoints.length >= 2) {
+      const latlngs = validDrawPoints.map((p) => [p.lat, p.lng]);
       L.polyline(latlngs, {
         color: '#f97316',
         weight: 4,
@@ -312,12 +319,11 @@ export function useLeafletMapLayers({
     if (!layer) return;
     layer.clearLayers();
 
-    filteredPaths.forEach((path) => {
-      const coords = Array.isArray(path.coordinates) ? path.coordinates : [];
-      if (coords.length < 2) return;
+    (filteredPaths || []).forEach((path) => {
+      const latlngs = normalizeCoordinatesArray(path?.coordinates);
+      if (latlngs.length < 2) return;
 
       const isLinde = path.path_type === 'linde';
-      const latlngs = coords.map((c) => [c.lat, c.lng]);
       const lineColor = path.color || PATH_TYPE_COLORS[path.path_type] || '#f97316';
       const poly = L.polyline(latlngs, {
         color: lineColor,
@@ -382,11 +388,15 @@ export function useLeafletMapLayers({
       selectedNodeIdx = selectedTarget.nodeIndex;
     }
 
-    if (!activePath || !Array.isArray(activePath.coordinates) || activePath.coordinates.length < 2) {
+    if (!activePath || !activePath.coordinates) {
       return;
     }
 
-    const coords = activePath.coordinates;
+    const coords = (Array.isArray(activePath.coordinates) ? activePath.coordinates : [])
+      .map(normalizeLatLngObj)
+      .filter(Boolean);
+    if (coords.length < 2) return;
+
     const pathColor = activePath.color || PATH_TYPE_COLORS[activePath.path_type] || '#f97316';
 
     coords.forEach((coord, idx) => {
@@ -454,8 +464,9 @@ export function useLeafletMapLayers({
         );
         if (highlightLayerRef.current) {
           highlightLayerRef.current.clearLayers();
+          const validUpdated = updated.map((c) => [c.lat, c.lng]);
           L.polyline(
-            updated.map((c) => [c.lat, c.lng]),
+            validUpdated,
             {
               color: pathColor,
               weight: 5,
@@ -533,7 +544,8 @@ export function useLeafletMapLayers({
 
     if (showCatastro) {
       (catastroJorox.parcels || []).forEach((parcel) => {
-        const latlngs = parcel.polygon.map((c) => [c.lat, c.lng]);
+        const latlngs = normalizeCoordinatesArray(parcel.polygon);
+        if (latlngs.length < 3) return;
         const is195 = parcel.number === '195';
 
         const poly = L.polygon(latlngs, {
@@ -606,7 +618,7 @@ export function useLeafletMapLayers({
 
     if (showPaths) {
       (catastroJorox.tracks || []).forEach((track) => {
-        const latlngs = (track.coordinates || []).map((c) => [c.lat, c.lng]);
+        const latlngs = normalizeCoordinatesArray(track?.coordinates);
         if (latlngs.length < 2) return;
 
         const poly = L.polyline(latlngs, {
@@ -658,8 +670,9 @@ export function useLeafletMapLayers({
     const minLabelDistSq = 0.00038 * 0.00038;
 
     const tryPlaceLabel = (pt, elevation, major) => {
-      if (!pt || pt.length < 2) return;
+      if (!pt || !Array.isArray(pt) || pt.length < 2 || typeof pt[0] !== 'number' || typeof pt[1] !== 'number') return;
       const tooClose = placedLabels.some((existing) => {
+        if (!existing || !Array.isArray(existing) || existing.length < 2) return false;
         const dLat = existing[0] - pt[0];
         const dLng = existing[1] - pt[1];
         return dLat * dLat + dLng * dLng < minLabelDistSq;
@@ -713,33 +726,29 @@ export function useLeafletMapLayers({
 
     if (catastroJorox && catastroJorox.parcels) {
       catastroJorox.parcels.forEach((p) => {
-        p.polygon.forEach((c) => {
-          bounds.extend([c.lat, c.lng]);
+        normalizeCoordinatesArray(p?.polygon).forEach(([lat, lng]) => {
+          bounds.extend([lat, lng]);
           count++;
         });
       });
     }
 
-    inventory.forEach((i) => {
-      const lat = i.latitude || (i.coordenadas && i.coordenadas.lat);
-      const lng = i.longitude || (i.coordenadas && i.coordenadas.lng);
-      if (lat && lng) {
-        bounds.extend([lat, lng]);
+    (inventory || []).forEach((i) => {
+      const pt = normalizeLatLng(i.latitude ? [i.latitude, i.longitude] : (i.coordenadas ? [i.coordenadas.lat, i.coordenadas.lng] : null));
+      if (pt) {
+        bounds.extend(pt);
         count++;
       }
     });
 
-    paths.forEach((p) => {
-      const coords = Array.isArray(p.coordinates) ? p.coordinates : [];
-      coords.forEach((c) => {
-        if (c.lat && c.lng) {
-          bounds.extend([c.lat, c.lng]);
-          count++;
-        }
+    (paths || []).forEach((p) => {
+      normalizeCoordinatesArray(p?.coordinates).forEach((pt) => {
+        bounds.extend(pt);
+        count++;
       });
     });
 
-    if (count > 0 && bounds.isValid()) {
+    if (count > 0 && bounds.isValid && bounds.isValid()) {
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 19 });
     } else {
       map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);

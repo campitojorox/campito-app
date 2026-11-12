@@ -62,15 +62,76 @@ export function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+/**
+ * Normaliza cualquier coordenada (array [lat, lng], objeto {lat, lng}, string JSON)
+ * devolviendo siempre una tupla numérica [lat, lng] o null si es inválida.
+ */
+export function normalizeLatLng(c) {
+  if (!c) return null;
+  if (typeof c === 'string') {
+    try {
+      return normalizeLatLng(JSON.parse(c));
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(c)) {
+    if (c.length >= 2) {
+      const lat = Number(c[0]);
+      const lng = Number(c[1]);
+      if (!Number.isNaN(lat) && !Number.isNaN(lng) && lat !== 0 && lng !== 0) {
+        return [lat, lng];
+      }
+    }
+    return null;
+  }
+  if (typeof c === 'object') {
+    const lat = Number(c.lat ?? c.latitude);
+    const lng = Number(c.lng ?? c.longitude ?? c.lon);
+    if (!Number.isNaN(lat) && !Number.isNaN(lng) && lat !== 0 && lng !== 0) {
+      return [lat, lng];
+    }
+  }
+  return null;
+}
+
+/**
+ * Normaliza cualquier coordenada a formato objeto { lat, lng } o null si no es válida.
+ */
+export function normalizeLatLngObj(c) {
+  const arr = normalizeLatLng(c);
+  if (!arr) return null;
+  return { lat: arr[0], lng: arr[1] };
+}
+
+/**
+ * Convierte cualquier lista o string de coordenadas en un array seguro de tuplas [[lat, lng], ...]
+ * filtrando automáticamente elementos undefined, null o corruptos.
+ */
+export function normalizeCoordinatesArray(rawCoords) {
+  if (!rawCoords) return [];
+  let list = rawCoords;
+  if (typeof rawCoords === 'string') {
+    try {
+      list = JSON.parse(rawCoords);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  return list.map(normalizeLatLng).filter(Boolean);
+}
+
 export function calculatePathMeters(coordinates) {
-  if (!coordinates || coordinates.length < 2) return 0;
+  const norm = normalizeCoordinatesArray(coordinates);
+  if (norm.length < 2) return 0;
   let total = 0;
-  for (let i = 0; i < coordinates.length - 1; i++) {
+  for (let i = 0; i < norm.length - 1; i++) {
     total += haversineDistance(
-      coordinates[i].lat,
-      coordinates[i].lng,
-      coordinates[i + 1].lat,
-      coordinates[i + 1].lng
+      norm[i][0],
+      norm[i][1],
+      norm[i + 1][0],
+      norm[i + 1][1]
     );
   }
   return total;

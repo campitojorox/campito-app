@@ -699,7 +699,7 @@ export async function executeInventoryActions({
             lat = interpolated.lat;
             lng = interpolated.lng;
           }
-        } else if (isNaN(lat) || !lat || (!selectedTarget && Math.abs(lat - center[0]) < 0.0001)) {
+        } else if ((isNaN(lat) || !lat || (!selectedTarget && Math.abs(lat - center[0]) < 0.0001)) && audio.gpsTrack?.[0]) {
           lat = audio.gpsTrack[0].lat;
           lng = audio.gpsTrack[0].lng;
         }

@@ -25,6 +25,8 @@ import {
   MAP_SETTINGS_STORAGE_KEY,
   loadMapSettingsFromCache,
   calculatePathMeters,
+  normalizeLatLng,
+  normalizeCoordinatesArray,
 } from './map/mapUtils';
 import { styles, stylesPage } from './map/mapStyles';
 import { useLeafletMapLayers } from '../hooks/useLeafletMapLayers';
@@ -374,22 +376,21 @@ export default function FarmSatelliteMap({
 
     if (filteredInventory.length === 1) {
       const item = filteredInventory[0];
-      const lat = item.latitude || item.coordenadas?.lat;
-      const lng = item.longitude || item.coordenadas?.lng;
-      if (lat && lng) mapInstanceRef.current.setView([lat, lng], 19, { animate: true });
+      const pt = normalizeLatLng(item.latitude ? [item.latitude, item.longitude] : (item.coordenadas ? [item.coordenadas.lat, item.coordenadas.lng] : null));
+      if (pt) mapInstanceRef.current.setView(pt, 19, { animate: true });
     } else if (filteredInventory.length > 1) {
       const coords = filteredInventory
-        .map((i) => [i.latitude || i.coordenadas?.lat, i.longitude || i.coordenadas?.lng])
-        .filter(([lat, lng]) => lat && lng);
+        .map((i) => normalizeLatLng(i.latitude ? [i.latitude, i.longitude] : (i.coordenadas ? [i.coordenadas.lat, i.coordenadas.lng] : null)))
+        .filter(Boolean);
       if (coords.length > 0) {
         const bounds = L.latLngBounds(coords);
-        if (bounds.isValid()) mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19, animate: true });
+        if (bounds.isValid && bounds.isValid()) mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19, animate: true });
       }
     } else if (filteredPaths.length === 1) {
-      const coords = filteredPaths[0].coordinates;
-      if (Array.isArray(coords) && coords.length > 0) {
+      const coords = normalizeCoordinatesArray(filteredPaths[0]?.coordinates);
+      if (coords.length >= 2) {
         const bounds = L.latLngBounds(coords);
-        if (bounds.isValid()) mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19, animate: true });
+        if (bounds.isValid && bounds.isValid()) mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 19, animate: true });
       }
     }
   }, [searchQuery, filteredInventory, filteredPaths]);

@@ -37,7 +37,13 @@ import { syncTextareaHeight } from '../utils/helpers';
 import { readFilesAsAttachments } from '../utils/attachmentUtils';
 import { indexDocumentForRag, searchRagKnowledge, formatRagContextForPrompt } from '../services/ragDocumentService';
 import { extractKmlFromKmz } from '../utils/kmzReader';
-import { DEFAULT_CENTER, isDeleteIntent } from '../components/map/mapUtils';
+import {
+  DEFAULT_CENTER,
+  isDeleteIntent,
+  normalizeLatLng,
+  normalizeLatLngObj,
+  normalizeCoordinatesArray,
+} from '../components/map/mapUtils';
 
 const mapRuntimeContextMap = new globalThis.Map();
 
@@ -422,10 +428,11 @@ export function useMapIaController({
     const center = mapInstanceRef.current
       ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng]
       : DEFAULT_CENTER;
+    const firstGpsTrackPt = audioOrder?.gpsTrack?.length > 0 ? normalizeLatLngObj(audioOrder.gpsTrack[0]) : null;
     const gpsPos =
-      audioOrder?.gpsTrack && audioOrder.gpsTrack.length > 0
-        ? audioOrder.gpsTrack[0]
-        : liveUserGpsRef.current || voiceCurrentGps || null;
+      firstGpsTrackPt ||
+      (liveUserGpsRef.current ? normalizeLatLngObj(liveUserGpsRef.current) : null) ||
+      (voiceCurrentGps ? normalizeLatLngObj(voiceCurrentGps) : null);
 
     // Recuperación vectorial RAG previa a invocar a Gemini
     let ragSnippet = '';
@@ -824,8 +831,11 @@ export function useMapIaController({
           ...prev.filter((p) => !execResult.addedPaths.some((a) => String(a.id) === String(p.id))),
         ]);
         const lastPath = execResult.addedPaths[execResult.addedPaths.length - 1];
-        if (mapInstanceRef.current && lastPath.coordinates && lastPath.coordinates.length > 0) {
-          mapInstanceRef.current.panTo(lastPath.coordinates[0]);
+        if (mapInstanceRef.current && lastPath?.coordinates) {
+          const normCoords = normalizeCoordinatesArray(lastPath.coordinates);
+          if (normCoords.length > 0) {
+            mapInstanceRef.current.panTo(normCoords[0]);
+          }
         }
         setSelectedTarget({
           type: 'path',
@@ -874,12 +884,12 @@ export function useMapIaController({
       if (snap.isProcessing) {
         setIaFeedback({ type: 'info', text: '🤖 Analizando orden en segundo plano...' });
       }
-      if (snap.errorUnacked.length > 0) {
+      if (Array.isArray(snap.errorUnacked) && snap.errorUnacked.length > 0) {
         const errJob = snap.errorUnacked[0];
-        if (!consumedMapJobsRef.current.has(errJob.jobId)) {
+        if (errJob && !consumedMapJobsRef.current.has(errJob.jobId)) {
           consumedMapJobsRef.current.add(errJob.jobId);
           acknowledgeAiJob(errJob.jobId);
-          setIaFeedback({ type: 'error', text: `Error al ejecutar: ${errJob.error}` });
+          setIaFeedback({ type: 'error', text: `Error al ejecutar: ${errJob.error || 'Error desconocido'}` });
         }
       }
       for (const finishedJob of snap.completedUnacked) {
