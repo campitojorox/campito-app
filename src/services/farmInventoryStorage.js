@@ -101,7 +101,7 @@ const DEFAULT_INITIAL_INVENTORY = [
   {
     id: '00000000-0000-4000-8000-000000000001',
     name: 'Casita Cueva',
-    category: 'edificio',
+    category: 'Casas',
     variety_type: 'Vivienda / Cueva',
     status: 'saludable',
     latitude: 36.72595,
