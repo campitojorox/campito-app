@@ -52,7 +52,9 @@ export default function MapaFinca() {
     loadAll();
 
     const handleInv = (e) => {
-      if (e?.detail?.id && !e.detail.deleted && !e.detail.forceReload) {
+      if (e?.detail?.deleted && e.detail.id) {
+        setInventory((prev) => prev.filter((i) => String(i.id) !== String(e.detail.id)));
+      } else if (e?.detail?.id && !e.detail.forceReload) {
         setInventory((prev) => {
           const exists = prev.some((i) => String(i.id) === String(e.detail.id));
           if (exists) {
@@ -62,16 +64,60 @@ export default function MapaFinca() {
           }
           return [e.detail, ...prev];
         });
-        return;
       }
       loadInventory();
     };
-    const handlePaths = () => loadPaths();
+
+    const handlePaths = (e) => {
+      if (e?.detail?.deleted && e.detail.id) {
+        setPaths((prev) => prev.filter((p) => String(p.id) !== String(e.detail.id)));
+      } else if (e?.detail?.id && !e.detail.forceReload) {
+        setPaths((prev) => {
+          const exists = prev.some((p) => String(p.id) === String(e.detail.id));
+          if (exists) {
+            return prev.map((p) =>
+              String(p.id) === String(e.detail.id) ? { ...p, ...e.detail } : p
+            );
+          }
+          return [e.detail, ...prev];
+        });
+      }
+      loadPaths();
+    };
+
     window.addEventListener('farm-inventory-updated', handleInv);
     window.addEventListener('farm-paths-updated', handlePaths);
+
+    // ── Sincronización multi-dispositivo activa (iPhone <-> Mac Safari/Chrome) ──
+    // Al regresar a la pestaña o ventana tras haber interactuado en el móvil,
+    // se consulta Supabase en segundo plano sin interrumpir la visualización.
+    const handleVisibilitySync = () => {
+      if (!document.hidden) {
+        loadInventory();
+        loadPaths();
+      }
+    };
+    const handleFocusSync = () => {
+      loadInventory();
+      loadPaths();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilitySync);
+    window.addEventListener('focus', handleFocusSync);
+
+    const heartbeat = setInterval(() => {
+      if (!document.hidden) {
+        loadInventory();
+        loadPaths();
+      }
+    }, 20000);
+
     return () => {
       window.removeEventListener('farm-inventory-updated', handleInv);
       window.removeEventListener('farm-paths-updated', handlePaths);
+      document.removeEventListener('visibilitychange', handleVisibilitySync);
+      window.removeEventListener('focus', handleFocusSync);
+      clearInterval(heartbeat);
     };
   }, [loadInventory, loadPaths]);
 

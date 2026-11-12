@@ -11,6 +11,33 @@ const PATHS_STORAGE_KEY = 'campito_farm_paths_cache';
 const DELETED_INVENTORY_KEY = 'campito_deleted_inventory_ids';
 const DELETED_PATHS_KEY = 'campito_deleted_paths_ids';
 const DEFAULT_SEEDED_KEY = 'campito_default_cueva_seeded';
+const PENDING_INVENTORY_CREATIONS_KEY = 'campito_pending_inventory_creations';
+const PENDING_PATHS_CREATIONS_KEY = 'campito_pending_paths_creations';
+
+// ─── Canal de difusión universal para sincronizar pestañas y ventanas activas ───
+const mapSyncBroadcast = typeof window !== 'undefined' && 'BroadcastChannel' in window
+  ? new BroadcastChannel('campito_map_sync_channel')
+  : null;
+
+if (mapSyncBroadcast) {
+  mapSyncBroadcast.onmessage = (event) => {
+    const { type, id, deleted, item, path } = event.data || {};
+    if (typeof window === 'undefined') return;
+    if (type === 'INVENTORY_CHANGED') {
+      window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id, deleted, ...item } }));
+    } else if (type === 'PATHS_CHANGED') {
+      window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id, deleted, ...path } }));
+    }
+  };
+}
+
+export function broadcastMapSync(type, id, extra = {}) {
+  try {
+    mapSyncBroadcast?.postMessage({ type, id, ...extra });
+  } catch (err) {
+    console.warn('[InventoryStorage] Error en broadcastMapSync:', err);
+  }
+}
 
 /**
  * Validador de formato UUID v4
@@ -32,6 +59,69 @@ function generateUUID() {
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+// ─── Buzón Outbox para creaciones offline pendientes de sincronizar ───────────
+function getPendingInventoryCreations() {
+  try {
+    const raw = localStorage.getItem(PENDING_INVENTORY_CREATIONS_KEY);
+    return raw ? new Set(JSON.parse(raw).map(String)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function addPendingInventoryCreation(id) {
+  if (!id) return;
+  try {
+    const current = getPendingInventoryCreations();
+    current.add(String(id));
+    localStorage.setItem(PENDING_INVENTORY_CREATIONS_KEY, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error guardando creación pendiente de inventario:', e);
+  }
+}
+
+function removePendingInventoryCreation(id) {
+  if (!id) return;
+  try {
+    const current = getPendingInventoryCreations();
+    current.delete(String(id));
+    localStorage.setItem(PENDING_INVENTORY_CREATIONS_KEY, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error removiendo creación pendiente de inventario:', e);
+  }
+}
+
+function getPendingPathCreations() {
+  try {
+    const raw = localStorage.getItem(PENDING_PATHS_CREATIONS_KEY);
+    return raw ? new Set(JSON.parse(raw).map(String)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function addPendingPathCreation(id) {
+  if (!id) return;
+  try {
+    const current = getPendingPathCreations();
+    current.add(String(id));
+    localStorage.setItem(PENDING_PATHS_CREATIONS_KEY, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error guardando creación pendiente de camino:', e);
+  }
+}
+
+function removePendingPathCreation(id) {
+  if (!id) return;
+  try {
+    const current = getPendingPathCreations();
+    current.delete(String(id));
+    localStorage.setItem(PENDING_PATHS_CREATIONS_KEY, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error removiendo creación pendiente de camino:', e);
+  }
 }
 
 // ─── Gestión de IDs eliminados para evitar resurrección por caché / polling ───
@@ -341,8 +431,9 @@ async function syncPendingPathsToRemote(pendingPaths) {
 export async function loadFarmInventory() {
   const localItems = getLocalInventory();
   const deletedIds = getDeletedInventoryIds();
+  const pendingCreations = getPendingInventoryCreations();
 
-  // Filtrar local de inmediato para descartar cualquier remanente
+  // Filtrar local de inmediato para descartar cualquier remanente borrado
   const cleanLocal = localItems.filter((loc) => !deletedIds.has(String(loc.id)));
 
   try {
@@ -353,17 +444,25 @@ export async function loadFarmInventory() {
       .order('created_at', { ascending: false });
 
     if (!error && Array.isArray(data)) {
-      // Filtrar data remota excluyendo explícitamente los eliminados
-      const cleanRemote = data.filter((d) => !deletedIds.has(String(d.id)));
+      // Filtrar data remota excluyendo cualquier borrado pendiente local
+      const cleanRemote = data
+        .filter((d) => !deletedIds.has(String(d.id)))
+        .map((d) => ({ ...d, _synced: true }));
       const remoteIds = new Set(cleanRemote.map((d) => String(d.id)));
 
-      // Conservar locales que no estén todavía en remoto (modo local-first)
-      const pendingLocals = cleanLocal.filter((loc) => !remoteIds.has(String(loc.id)));
-      let merged = [...cleanRemote, ...pendingLocals];
+      // ─── REGLA OUTBOX DISTRIBUIDA (CERO RESURRECCIONES ZOMBIE) ───
+      // Un elemento local solo se conserva como pendiente si está explícitamente en pendingCreations.
+      // Si un elemento ya estaba sincronizado y Supabase ya no lo devuelve, SIGNIFICA QUE FUE BORRADO
+      // en otro dispositivo (por ejemplo, iPhone). Se elimina de la caché local de inmediato.
+      const trulyPendingLocals = cleanLocal.filter(
+        (loc) => !remoteIds.has(String(loc.id)) && pendingCreations.has(String(loc.id))
+      );
 
-      // Sincronizar en segundo plano los pendientes locales para que Safari / otros dispositivos los vean
-      if (pendingLocals.length > 0) {
-        syncPendingLocalsToRemote(pendingLocals);
+      let merged = [...cleanRemote, ...trulyPendingLocals];
+
+      // Sincronizar en segundo plano únicamente las creaciones offline pendientes reales
+      if (trulyPendingLocals.length > 0) {
+        syncPendingLocalsToRemote(trulyPendingLocals);
       }
 
       // Sembrar Casita Cueva únicamente la primera vez (nunca re-inyectar tras un borrado)
@@ -400,6 +499,7 @@ export async function insertFarmInventoryItem(newItem) {
   const now = new Date().toISOString();
 
   removeDeletedInventoryId(id);
+  addPendingInventoryCreation(id);
 
   const itemToSave = {
     ...newItem,
@@ -407,11 +507,17 @@ export async function insertFarmInventoryItem(newItem) {
     created_at: newItem.created_at || now,
     updated_at: now,
     is_active: newItem.is_active !== false,
+    _synced: false,
   };
 
-  // 1. Guardar de inmediato en local (garantía de cero pérdida)
+  // 1. Guardar de inmediato en local (garantía de cero latencia)
   const updatedLocal = [itemToSave, ...localItems.filter((i) => String(i.id) !== String(id))];
   setLocalInventory(updatedLocal);
+
+  broadcastMapSync('INVENTORY_CHANGED', id, { item: itemToSave });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: itemToSave }));
+  }
 
   // 2. Preparar payload sanitizado para PostgreSQL
   const dbPayload = sanitizeInventoryForDb(itemToSave);
@@ -443,17 +549,19 @@ export async function insertFarmInventoryItem(newItem) {
     }
 
     if (!error && data) {
-      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...data } : i));
+      removePendingInventoryCreation(id);
+      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...data, _synced: true } : i));
       setLocalInventory(synced);
-      return { ...itemToSave, ...data };
+      return { ...itemToSave, ...data, _synced: true };
     }
   } catch (err) {
     console.warn('[InventoryStorage] Error en llamada Supabase, intentando proxy:', err.message);
     const proxyRes = await callFarmSyncProxy('INSERT_INVENTORY', { payload: dbPayload });
     if (proxyRes?.data) {
-      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...proxyRes.data } : i));
+      removePendingInventoryCreation(id);
+      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...proxyRes.data, _synced: true } : i));
       setLocalInventory(synced);
-      return { ...itemToSave, ...proxyRes.data };
+      return { ...itemToSave, ...proxyRes.data, _synced: true };
     }
   }
 
@@ -475,6 +583,11 @@ export async function updateFarmInventoryItem(id, updatePayload) {
     return item;
   });
   setLocalInventory(updatedLocal);
+
+  broadcastMapSync('INVENTORY_CHANGED', targetIdStr, { item: { id: targetIdStr, ...updatePayload } });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: targetIdStr, ...updatePayload } }));
+  }
 
   const cleanPayload = { ...updatePayload, updated_at: now };
   if (cleanPayload.category && !DB_ALLOWED_CATEGORIES.has(cleanPayload.category)) {
@@ -509,7 +622,11 @@ export async function updateFarmInventoryItem(id, updatePayload) {
       if (proxyRes?.data) data = proxyRes.data;
     }
 
-    if (data) return data;
+    if (data) {
+      const synced = updatedLocal.map((i) => (String(i.id) === targetIdStr ? { ...i, ...data, _synced: true } : i));
+      setLocalInventory(synced);
+      return data;
+    }
   } catch (err) {
     console.warn('[InventoryStorage] Error actualizando en Supabase, usando proxy:', err.message);
     const proxyRes = await callFarmSyncProxy('UPDATE_INVENTORY', { id, payload: cleanPayload });
@@ -534,8 +651,10 @@ export async function deleteFarmInventoryItem(id) {
     targetIdStr === 'casita_cueva_principal' ||
     (targetItem?.name || '').toLowerCase().includes('cueva');
 
-  // 1. Registrar en lista negra de eliminados para que loadFarmInventory no lo restaure
+  // 1. Registrar en lista negra de eliminados y limpiar outbox de creación
   addDeletedInventoryId(targetIdStr);
+  removePendingInventoryCreation(targetIdStr);
+
   if (isCuevaDefault) {
     addDeletedInventoryId('00000000-0000-4000-8000-000000000001');
     addDeletedInventoryId('casita_cueva_principal');
@@ -546,11 +665,17 @@ export async function deleteFarmInventoryItem(id) {
     }
   }
 
-  // 2. Eliminar del almacenamiento local
+  // 2. Eliminar del almacenamiento local de inmediato
   const filtered = localItems.filter((i) => String(i.id) !== targetIdStr);
   setLocalInventory(filtered);
 
-  // 3. Persistir en Supabase (soft-delete + hard-delete)
+  // 3. Notificar inmediatamente a todas las pestañas y vistas
+  broadcastMapSync('INVENTORY_CHANGED', targetIdStr, { deleted: true });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id: targetIdStr, deleted: true } }));
+  }
+
+  // 4. Persistir en Supabase (soft-delete + hard-delete)
   if (isValidUUID(targetIdStr)) {
     try {
       const now = new Date().toISOString();
@@ -567,9 +692,11 @@ export async function deleteFarmInventoryItem(id) {
       if (delErr || updErr) {
         await callFarmSyncProxy('DELETE_INVENTORY', { id: targetIdStr });
       }
+      removeDeletedInventoryId(targetIdStr);
     } catch (err) {
       console.warn('[InventoryStorage] Error borrando en Supabase, usando proxy:', err.message);
-      await callFarmSyncProxy('DELETE_INVENTORY', { id: targetIdStr });
+      const res = await callFarmSyncProxy('DELETE_INVENTORY', { id: targetIdStr });
+      if (res?.success) removeDeletedInventoryId(targetIdStr);
     }
   }
 }
@@ -580,6 +707,7 @@ export async function deleteFarmInventoryItem(id) {
 export async function loadFarmPaths() {
   const localPaths = getLocalPaths();
   const deletedIds = getDeletedPathIds();
+  const pendingCreations = getPendingPathCreations();
   const cleanLocal = localPaths.filter((loc) => !deletedIds.has(String(loc.id)));
 
   try {
@@ -590,13 +718,19 @@ export async function loadFarmPaths() {
       .order('created_at', { ascending: false });
 
     if (!error && Array.isArray(data)) {
-      const cleanRemote = data.filter((d) => !deletedIds.has(String(d.id)));
+      const cleanRemote = data
+        .filter((d) => !deletedIds.has(String(d.id)))
+        .map((d) => ({ ...d, _synced: true }));
       const remoteIds = new Set(cleanRemote.map((d) => String(d.id)));
-      const pendingLocals = cleanLocal.filter((loc) => !remoteIds.has(String(loc.id)));
-      const merged = [...cleanRemote, ...pendingLocals];
 
-      if (pendingLocals.length > 0) {
-        syncPendingPathsToRemote(pendingLocals);
+      // ─── REGLA OUTBOX DISTRIBUIDA (CERO RESURRECCIONES ZOMBIE EN CAMINOS) ───
+      const trulyPendingLocals = cleanLocal.filter(
+        (loc) => !remoteIds.has(String(loc.id)) && pendingCreations.has(String(loc.id))
+      );
+      const merged = [...cleanRemote, ...trulyPendingLocals];
+
+      if (trulyPendingLocals.length > 0) {
+        syncPendingPathsToRemote(trulyPendingLocals);
       }
 
       setLocalPaths(merged);
@@ -619,6 +753,7 @@ export async function insertFarmPath(newPath) {
   const now = new Date().toISOString();
 
   removeDeletedPathId(id);
+  addPendingPathCreation(id);
 
   const pathToSave = {
     ...newPath,
@@ -626,10 +761,16 @@ export async function insertFarmPath(newPath) {
     created_at: newPath.created_at || now,
     updated_at: now,
     is_active: newPath.is_active !== false,
+    _synced: false,
   };
 
   const updatedLocal = [pathToSave, ...localPaths.filter((p) => String(p.id) !== String(id))];
   setLocalPaths(updatedLocal);
+
+  broadcastMapSync('PATHS_CHANGED', id, { path: pathToSave });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: pathToSave }));
+  }
 
   const dbPayload = sanitizePathForDb(pathToSave);
 
@@ -650,17 +791,19 @@ export async function insertFarmPath(newPath) {
     }
 
     if (!error && data) {
-      const synced = updatedLocal.map((p) => (String(p.id) === String(id) ? { ...pathToSave, ...data } : p));
+      removePendingPathCreation(id);
+      const synced = updatedLocal.map((p) => (String(p.id) === String(id) ? { ...pathToSave, ...data, _synced: true } : p));
       setLocalPaths(synced);
-      return { ...pathToSave, ...data };
+      return { ...pathToSave, ...data, _synced: true };
     }
   } catch (err) {
     console.warn('[InventoryStorage] Error en insertFarmPath, intentando proxy:', err.message);
     const proxyRes = await callFarmSyncProxy('INSERT_PATH', { payload: dbPayload });
     if (proxyRes?.data) {
-      const synced = updatedLocal.map((p) => (String(p.id) === String(id) ? { ...pathToSave, ...proxyRes.data } : p));
+      removePendingPathCreation(id);
+      const synced = updatedLocal.map((p) => (String(p.id) === String(id) ? { ...pathToSave, ...proxyRes.data, _synced: true } : p));
       setLocalPaths(synced);
-      return { ...pathToSave, ...proxyRes.data };
+      return { ...pathToSave, ...proxyRes.data, _synced: true };
     }
   }
 
@@ -682,6 +825,11 @@ export async function updateFarmPath(id, updatePayload) {
     return p;
   });
   setLocalPaths(updatedLocal);
+
+  broadcastMapSync('PATHS_CHANGED', targetIdStr, { path: { id: targetIdStr, ...updatePayload } });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id: targetIdStr, ...updatePayload } }));
+  }
 
   const cleanPayload = { ...updatePayload, updated_at: now };
   if (cleanPayload.category && !cleanPayload.path_type) {
@@ -710,7 +858,11 @@ export async function updateFarmPath(id, updatePayload) {
       if (proxyRes?.data) data = proxyRes.data;
     }
 
-    if (data) return data;
+    if (data) {
+      const synced = updatedLocal.map((p) => (String(p.id) === targetIdStr ? { ...p, ...data, _synced: true } : p));
+      setLocalPaths(synced);
+      return data;
+    }
   } catch (err) {
     console.warn('[InventoryStorage] Error actualizando camino en Supabase, usando proxy:', err.message);
     const proxyRes = await callFarmSyncProxy('UPDATE_PATH', { id, payload: cleanPayload });
@@ -728,10 +880,16 @@ export async function deleteFarmPath(id) {
   const targetIdStr = String(id);
 
   addDeletedPathId(targetIdStr);
+  removePendingPathCreation(targetIdStr);
 
   const localPaths = getLocalPaths();
   const filtered = localPaths.filter((p) => String(p.id) !== targetIdStr);
   setLocalPaths(filtered);
+
+  broadcastMapSync('PATHS_CHANGED', targetIdStr, { deleted: true });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id: targetIdStr, deleted: true } }));
+  }
 
   try {
     const now = new Date().toISOString();
@@ -748,9 +906,11 @@ export async function deleteFarmPath(id) {
     if (delErr || updErr) {
       await callFarmSyncProxy('DELETE_PATH', { id });
     }
+    removeDeletedPathId(targetIdStr);
   } catch (err) {
     console.warn('[InventoryStorage] Error eliminando camino en Supabase, usando proxy:', err.message);
-    await callFarmSyncProxy('DELETE_PATH', { id });
+    const res = await callFarmSyncProxy('DELETE_PATH', { id });
+    if (res?.success) removeDeletedPathId(targetIdStr);
   }
 }
 

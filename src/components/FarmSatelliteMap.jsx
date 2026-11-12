@@ -140,6 +140,8 @@ export default function FarmSatelliteMap({
             const delId = payload.old?.id || payload.new?.id;
             if (delId) {
               setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(delId)));
+              setSelectedTarget((prev) => (prev && String(prev.id) === String(delId) ? null : prev));
+              if (onReloadInventory) onReloadInventory();
             }
           } else if (payload.new) {
             setLocalInventory((prev) => {
@@ -149,6 +151,7 @@ export default function FarmSatelliteMap({
               }
               return [payload.new, ...prev];
             });
+            if (onReloadInventory) onReloadInventory();
           }
         }
       )
@@ -160,6 +163,10 @@ export default function FarmSatelliteMap({
             const delId = payload.old?.id || payload.new?.id;
             if (delId) {
               setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(delId)));
+              setSelectedTarget((prev) =>
+                prev && (String(prev.id) === String(delId) || String(prev.pathId) === String(delId)) ? null : prev
+              );
+              if (onReloadPaths) onReloadPaths();
             }
           } else if (payload.new) {
             setLocalPaths((prev) => {
@@ -169,6 +176,18 @@ export default function FarmSatelliteMap({
               }
               return [payload.new, ...prev];
             });
+            setSelectedTarget((prev) => {
+              if (prev && (String(prev.id) === String(payload.new.id) || String(prev.pathId) === String(payload.new.id))) {
+                return {
+                  ...prev,
+                  coordinates: payload.new.coordinates,
+                  length_meters: payload.new.length_meters,
+                  raw: payload.new,
+                };
+              }
+              return prev;
+            });
+            if (onReloadPaths) onReloadPaths();
           }
         }
       )
