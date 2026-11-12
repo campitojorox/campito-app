@@ -326,10 +326,10 @@ export function useMapIaController({
             ...execResult.addedItems,
             ...prev.filter((i) => !execResult.addedItems.some((a) => String(a.id) === String(i.id))),
           ]);
-          execResult.addedItems.forEach((it) => {
-            const cat = getItemCategory(it);
-            setVisibleCategories((prev) => new Set([...prev, cat]));
-          });
+          const newCats = new Set(execResult.addedItems.map((it) => getItemCategory(it)).filter(Boolean));
+          if (newCats.size > 0) {
+            setVisibleCategories((prev) => new Set([...prev, ...newCats]));
+          }
           const lastOne = execResult.addedItems[execResult.addedItems.length - 1];
           if (mapInstanceRef.current && lastOne.latitude && lastOne.longitude) {
             mapInstanceRef.current.panTo([lastOne.latitude, lastOne.longitude]);
@@ -790,14 +790,16 @@ export function useMapIaController({
           ...execResult.addedItems,
           ...prev.filter((i) => !execResult.addedItems.some((a) => String(a.id) === String(i.id))),
         ]);
-        execResult.addedItems.forEach((it) => {
-          const cat = getItemCategory(it);
-          setVisibleCategories((prev) => new Set([...prev, cat]));
-          const rawSub = it.variety_type || it.category || it.tipo || '';
-          if (rawSub) {
-            setVisibleSubcats((prev) => (prev === null ? prev : new Set([...prev, rawSub])));
-          }
-        });
+        const newCats = new Set(execResult.addedItems.map((it) => getItemCategory(it)).filter(Boolean));
+        if (newCats.size > 0) {
+          setVisibleCategories((prev) => new Set([...prev, ...newCats]));
+        }
+        const newSubs = execResult.addedItems
+          .map((it) => it.variety_type || it.category || it.tipo || '')
+          .filter(Boolean);
+        if (newSubs.length > 0) {
+          setVisibleSubcats((prev) => (prev === null ? prev : new Set([...prev, ...newSubs])));
+        }
         const lastOne = execResult.addedItems[execResult.addedItems.length - 1];
         if (mapInstanceRef.current && lastOne.latitude && lastOne.longitude) {
           mapInstanceRef.current.panTo([lastOne.latitude, lastOne.longitude]);

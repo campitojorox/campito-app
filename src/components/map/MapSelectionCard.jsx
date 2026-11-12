@@ -25,18 +25,18 @@ export default function MapSelectionCard({
 
   const isPoint = selectedTarget.type === 'point';
   const isEditable = isPoint || selectedTarget.type === 'path';
-  const currentCategory = selectedTarget.category ?? '';
+  const currentCategory = String(selectedTarget.category ?? '');
   const resolvedRootCategory = isPoint ? getItemCategory(selectedTarget) : '';
   const categoryDotColor = getCategoryColor(resolvedRootCategory || currentCategory);
   const showBotanicalStatus =
     isPoint && (resolvedRootCategory === 'Árboles' || resolvedRootCategory === 'Plantas');
 
   const trimmedCat = currentCategory.trim().toLowerCase();
-  const isExactSuggestion = categorySuggestions.some((c) => c.toLowerCase() === trimmedCat);
+  const isExactSuggestion = categorySuggestions.some((c) => String(c).toLowerCase() === trimmedCat);
   const filteredCategorySuggestions =
     !trimmedCat || isExactSuggestion
       ? categorySuggestions
-      : categorySuggestions.filter((c) => c.toLowerCase().includes(trimmedCat));
+      : categorySuggestions.filter((c) => String(c).toLowerCase().includes(trimmedCat));
 
   return (
     <div style={styles.cleanTargetCard}>
@@ -259,8 +259,8 @@ export default function MapSelectionCard({
 
           <div style={styles.cardMetaRow}>
             <span style={styles.cardMetaText}>
-              📍 {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}
-              {selectedTarget.accuracy ? ` · ±${Number(selectedTarget.accuracy).toFixed(1)}m` : ''}
+              📍 {Number(selectedTarget.lat || 0).toFixed(5)}, {Number(selectedTarget.lng || 0).toFixed(5)}
+              {selectedTarget.accuracy ? ` · ±${Number(selectedTarget.accuracy || 0).toFixed(1)}m` : ''}
             </span>
             {selectedTarget.photo_url && (
               <a
@@ -335,13 +335,13 @@ export default function MapSelectionCard({
         <div style={styles.cardBodyColumn}>
           <div style={styles.cardMetaRow}>
             <span style={styles.cardMetaText}>
-              Recorrido: <b>{selectedTarget.pathName}</b> (Nodo {selectedTarget.nodeIndex + 1} de{' '}
-              {selectedTarget.totalNodes})
+              Recorrido: <b>{selectedTarget.pathName || 'Sendero'}</b> (Nodo {Number(selectedTarget.nodeIndex ?? 0) + 1} de{' '}
+              {selectedTarget.totalNodes || '?'})
             </span>
           </div>
           <div style={styles.cardMetaRow}>
             <span style={styles.cardMetaText}>
-              📍 Posición: {Number(selectedTarget.lat).toFixed(5)}, {Number(selectedTarget.lng).toFixed(5)}
+              📍 Posición: {Number(selectedTarget.lat || 0).toFixed(5)}, {Number(selectedTarget.lng || 0).toFixed(5)}
             </span>
             <span style={{ fontSize: '0.72rem', color: '#00979d', fontStyle: 'italic' }}>
               Arrastra el nodo en el satélite para ajustar el trazado
@@ -395,8 +395,8 @@ export default function MapSelectionCard({
           )}
           {selectedTarget.lat && selectedTarget.lng && (
             <span style={styles.cardMetaText}>
-              📍 Coordenadas oficiales: {Number(selectedTarget.lat).toFixed(5)},{' '}
-              {Number(selectedTarget.lng).toFixed(5)}
+              📍 Coordenadas oficiales: {Number(selectedTarget.lat || 0).toFixed(5)},{' '}
+              {Number(selectedTarget.lng || 0).toFixed(5)}
             </span>
           )}
         </div>
@@ -405,8 +405,8 @@ export default function MapSelectionCard({
       {selectedTarget.type === 'coord' && (
         <div style={styles.cardBodyColumn}>
           <span style={styles.cardMetaText}>
-            📍 Coordenada satelital: {Number(selectedTarget.lat).toFixed(5)},{' '}
-            {Number(selectedTarget.lng).toFixed(5)}
+            📍 Coordenada satelital: {Number(selectedTarget.lat || 0).toFixed(5)},{' '}
+            {Number(selectedTarget.lng || 0).toFixed(5)}
           </span>
           <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
             Habla por voz o escribe en el chat para registrar un nuevo árbol, arqueta o elemento en esta ubicación exacta.

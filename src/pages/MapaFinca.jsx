@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { loadFarmInventory, loadFarmPaths } from '../services/farmInventoryStorage';
 
 export default function MapaFinca() {
@@ -101,15 +102,17 @@ export default function MapaFinca() {
 
   return (
     <div style={styles.pageWrapper}>
-      <FarmSatelliteMap
-        inventory={inventory}
-        paths={paths}
-        onReloadInventory={loadInventory}
-        onReloadPaths={loadPaths}
-        onPathCreated={(newPath) => setPaths(prev => [newPath, ...prev])}
-        isPageMode={true}
-        searchQuery={isSearchOpen ? searchQuery : ''}
-      />
+      <ErrorBoundary sectionName="Mapas y Catastro">
+        <FarmSatelliteMap
+          inventory={inventory}
+          paths={paths}
+          onReloadInventory={loadInventory}
+          onReloadPaths={loadPaths}
+          onPathCreated={(newPath) => setPaths(prev => [newPath, ...prev])}
+          isPageMode={true}
+          searchQuery={isSearchOpen ? searchQuery : ''}
+        />
+      </ErrorBoundary>
     </div>
   );
 }

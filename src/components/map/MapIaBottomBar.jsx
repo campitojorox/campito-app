@@ -58,10 +58,10 @@ export default function MapIaBottomBar({
   handleStopVoiceRecording,
   handleStartVoiceRecording,
   mapIaTextareaRef,
-  mapIaInput,
+  mapIaInput = '',
   setMapIaInput,
   handleSendMapIaOrder,
-  undoStack,
+  undoStack = [],
   handleUndoMapAction,
 }) {
   return (
@@ -236,10 +236,10 @@ export default function MapIaBottomBar({
                 🔒
               </span>
             )}
-            {voiceCurrentGps ? (
-              <span style={styles.previewGpsTagActive}>📍 ±{voiceCurrentGps.accuracy?.toFixed(1)}m</span>
-            ) : liveUserGps ? (
-              <span style={styles.previewGpsTagActive}>📍 ±{liveUserGps.accuracy?.toFixed(1)}m</span>
+            {voiceCurrentGps && typeof voiceCurrentGps.accuracy === 'number' ? (
+              <span style={styles.previewGpsTagActive}>📍 ±{voiceCurrentGps.accuracy.toFixed(1)}m</span>
+            ) : liveUserGps && typeof liveUserGps.accuracy === 'number' ? (
+              <span style={styles.previewGpsTagActive}>📍 ±{liveUserGps.accuracy.toFixed(1)}m</span>
             ) : (
               <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 'auto' }}>
                 📍 Conectando GPS...
@@ -316,7 +316,7 @@ export default function MapIaBottomBar({
           >
             <StopCircle size={20} />
           </button>
-        ) : mapIaInput.trim() || pendingVoiceAudio || pendingAttachments.length > 0 ? (
+        ) : (mapIaInput || '').trim() || pendingVoiceAudio || pendingAttachments.length > 0 ? (
           <button
             type="button"
             onClick={handleSendMapIaOrder}
@@ -353,13 +353,13 @@ export default function MapIaBottomBar({
           </button>
         )}
 
-        {undoStack.length > 0 && (
+        {Array.isArray(undoStack) && undoStack.length > 0 && (
           <button
             type="button"
             onClick={handleUndoMapAction}
             disabled={isProcessingIa}
             style={styles.chatIaUndoBtn}
-            title={`Retroceder cambios: ${undoStack[undoStack.length - 1].description}`}
+            title={`Retroceder cambios: ${undoStack[undoStack.length - 1]?.description || 'Cambios previos'}`}
             aria-label="Retroceder cambios en el mapa"
           >
             <Undo2 size={17} />

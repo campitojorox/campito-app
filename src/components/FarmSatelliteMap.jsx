@@ -74,8 +74,6 @@ export default function FarmSatelliteMap({
     setPrevInventoryProp(inventory);
     if (Array.isArray(inventory) && (inventory.length > 0 || onReloadInventory || isPageMode)) {
       setLocalInventory(inventory);
-    } else {
-      setLocalInventory(getLocalInventory());
     }
   }
 
@@ -83,8 +81,6 @@ export default function FarmSatelliteMap({
     setPrevPathsProp(paths);
     if (Array.isArray(paths) && (paths.length > 0 || onReloadPaths || isPageMode)) {
       setLocalPaths(paths);
-    } else {
-      setLocalPaths(getLocalPaths());
     }
   }
 
@@ -241,26 +237,6 @@ export default function FarmSatelliteMap({
     }
     return new Set([...base, ...allCategories]);
   });
-  const [knownCategories, setKnownCategories] = useState(() => allCategories);
-
-  if (allCategories !== knownCategories) {
-    const added = allCategories.filter((cat) => !knownCategories.includes(cat));
-    setKnownCategories(allCategories);
-    if (added.length > 0) {
-      setVisibleCategories((prev) => {
-        let changed = false;
-        const next = new Set(prev);
-        added.forEach((cat) => {
-          if (!next.has(cat)) {
-            next.add(cat);
-            changed = true;
-          }
-        });
-        return changed ? next : prev;
-      });
-    }
-  }
-
   const [visibleSubcats, setVisibleSubcats] = useState(() =>
     initialMapSettings?.visibleSubcats && Array.isArray(initialMapSettings.visibleSubcats)
       ? new Set(initialMapSettings.visibleSubcats)

@@ -4,6 +4,7 @@ import { supabase } from './supabaseClient';
 import { lazy } from 'react';
 import Layout from './components/Layout';
 import Auth from './pages/Auth';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ChatProvider } from './context/ChatContext';
 import './index.css';
 
@@ -67,19 +68,21 @@ function App() {
       </div>
 
       <BrowserRouter>
-        <ChatProvider session={session}>
-          <Routes>
-            <Route path="/" element={<Layout session={session} />}>
-              <Route index element={<Navigate to="/chat-ia" replace />} />
-              <Route path="chat-ia" element={<ChatIA />} />
-              <Route path="gasto-ingreso" element={<GastoIngreso />} />
-              <Route path="gasto-venta" element={<Navigate to="/gasto-ingreso" replace />} />
-              <Route path="calendario" element={<Calendario />} />
-              <Route path="mapas" element={<MapaFinca />} />
-              <Route path="resumen" element={<Navigate to="/chat-ia" replace />} />
-            </Route>
-          </Routes>
-        </ChatProvider>
+        <ErrorBoundary sectionName="Campito Jorox">
+          <ChatProvider session={session}>
+            <Routes>
+              <Route path="/" element={<Layout session={session} />}>
+                <Route index element={<Navigate to="/chat-ia" replace />} />
+                <Route path="chat-ia" element={<ChatIA />} />
+                <Route path="gasto-ingreso" element={<GastoIngreso />} />
+                <Route path="gasto-venta" element={<Navigate to="/gasto-ingreso" replace />} />
+                <Route path="calendario" element={<Calendario />} />
+                <Route path="mapas" element={<MapaFinca />} />
+                <Route path="resumen" element={<Navigate to="/chat-ia" replace />} />
+              </Route>
+            </Routes>
+          </ChatProvider>
+        </ErrorBoundary>
       </BrowserRouter>
     </>
   );
