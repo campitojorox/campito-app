@@ -200,7 +200,8 @@ export async function executeServerFinanceActions(
   supabaseAdmin,
   actions = [],
   attachment = null,
-  currentUser = 'Ariel'
+  currentUser = 'Ariel',
+  attachments = null
 ) {
   const addedTransactions = [];
   const updatedTransactions = [];
@@ -231,16 +232,25 @@ export async function executeServerFinanceActions(
   };
 
   let uploadedImageUrl = null;
+  const attList = Array.isArray(attachments) && attachments.length > 0
+    ? attachments.filter(Boolean)
+    : attachment
+      ? [attachment]
+      : [];
+  const primaryUploadAtt =
+    attList.find((a) => a?.dataUrl && (a.isImage || a.isPdf)) ||
+    attList.find((a) => a?.dataUrl) ||
+    null;
   const needsAttachment = actions.some((a) =>
     ['CREATE_TRANSACTION', 'UPDATE_TRANSACTION'].includes((a.type || '').toUpperCase())
   );
-  if (needsAttachment && attachment?.dataUrl) {
+  if (needsAttachment && primaryUploadAtt?.dataUrl) {
     const up = await uploadDataUrlToStorage(
       supabaseAdmin,
-      attachment.dataUrl,
+      primaryUploadAtt.dataUrl,
       'comprobantes',
-      attachment.name || 'justificante.jpg',
-      attachment.type
+      primaryUploadAtt.name || 'justificante.jpg',
+      primaryUploadAtt.type
     );
     uploadedImageUrl = up?.publicUrl || null;
   }

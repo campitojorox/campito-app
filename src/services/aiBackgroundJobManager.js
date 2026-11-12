@@ -6,6 +6,8 @@
 // 2. Al recargar la página (F5 / cerrar y abrir PWA), el backend continúa generando la respuesta
 //    y al volver se reanuda el seguimiento automáticamente para mostrar el resultado.
 
+import { normalizeAttachments } from '../utils/attachmentUtils';
+
 const STORAGE_KEY = 'campito_ai_bg_jobs_v1';
 const MAX_JOBS = 20;
 const STALE_JOB_MS = 4 * 60 * 1000; // 4 minutos máximo para un job en curso
@@ -313,6 +315,7 @@ export function startAiBackgroundJob({
   systemInstruction = '',
   history = [],
   attachment = null,
+  attachments = null,
   audio = null,
   models = null,
   responseMimeType = null,
@@ -354,22 +357,23 @@ export function startAiBackgroundJob({
     error: null,
   });
 
+  const normalizedAttachments = normalizeAttachments(attachments, attachment).map((att) => ({
+    name: att.name,
+    type: att.type,
+    dataUrl: att.dataUrl || null,
+    textContent: att.textContent || null,
+    isImage: Boolean(att.isImage),
+    isPdf: Boolean(att.isPdf),
+  }));
+
   const fullBody = {
     jobId,
     section,
     prompt,
     systemInstruction,
     history,
-    attachment: attachment
-      ? {
-          name: attachment.name,
-          type: attachment.type,
-          dataUrl: attachment.dataUrl || null,
-          textContent: attachment.textContent || null,
-          isImage: Boolean(attachment.isImage),
-          isPdf: Boolean(attachment.isPdf),
-        }
-      : null,
+    attachment: normalizedAttachments[0] || null,
+    attachments: normalizedAttachments,
     audio: audio
       ? {
           dataUrl: audio.dataUrl || null,

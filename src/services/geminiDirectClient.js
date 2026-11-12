@@ -1,6 +1,8 @@
 // src/services/geminiDirectClient.js
 // Catálogo de servidores Gemini disponibles y llamada REST directa de respaldo para ChatIA.
 
+import { normalizeAttachments, appendAttachmentsToGeminiParts } from '../utils/attachmentUtils';
+
 export const GEMINI_SERVERS = [
   {
     id: 'gemini-3.1-pro-preview',
@@ -58,6 +60,7 @@ export async function callGeminiDirect({
   modelId,
   prompt,
   attachment,
+  attachments,
   image,
   audio,
   history,
@@ -69,7 +72,11 @@ export async function callGeminiDirect({
     throw new Error('API_KEY_MISSING');
   }
 
-  const effectiveTimeout = audio || attachment ? Math.max(timeoutMs, 45000) : timeoutMs;
+  const attList = normalizeAttachments(
+    attachments,
+    attachment || (image ? { dataUrl: image.dataUrl, name: 'imagen.jpg' } : null)
+  );
+  const effectiveTimeout = audio || attList.length > 0 ? Math.max(timeoutMs, 45000) : timeoutMs;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
@@ -90,28 +97,8 @@ export async function callGeminiDirect({
     userParts.push({ text: prompt });
   }
 
-  const att = attachment || (image ? { dataUrl: image.dataUrl, name: 'imagen.jpg' } : null);
-  if (att) {
-    if (att.textContent) {
-      userParts.push({
-        text: `\n\n📄 **CONTENIDO DEL ARCHIVO ADJUNTO ("${att.name || 'documento'}")**:\n\`\`\`\n${att.textContent}\n\`\`\`\n`,
-      });
-    }
-
-    if (att.dataUrl) {
-      const match = att.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
-      if (match) {
-        const cleanMime = match[1].toLowerCase().trim();
-        if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
-          userParts.push({
-            inlineData: {
-              mimeType: cleanMime,
-              data: match[2],
-            },
-          });
-        }
-      }
-    }
+  if (attList.length > 0) {
+    appendAttachmentsToGeminiParts(userParts, attList);
   }
 
   if (audio && audio.dataUrl) {
@@ -140,9 +127,10 @@ export async function callGeminiDirect({
     userParts.push({
       text: 'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Transcribe o interpreta lo que dice y responde a su consulta o petición. Si consulta sobre el calendario o turnos de riego, revisa el calendario inyectado y responde con el horario exacto. Si pide programar un turno o evento, usa [[CREAR_EVENTO: {...}]]. Si pide borrar o cancelar un evento del calendario, usa [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "...", "event_id": "..."}]] o [[ELIMINAR_EVENTO: {"event_id": "..."}]]. Si consulta sobre la contabilidad, responde con los balances reales. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla de la finca, guárdala con [[MEMORIA: {...} ]]. Si pide borrar un punto, usa [[BORRAR_PUNTO: {...}]]. Responde detalladamente en español.',
     });
-  } else if (!prompt && att) {
+  } else if (!prompt && attList.length > 0) {
+    const namesLabel = attList.map((a) => `"${a.name || 'documento'}"`).join(', ');
     userParts.push({
-      text: `Por favor analiza detalladamente el archivo adjunto ("${att.name || 'documento'}") para Campito Jorox. Sintetiza la información relevante y, si contiene pautas o reglas para alimentar el conocimiento de la finca, guárdalas con [[MEMORIA: {"category": "suelo|cultivo|riego|fertilizacion|general", "title": "...", "content": "..."}]]. Si contiene árboles o parcelas, regístralos con [[REGISTRAR_PUNTOS: [...] ]].`,
+      text: `Por favor analiza detalladamente ${attList.length > 1 ? 'los archivos adjuntos' : 'el archivo adjunto'} (${namesLabel}) para Campito Jorox. Sintetiza la información relevante y, si contiene pautas o reglas para alimentar el conocimiento de la finca, guárdalas con [[MEMORIA: {"category": "suelo|cultivo|riego|fertilizacion|general", "title": "...", "content": "..."}]]. Si contiene árboles o parcelas, regístralos con [[REGISTRAR_PUNTOS: [...] ]].`,
     });
   } else if (userParts.length === 0) {
     userParts.push({ text: 'Hola' });

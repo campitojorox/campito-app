@@ -5,6 +5,7 @@
 
 import { supabase } from '../supabaseClient.js';
 import { createCalendarEvent, deleteCalendarEvent, findEventToMatch } from './calendarService.js';
+import { normalizeAttachments, appendAttachmentsToGeminiParts } from '../utils/attachmentUtils.js';
 
 const FAST_MODELS_CASCADE = [
   'gemini-2.5-flash',
@@ -20,8 +21,9 @@ const COMPLEX_MODELS_CASCADE = [
   'gemini-3.1-flash-lite',
 ];
 
-function selectSectionModels({ prompt, audio, attachment }) {
-  const hasHeavyAttachment = Boolean(attachment?.dataUrl);
+function selectSectionModels({ prompt, audio, attachment, attachments }) {
+  const attList = normalizeAttachments(attachments, attachment);
+  const hasHeavyAttachment = attList.some((att) => Boolean(att?.dataUrl));
   const hasLongAudio = Boolean(
     audio?.dataUrl && ((audio?.duration || 0) >= 45 || audio.dataUrl.length > 600000)
   );
@@ -247,6 +249,7 @@ export async function callSectionGemini({
   prompt = '',
   audio = null,
   attachment = null,
+  attachments = null,
   contextData = {},
   apiKey,
 }) {
@@ -254,6 +257,7 @@ export async function callSectionGemini({
     throw new Error('Falta VITE_GEMINI_API_KEY en el entorno.');
   }
 
+  const attList = normalizeAttachments(attachments, attachment);
   const knowledge = await loadFarmKnowledgeSafe();
   const systemInstruction = buildSectionSystemInstruction(section, contextData, knowledge);
 
@@ -262,27 +266,14 @@ export async function callSectionGemini({
     userParts.push({ text: prompt.trim() });
   }
 
-  if (attachment) {
-    if (attachment.textContent) {
-      userParts.push({
-        text: `\n\n📄 Contenido del archivo adjunto ("${attachment.name || 'documento'}"):\n\`\`\`\n${attachment.textContent}\n\`\`\``,
-      });
-    }
-    if (attachment.dataUrl) {
-      const match = attachment.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
-      if (match) {
-        const cleanMime = match[1].toLowerCase().trim();
-        if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
-          userParts.push({ inlineData: { mimeType: cleanMime, data: match[2] } });
-        }
-      }
-    }
+  if (attList.length > 0) {
+    appendAttachmentsToGeminiParts(userParts, attList);
     if (!prompt && !audio) {
       userParts.push({
         text:
           section === 'gasto-ingreso' || section === 'gasto-venta'
-            ? 'Analiza esta factura, ticket o documento adjunto, extrae importe, concepto, tipo (Gasto o Retiro/Ingreso) y socio si aparece, y prepáralo en formato CREATE_TRANSACTION o resúmelo.'
-            : 'Analiza este documento o imagen adjunta en relación al calendario de Campito Jorox y genera las acciones o respuestas correspondientes.',
+            ? 'Analiza estas facturas, tickets o documentos adjuntos, extrae importe, concepto, tipo (Gasto o Retiro/Ingreso) y socio si aparece, y prepáralos en formato CREATE_TRANSACTION o resúmelos.'
+            : 'Analiza estos documentos o imágenes adjuntas en relación al calendario de Campito Jorox y genera las acciones o respuestas correspondientes.',
       });
     }
   }
@@ -319,12 +310,12 @@ export async function callSectionGemini({
     },
   };
 
-  const modelsCascade = selectSectionModels({ prompt, audio, attachment });
+  const modelsCascade = selectSectionModels({ prompt, audio, attachment, attachments: attList });
   let lastError = null;
   for (const modelId of modelsCascade) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), audio || attachment ? 45000 : 22000);
+      const timeoutId = setTimeout(() => controller.abort(), audio || attList.length > 0 ? 45000 : 22000);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
       const res = await fetch(url, {
@@ -521,6 +512,7 @@ export async function executeFinanceIaActions({
   records = [],
   users = [],
   attachment = null,
+  attachments = null,
   currentUser = 'Ariel',
 }) {
   const addedTransactions = [];
@@ -530,10 +522,17 @@ export async function executeFinanceIaActions({
   const reverts = [];
   const errors = [];
 
+  const attList = normalizeAttachments(attachments, attachment);
+  const primaryUploadAtt =
+    attList.find((a) => a?.file && (a.isImage || a.isPdf)) ||
+    attList.find((a) => a?.file) ||
+    null;
+
   const needsAttachmentUpload = actions.some(
     (a) => (a.type || '').toUpperCase() === 'CREATE_TRANSACTION' || (a.type || '').toUpperCase() === 'UPDATE_TRANSACTION'
   );
-  const uploadedImageUrl = needsAttachmentUpload && attachment ? await uploadAttachmentToComprobantes(attachment) : null;
+  const uploadedImageUrl =
+    needsAttachmentUpload && primaryUploadAtt ? await uploadAttachmentToComprobantes(primaryUploadAtt) : null;
 
   for (const act of actions) {
     const type = (act.type || '').toUpperCase();

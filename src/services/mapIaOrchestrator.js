@@ -22,6 +22,7 @@ import {
   interpolateGpsTrackSegment,
   calculateTrackLengthMeters,
 } from '../utils/geoAudioInterpolation';
+import { normalizeAttachments, appendAttachmentsToGeminiParts } from '../utils/attachmentUtils';
 
 const DEFAULT_CENTER = [36.72595, -4.89462];
 
@@ -400,6 +401,7 @@ export async function callGeminiForInventoryAction({
   prompt,
   audio,
   attachment,
+  attachments,
   selectedTarget,
   visibleInventory = [],
   visiblePaths = [],
@@ -409,6 +411,7 @@ export async function callGeminiForInventoryAction({
 }) {
   if (!apiKey) throw new Error('API Key de Gemini no configurada.');
 
+  const attList = normalizeAttachments(attachments, attachment);
   const systemInstruction = buildMapSystemInstruction({
     selectedTarget,
     visibleInventory,
@@ -421,19 +424,8 @@ export async function callGeminiForInventoryAction({
   const userParts = [];
   if (prompt) userParts.push({ text: prompt });
 
-  if (attachment) {
-    if (attachment.textContent) {
-      userParts.push({ text: `\n\n📄 **CONTENIDO ADJUNTO ("${attachment.name || 'documento'}")**:\n\`\`\`\n${attachment.textContent}\n\`\`\`\n` });
-    }
-    if (attachment.dataUrl) {
-      const match = attachment.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
-      if (match) {
-        const cleanMime = match[1].toLowerCase().trim();
-        if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
-          userParts.push({ inlineData: { mimeType: cleanMime, data: match[2] } });
-        }
-      }
-    }
+  if (attList.length > 0) {
+    appendAttachmentsToGeminiParts(userParts, attList);
   }
 
   if (audio && audio.dataUrl) {
@@ -472,7 +464,7 @@ El agricultor caminaba por la finca mientras hablaba. Para cada árbol, arqueta 
   for (const modelId of GEMINI_MODELS_CASCADE) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), audio || attachment ? 45000 : 20000);
+      const timeoutId = setTimeout(() => controller.abort(), audio || attList.length > 0 ? 45000 : 20000);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
       const res = await fetch(url, {

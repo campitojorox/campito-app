@@ -84,14 +84,60 @@ export default function ChatMessageList({
               {isUser ? <User size={13} color="#fff" /> : <Bot size={13} color="#888" />}
             </div>
             <div style={styles.bubble(isUser)}>
-              {msg.image && (
+              {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: msg.content ? 6 : 0 }}>
+                  {msg.attachments.map((attItem, idx) =>
+                    attItem.isImage && attItem.dataUrl ? (
+                      <img
+                        key={`${attItem.name || 'img'}-${idx}`}
+                        src={attItem.dataUrl}
+                        alt={attItem.name || 'Adjunto'}
+                        style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, display: 'block' }}
+                      />
+                    ) : (
+                      <div
+                        key={`${attItem.name || 'file'}-${idx}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '7px 10px',
+                          backgroundColor: isUser ? 'rgba(255,255,255,0.18)' : '#f1f5f9',
+                          borderRadius: 8,
+                          maxWidth: 260,
+                          border: isUser ? '1px solid rgba(255,255,255,0.25)' : '1px solid #e2e8f0',
+                        }}
+                      >
+                        {attItem.isPdf ? (
+                          <FileText size={18} color={isUser ? '#ffffff' : '#dc2626'} />
+                        ) : attItem.isSpreadsheet ? (
+                          <FileSpreadsheet size={18} color={isUser ? '#ffffff' : '#16a34a'} />
+                        ) : (
+                          <Paperclip size={18} color={isUser ? '#ffffff' : '#0284c7'} />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {attItem.name}
+                          </p>
+                          {attItem.size > 0 && (
+                            <p style={{ margin: 0, fontSize: '0.64rem', opacity: 0.85 }}>
+                              {(attItem.size / 1024).toFixed(1)} KB
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+              {!msg.attachments && msg.image && (
                 <img
                   src={msg.image}
                   alt="Adjunto"
                   style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, marginBottom: 6, display: 'block' }}
                 />
               )}
-              {msg.file && !msg.image && (
+              {!msg.attachments && msg.file && !msg.image && (
                 <div
                   style={{
                     display: 'flex',

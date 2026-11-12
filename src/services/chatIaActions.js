@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { parseStructuredCommands, executeInventoryActions } from './mapIaOrchestrator';
 import { deleteCalendarEvent } from './calendarService';
 import { extractTableFromMarkdown } from '../utils/exportTools';
+import { normalizeAttachments } from '../utils/attachmentUtils';
 
 /**
  * Ejecuta comandos estructurados devueltos por Gemini (inventario, caminos, calendario,
@@ -391,32 +392,36 @@ export async function processChatResponseActions({
 export async function persistChatTurnToHistory({
   userText,
   att,
+  atts,
   aud,
-  effectivePt,
   displayedContent,
   serverThatAnswered,
 }) {
   try {
-    let uploadedFileUrl = null;
-    let uploadedFileName = null;
+    const attList = normalizeAttachments(atts, att);
+    const uploadedUrls = [];
+    const uploadedPaths = [];
 
-    if (att && att.file) {
-      const fileExt = att.name ? att.name.split('.').pop() : att.isPdf ? 'pdf' : 'jpg';
+    for (const item of attList) {
+      if (!item?.file) continue;
+      const fileExt = item.name ? item.name.split('.').pop() : item.isPdf ? 'pdf' : 'jpg';
       const cleanFileName = `chat-ia/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       try {
         const { error: uploadErr } = await supabase.storage
           .from('comprobantes')
-          .upload(cleanFileName, att.file, { contentType: att.type || 'application/octet-stream' });
+          .upload(cleanFileName, item.file, { contentType: item.type || 'application/octet-stream' });
 
         if (!uploadErr) {
           const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
-          uploadedFileUrl = pubUrl?.publicUrl || null;
-          uploadedFileName = cleanFileName;
+          if (pubUrl?.publicUrl) uploadedUrls.push(pubUrl.publicUrl);
+          uploadedPaths.push(cleanFileName);
         }
       } catch (fileErr) {
         console.warn('[ChatIA] No se pudo subir archivo a storage:', fileErr);
       }
-    } else if (aud && aud.blob) {
+    }
+
+    if (uploadedUrls.length === 0 && aud && aud.blob) {
       const ext = aud.mimeType?.includes('mp4')
         ? 'm4a'
         : aud.mimeType?.includes('ogg')
@@ -429,26 +434,33 @@ export async function persistChatTurnToHistory({
           .upload(cleanAudioName, aud.blob, { contentType: aud.mimeType || 'audio/webm' });
         if (!uploadAudioErr) {
           const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanAudioName);
-          uploadedFileUrl = pubUrl?.publicUrl || null;
-          uploadedFileName = cleanAudioName;
+          if (pubUrl?.publicUrl) uploadedUrls.push(pubUrl.publicUrl);
+          uploadedPaths.push(cleanAudioName);
         }
       } catch (audioUpErr) {
         console.warn('No se pudo subir audio a storage:', audioUpErr);
       }
     }
 
+    const uploadedFileUrl =
+      uploadedUrls.length > 1 ? JSON.stringify(uploadedUrls) : uploadedUrls[0] || null;
+    const uploadedFileName =
+      uploadedPaths.length > 1 ? JSON.stringify(uploadedPaths) : uploadedPaths[0] || null;
+
     const { data: authData } = await supabase.auth.getUser();
     const u = authData?.user;
     const currentUserName = u?.user_metadata?.name || u?.email?.split('@')[0] || 'Admin';
 
-    const gpsLabel = effectivePt
-      ? ` [GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]`
-      : '';
+    const attSummary =
+      attList.length > 1
+        ? `[${attList.length} archivos adjuntos: ${attList.map((a) => a.name).join(', ')}]`
+        : attList.length === 1
+          ? `[Archivo adjunto: ${attList[0].name}]`
+          : '';
+
     await supabase.from('chat_history').insert({
       role: 'user',
-      content:
-        (userText || (att ? `[Archivo adjunto: ${att.name}]` : aud ? `[Audio grabado: ${aud.duration}s]` : '')) +
-        gpsLabel,
+      content: userText || attSummary || (aud ? `[Audio grabado: ${aud.duration}s]` : ''),
       file_url: uploadedFileUrl,
       file_name: uploadedFileName,
       user_id: u?.id || null,

@@ -17,12 +17,19 @@ export const COMPLEX_MODELS = [
 
 export const DEFAULT_MODELS = FAST_MODELS;
 
+export function normalizeAttachments(attachments, singleAttachment = null) {
+  const list = Array.isArray(attachments) ? attachments.filter(Boolean) : [];
+  if (singleAttachment && list.length === 0) list.push(singleAttachment);
+  return list;
+}
+
 /**
  * Selecciona cascada rápida (Flash) para texto/consultas simples y Pro solo para adjuntos pesados o audios largos.
  */
-export function selectModelsForRequest({ models, prompt, attachment, audio }) {
+export function selectModelsForRequest({ models, prompt, attachment, attachments, audio }) {
   if (Array.isArray(models) && models.length > 0) return models;
-  const hasHeavyAttachment = Boolean(attachment?.dataUrl);
+  const attList = normalizeAttachments(attachments, attachment);
+  const hasHeavyAttachment = attList.some((att) => Boolean(att?.dataUrl));
   const hasLongAudio = Boolean(
     audio?.dataUrl && ((audio?.duration || 0) >= 45 || audio.dataUrl.length > 600000)
   );
@@ -38,12 +45,14 @@ export async function callGeminiCascade({
   systemInstruction,
   history = [],
   attachment = null,
+  attachments = null,
   audio = null,
   models = DEFAULT_MODELS,
   responseMimeType = null,
   apiKey,
 }) {
   const contents = [];
+  const attList = normalizeAttachments(attachments, attachment);
 
   if (Array.isArray(history) && history.length > 0) {
     for (const msg of history) {
@@ -61,20 +70,25 @@ export async function callGeminiCascade({
     userParts.push({ text: prompt.trim() });
   }
 
-  if (attachment) {
-    if (attachment.textContent) {
+  for (const att of attList) {
+    if (att.textContent) {
       userParts.push({
-        text: `\n\n📄 **CONTENIDO DEL ARCHIVO ADJUNTO ("${attachment.name || 'documento'}")**:\n\`\`\`\n${attachment.textContent}\n\`\`\`\n`,
+        text: `\n\n📄 **CONTENIDO DEL ARCHIVO ADJUNTO ("${att.name || 'documento'}")**:\n\`\`\`\n${att.textContent}\n\`\`\`\n`,
       });
+      continue;
     }
-    if (attachment.dataUrl) {
-      const match = attachment.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
+    if (att.dataUrl) {
+      const match = att.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
       if (match) {
         const cleanMime = match[1].toLowerCase().trim();
         if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
           userParts.push({ inlineData: { mimeType: cleanMime, data: match[2] } });
+          continue;
         }
       }
+      userParts.push({
+        text: `\n\n📎 Archivo adjunto: "${att.name || 'documento'}" (${att.type || 'archivo binario'}).`,
+      });
     }
   }
 
@@ -112,7 +126,7 @@ export async function callGeminiCascade({
   for (const modelId of cascade) {
     try {
       const controller = new AbortController();
-      const timeoutMs = audio || attachment ? 45000 : 25000;
+      const timeoutMs = audio || attList.length > 0 ? 45000 : 25000;
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;

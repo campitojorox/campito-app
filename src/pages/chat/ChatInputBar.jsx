@@ -3,8 +3,6 @@ import {
   AlertCircle,
   X,
   StopCircle,
-  FileText,
-  FileSpreadsheet,
   Plus,
   Trash2,
   Play,
@@ -16,6 +14,8 @@ import {
 } from 'lucide-react';
 import { syncTextareaHeight } from '../../utils/helpers';
 import { formatAudioTime } from '../../hooks/useAudioRecorder';
+import { ACCEPTED_CHAT_FILE_TYPES } from '../../utils/attachmentUtils';
+import PendingAttachmentsList from '../../components/PendingAttachmentsList';
 import { styles } from './chatIaStyles';
 
 export default function ChatInputBar({
@@ -27,8 +27,8 @@ export default function ChatInputBar({
   accuracyWarning,
   gpsPointsCount,
   handleMicClick,
-  pendingAttachment,
-  setPendingAttachment,
+  pendingAttachments = [],
+  setPendingAttachments,
   docInputRef,
   fileInputRef,
   handleDocumentChange,
@@ -162,77 +162,24 @@ export default function ChatInputBar({
         </div>
       )}
 
-      {pendingAttachment && (
-        <div
-          style={{
-            padding: '8px 14px',
-            backgroundColor: '#f8fafc',
-            borderTop: '1px solid #e2e8f0',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flexShrink: 0,
-          }}
-        >
-          {pendingAttachment.isImage && pendingAttachment.dataUrl ? (
-            <img
-              src={pendingAttachment.dataUrl}
-              alt="Vista previa"
-              style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover' }}
-            />
-          ) : pendingAttachment.isPdf ? (
-            <div style={{ width: 38, height: 38, borderRadius: 8, backgroundColor: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <FileText size={20} color="#dc2626" />
-            </div>
-          ) : pendingAttachment.isSpreadsheet ? (
-            <div style={{ width: 38, height: 38, borderRadius: 8, backgroundColor: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <FileSpreadsheet size={20} color="#16a34a" />
-            </div>
-          ) : (
-            <div style={{ width: 38, height: 38, borderRadius: 8, backgroundColor: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <FileText size={20} color="#0284c7" />
-            </div>
-          )}
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: '0.8rem', fontWeight: 600, color: '#1e293b', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {pendingAttachment.name}
-            </p>
-            <p style={{ fontSize: '0.68rem', color: '#64748b', margin: 0 }}>
-              {(pendingAttachment.size / 1024).toFixed(1)} KB ·{' '}
-              {pendingAttachment.isPdf
-                ? 'Documento PDF (listo para analizar)'
-                : pendingAttachment.isSpreadsheet
-                  ? 'Hoja de Cálculo'
-                  : pendingAttachment.isImage
-                    ? 'Foto de campo'
-                    : 'Documento de texto'}
-            </p>
-          </div>
-
-          <button
-            onClick={() => setPendingAttachment(null)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              padding: 4,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            title="Quitar archivo"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
+      <PendingAttachmentsList
+        attachments={pendingAttachments}
+        onRemove={(idOrIdx, idx) =>
+          setPendingAttachments((prev) =>
+            prev.filter((item, i) => (item.id ? item.id !== idOrIdx : i !== idx))
+          )
+        }
+        onClearAll={() => setPendingAttachments([])}
+        variant="bar"
+        imageLabel="Foto de campo"
+      />
 
       <div style={styles.inputBar}>
         <input
           ref={docInputRef}
           type="file"
-          accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,.json,.geojson,.kml,.kmz,image/*,application/pdf"
+          multiple
+          accept={ACCEPTED_CHAT_FILE_TYPES}
           onChange={handleDocumentChange}
           style={{ display: 'none' }}
         />
@@ -248,10 +195,10 @@ export default function ChatInputBar({
 
         <button
           className="chatia-iconbtn"
-          style={styles.iconBtn(!!pendingAttachment && !pendingAttachment.isImage)}
+          style={styles.iconBtn(pendingAttachments.some((a) => !a.isImage))}
           onClick={handleAttachClick}
-          aria-label="Adjuntar archivo o documento (+)"
-          title="Adjuntar archivo o documento (+)"
+          aria-label="Adjuntar archivos o documentos (+)"
+          title="Adjuntar uno o varios archivos (+)"
         >
           <Plus size={20} />
         </button>
@@ -403,7 +350,7 @@ export default function ChatInputBar({
 
             <button
               className="chatia-iconbtn"
-              style={styles.capsuleCameraBtn(!!pendingAttachment?.isImage)}
+              style={styles.capsuleCameraBtn(pendingAttachments.some((a) => a.isImage))}
               onClick={handleCameraClick}
               aria-label="Tomar foto con la cámara"
               title="Tomar foto con la cámara"

@@ -247,7 +247,7 @@ export default function FarmSatelliteMap({
   const [isProcessingIa, setIsProcessingIa] = useState(false);
   const [iaFeedback, setIaFeedback] = useState(null);
   const [undoStack, setUndoStack] = useState([]);
-  const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const mapIaTextareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
@@ -746,8 +746,8 @@ export default function FarmSatelliteMap({
     setIaFeedback,
     undoStack,
     setUndoStack,
-    pendingAttachment,
-    setPendingAttachment,
+    pendingAttachments,
+    setPendingAttachments,
     mapIaTextareaRef,
     fileInputRef,
     docInputRef,
@@ -836,8 +836,8 @@ export default function FarmSatelliteMap({
           handleDirectFieldUpdate={handleDirectFieldUpdate}
           handleDeleteTarget={handleDeleteTarget}
           handleDeleteNode={handleDeleteNode}
-          pendingAttachment={pendingAttachment}
-          setPendingAttachment={setPendingAttachment}
+          pendingAttachments={pendingAttachments}
+          setPendingAttachments={setPendingAttachments}
           iaFeedback={iaFeedback}
           setIaFeedback={setIaFeedback}
           isProcessingIa={isProcessingIa}

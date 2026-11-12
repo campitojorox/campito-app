@@ -11,10 +11,11 @@ import {
   Mic,
   Undo2,
   X,
-  FileText,
 } from 'lucide-react';
 import { syncTextareaHeight } from '../../utils/helpers';
 import { formatAudioTime } from '../../hooks/useAudioRecorder';
+import { ACCEPTED_CHAT_FILE_TYPES } from '../../utils/attachmentUtils';
+import PendingAttachmentsList from '../PendingAttachmentsList';
 import MapSelectionCard from './MapSelectionCard';
 import { styles } from './mapStyles';
 
@@ -26,8 +27,8 @@ export default function MapIaBottomBar({
   handleDirectFieldUpdate,
   handleDeleteTarget,
   handleDeleteNode,
-  pendingAttachment,
-  setPendingAttachment,
+  pendingAttachments = [],
+  setPendingAttachments,
   iaFeedback,
   setIaFeedback,
   isProcessingIa,
@@ -75,39 +76,17 @@ export default function MapIaBottomBar({
         handleDeleteNode={handleDeleteNode}
       />
 
-      {pendingAttachment && (
-        <div style={styles.pendingAttachmentCard}>
-          {pendingAttachment.isImage && pendingAttachment.dataUrl ? (
-            <img
-              src={pendingAttachment.dataUrl}
-              alt="Foto adjunta"
-              style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }}
-            />
-          ) : (
-            <div style={styles.pendingDocIcon}>
-              <FileText size={20} color="#00979d" />
-            </div>
-          )}
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={styles.pendingAttachmentName}>{pendingAttachment.name}</p>
-            <p style={styles.pendingAttachmentMeta}>
-              {(pendingAttachment.size / 1024).toFixed(1)} KB ·{' '}
-              {pendingAttachment.isImage ? 'Fotografía lista para vincular' : 'Documento listo'}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setPendingAttachment(null)}
-            style={styles.targetCloseBtn}
-            title="Quitar archivo adjunto"
-            aria-label="Quitar archivo"
-          >
-            <X size={15} />
-          </button>
-        </div>
-      )}
+      <PendingAttachmentsList
+        attachments={pendingAttachments}
+        onRemove={(idOrIdx, idx) =>
+          setPendingAttachments((prev) =>
+            prev.filter((item, i) => (item.id ? item.id !== idOrIdx : i !== idx))
+          )
+        }
+        onClearAll={() => setPendingAttachments([])}
+        variant="card"
+        imageLabel="Fotografía lista para vincular"
+      />
 
       {iaFeedback && (
         <div
@@ -151,7 +130,8 @@ export default function MapIaBottomBar({
         <input
           ref={docInputRef}
           type="file"
-          accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,image/*,application/pdf"
+          multiple
+          accept={ACCEPTED_CHAT_FILE_TYPES}
           onChange={handleDocumentChange}
           style={{ display: 'none' }}
         />
@@ -168,12 +148,12 @@ export default function MapIaBottomBar({
           type="button"
           style={{
             ...styles.chatIaAttachBtn,
-            backgroundColor: pendingAttachment && !pendingAttachment.isImage ? '#00979d' : '#f0f0f0',
-            color: pendingAttachment && !pendingAttachment.isImage ? '#ffffff' : '#555555',
+            backgroundColor: pendingAttachments.some((a) => !a.isImage) ? '#00979d' : '#f0f0f0',
+            color: pendingAttachments.some((a) => !a.isImage) ? '#ffffff' : '#555555',
           }}
           onClick={handleAttachClick}
-          aria-label="Adjuntar archivo o documento (+)"
-          title="Adjuntar archivo o documento (+)"
+          aria-label="Adjuntar archivos o documentos (+)"
+          title="Adjuntar uno o varios archivos (+)"
         >
           <Plus size={20} />
         </button>
@@ -305,8 +285,8 @@ export default function MapIaBottomBar({
               type="button"
               style={{
                 ...styles.capsuleCameraBtn,
-                background: pendingAttachment?.isImage ? '#00979d' : 'transparent',
-                color: pendingAttachment?.isImage ? '#ffffff' : '#64748b',
+                background: pendingAttachments.some((a) => a.isImage) ? '#00979d' : 'transparent',
+                color: pendingAttachments.some((a) => a.isImage) ? '#ffffff' : '#64748b',
               }}
               onClick={handleCameraClick}
               aria-label="Tomar foto con la cámara"
@@ -332,7 +312,7 @@ export default function MapIaBottomBar({
           >
             <StopCircle size={20} />
           </button>
-        ) : mapIaInput.trim() || pendingVoiceAudio || pendingAttachment ? (
+        ) : mapIaInput.trim() || pendingVoiceAudio || pendingAttachments.length > 0 ? (
           <button
             type="button"
             onClick={handleSendMapIaOrder}

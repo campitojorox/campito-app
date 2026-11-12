@@ -13,11 +13,12 @@ import {
   Play,
   Pause,
   X,
-  FileText,
   Undo2,
 } from 'lucide-react';
 import { useAudioRecorder, formatAudioTime } from '../hooks/useAudioRecorder';
 import { syncTextareaHeight } from '../utils/helpers';
+import { ACCEPTED_CHAT_FILE_TYPES, readFilesAsAttachments } from '../utils/attachmentUtils';
+import PendingAttachmentsList from './PendingAttachmentsList';
 import {
   buildSectionSystemInstruction,
   loadFarmKnowledgeSafe,
@@ -76,7 +77,7 @@ export default function SectionChatIA({
     [section]
   );
 
-  const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const docInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -137,7 +138,7 @@ export default function SectionChatIA({
       const aiResult = job.result || {};
       const ctx = contextDataRef.current || {};
       const actions = Array.isArray(aiResult.actions) ? aiResult.actions : [];
-      const attForJob = pendingAttachmentsByJobRef.current.get(job.jobId) || null;
+      const attsForJob = pendingAttachmentsByJobRef.current.get(job.jobId) || [];
       pendingAttachmentsByJobRef.current.delete(job.jobId);
 
       if (section === 'calendario') {
@@ -255,7 +256,8 @@ export default function SectionChatIA({
             actions,
             records: ctx.records || [],
             users: ctx.users || [],
-            attachment: attForJob,
+            attachment: attsForJob[0] || null,
+            attachments: attsForJob,
             currentUser: ctx.currentUser,
           });
           markJobActionsApplied(job.jobId);
@@ -370,63 +372,28 @@ export default function SectionChatIA({
     return unsubscribe;
   }, [section, applyCompletedSectionJob]);
 
-  const handleCameraChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPendingAttachment({
-        file,
-        name: file.name || `foto-${Date.now()}.jpg`,
-        size: file.size,
-        type: file.type || 'image/jpeg',
-        dataUrl: ev.target.result,
-        textContent: null,
-        isImage: true,
-        isPdf: false,
-      });
-    };
-    reader.readAsDataURL(file);
+  const handleCameraChange = async (e) => {
+    const items = await readFilesAsAttachments(e.target.files, { forceImage: true });
+    if (items.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...items]);
+    }
     e.target.value = '';
   };
 
-  const handleDocumentChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const nameLower = file.name.toLowerCase();
-    const isImg = file.type.startsWith('image/');
-    const isPdf = file.type === 'application/pdf' || nameLower.endsWith('.pdf');
-    const isText =
-      file.type.startsWith('text/') ||
-      nameLower.endsWith('.txt') ||
-      nameLower.endsWith('.csv') ||
-      nameLower.endsWith('.json') ||
-      nameLower.endsWith('.md');
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPendingAttachment({
-        file,
-        name: file.name,
-        size: file.size,
-        type: file.type || (isText ? 'text/plain' : isPdf ? 'application/pdf' : 'application/octet-stream'),
-        textContent: isText ? ev.target.result : null,
-        dataUrl: isText ? null : ev.target.result,
-        isImage: !isText && isImg,
-        isPdf: !isText && isPdf,
-      });
-    };
-    if (isText) reader.readAsText(file);
-    else reader.readAsDataURL(file);
+  const handleDocumentChange = async (e) => {
+    const items = await readFilesAsAttachments(e.target.files);
+    if (items.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...items]);
+    }
     e.target.value = '';
   };
 
   const handleSendOrder = async () => {
     const textOrder = inputText.trim();
     const audioOrder = pendingVoiceAudio;
-    const attOrder = pendingAttachment;
+    const attsOrder = pendingAttachments;
 
-    if (!textOrder && !audioOrder && !attOrder) return;
+    if (!textOrder && !audioOrder && attsOrder.length === 0) return;
     if (isProcessingIa) return;
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -438,7 +405,7 @@ export default function SectionChatIA({
     setInputText('');
     syncTextareaHeight(textareaRef.current, '');
     setPendingVoiceAudio(null);
-    setPendingAttachment(null);
+    setPendingAttachments([]);
     setIsProcessingIa(true);
     setIaFeedback({
       type: 'info',
@@ -452,11 +419,12 @@ export default function SectionChatIA({
     const systemInstruction = buildSectionSystemInstruction(section, contextData, knowledge);
 
     let effectivePrompt = textOrder;
-    if (!effectivePrompt && attOrder && !audioOrder) {
+    if (!effectivePrompt && attsOrder.length > 0 && !audioOrder) {
+      const namesLabel = attsOrder.map((a) => `"${a.name || 'documento'}"`).join(', ');
       effectivePrompt =
         section === 'gasto-ingreso'
-          ? 'Analiza esta factura, ticket o documento adjunto, extrae importe, concepto, tipo (Gasto o Retiro/Ingreso) y socio si aparece, y prepáralo en formato CREATE_TRANSACTION o resúmelo.'
-          : 'Analiza este documento o imagen adjunta en relación al calendario de Campito Jorox y genera las acciones o respuestas correspondientes.';
+          ? `Analiza ${attsOrder.length > 1 ? 'estas facturas, tickets o documentos adjuntos' : 'esta factura, ticket o documento adjunto'} (${namesLabel}), extrae importe, concepto, tipo (Gasto o Retiro/Ingreso) y socio si aparece, y prepáralo en formato CREATE_TRANSACTION o resúmelo.`
+          : `Analiza ${attsOrder.length > 1 ? 'estos documentos o imágenes adjuntas' : 'este documento o imagen adjunta'} (${namesLabel}) en relación al calendario de Campito Jorox y genera las acciones o respuestas correspondientes.`;
     } else if (!effectivePrompt && audioOrder) {
       effectivePrompt =
         section === 'calendario'
@@ -468,7 +436,8 @@ export default function SectionChatIA({
       section,
       prompt: effectivePrompt,
       systemInstruction,
-      attachment: attOrder,
+      attachment: attsOrder[0] || null,
+      attachments: attsOrder,
       audio: audioOrder,
       responseMimeType: 'application/json',
       userMeta: { userName: contextData.currentUser || 'Ariel' },
@@ -477,14 +446,15 @@ export default function SectionChatIA({
           section,
           prompt: textOrder,
           audio: audioOrder,
-          attachment: attOrder,
+          attachment: attsOrder[0] || null,
+          attachments: attsOrder,
           contextData,
           apiKey,
         }),
     });
 
-    if (attOrder) {
-      pendingAttachmentsByJobRef.current.set(jobId, attOrder);
+    if (attsOrder.length > 0) {
+      pendingAttachmentsByJobRef.current.set(jobId, attsOrder);
     }
   };
 
@@ -525,36 +495,17 @@ export default function SectionChatIA({
         getEventColor={getEventColor}
       />
 
-      {pendingAttachment && (
-        <div style={styles.pendingAttachmentCard}>
-          {pendingAttachment.isImage && pendingAttachment.dataUrl ? (
-            <img
-              src={pendingAttachment.dataUrl}
-              alt="Adjunto"
-              style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }}
-            />
-          ) : (
-            <div style={styles.pendingDocIcon}>
-              <FileText size={20} color="#00979d" />
-            </div>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={styles.pendingAttachmentName}>{pendingAttachment.name}</p>
-            <p style={styles.pendingAttachmentMeta}>
-              {(pendingAttachment.size / 1024).toFixed(1)} KB ·{' '}
-              {pendingAttachment.isImage ? 'Foto lista para analizar' : 'Documento listo'}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setPendingAttachment(null)}
-            style={styles.targetCloseBtn}
-            title="Quitar adjunto"
-          >
-            <X size={15} />
-          </button>
-        </div>
-      )}
+      <PendingAttachmentsList
+        attachments={pendingAttachments}
+        onRemove={(idOrIdx, idx) =>
+          setPendingAttachments((prev) =>
+            prev.filter((item, i) => (item.id ? item.id !== idOrIdx : i !== idx))
+          )
+        }
+        onClearAll={() => setPendingAttachments([])}
+        variant="card"
+        imageLabel="Foto lista para analizar"
+      />
 
       {iaFeedback && (
         <div
@@ -598,7 +549,8 @@ export default function SectionChatIA({
         <input
           ref={docInputRef}
           type="file"
-          accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,image/*,application/pdf"
+          multiple
+          accept={ACCEPTED_CHAT_FILE_TYPES}
           onChange={handleDocumentChange}
           style={{ display: 'none' }}
         />
@@ -615,12 +567,12 @@ export default function SectionChatIA({
           type="button"
           style={{
             ...styles.chatIaAttachBtn,
-            backgroundColor: pendingAttachment && !pendingAttachment.isImage ? '#00979d' : '#f0f0f0',
-            color: pendingAttachment && !pendingAttachment.isImage ? '#ffffff' : '#555555',
+            backgroundColor: pendingAttachments.some((a) => !a.isImage) ? '#00979d' : '#f0f0f0',
+            color: pendingAttachments.some((a) => !a.isImage) ? '#ffffff' : '#555555',
           }}
           onClick={() => docInputRef.current?.click()}
-          aria-label="Adjuntar archivo o documento (+)"
-          title="Adjuntar archivo o documento (+)"
+          aria-label="Adjuntar archivos o documentos (+)"
+          title="Adjuntar uno o varios archivos (+)"
         >
           <Plus size={20} />
         </button>
@@ -715,8 +667,8 @@ export default function SectionChatIA({
               type="button"
               style={{
                 ...styles.capsuleCameraBtn,
-                background: pendingAttachment?.isImage ? '#00979d' : 'transparent',
-                color: pendingAttachment?.isImage ? '#ffffff' : '#64748b',
+                background: pendingAttachments.some((a) => a.isImage) ? '#00979d' : 'transparent',
+                color: pendingAttachments.some((a) => a.isImage) ? '#ffffff' : '#64748b',
               }}
               onClick={() => fileInputRef.current?.click()}
               aria-label="Tomar foto con la cámara"
@@ -742,7 +694,7 @@ export default function SectionChatIA({
           >
             <StopCircle size={20} />
           </button>
-        ) : inputText.trim() || pendingVoiceAudio || pendingAttachment ? (
+        ) : inputText.trim() || pendingVoiceAudio || pendingAttachments.length > 0 ? (
           <button
             type="button"
             onClick={handleSendOrder}

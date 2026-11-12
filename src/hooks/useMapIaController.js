@@ -28,6 +28,7 @@ import {
   markJobActionsApplied,
 } from '../services/aiBackgroundJobManager';
 import { syncTextareaHeight } from '../utils/helpers';
+import { readFilesAsAttachments } from '../utils/attachmentUtils';
 import { DEFAULT_CENTER, isDeleteIntent } from '../components/map/mapUtils';
 
 const mapRuntimeContextMap = new globalThis.Map();
@@ -56,8 +57,8 @@ export function useMapIaController({
   setIaFeedback,
   undoStack,
   setUndoStack,
-  pendingAttachment,
-  setPendingAttachment,
+  pendingAttachments,
+  setPendingAttachments,
   mapIaTextareaRef,
   fileInputRef,
   docInputRef,
@@ -143,83 +144,20 @@ export function useMapIaController({
 
   const handleCameraClick = () => fileInputRef.current?.click();
 
-  const handleCameraChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPendingAttachment({
-        file,
-        name: file.name || `foto-${Date.now()}.jpg`,
-        size: file.size,
-        type: file.type || 'image/jpeg',
-        dataUrl: ev.target.result,
-        textContent: null,
-        isImage: true,
-        isPdf: false,
-        isSpreadsheet: false,
-        isText: false,
-      });
-    };
-    reader.readAsDataURL(file);
+  const handleCameraChange = async (e) => {
+    const items = await readFilesAsAttachments(e.target.files, { forceImage: true });
+    if (items.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...items]);
+    }
     e.target.value = '';
   };
 
   const handleAttachClick = () => docInputRef.current?.click();
 
-  const handleDocumentChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const nameLower = file.name.toLowerCase();
-    const isImg = file.type.startsWith('image/');
-    const isPdf = file.type === 'application/pdf' || nameLower.endsWith('.pdf');
-    const isSpreadsheet =
-      nameLower.endsWith('.xlsx') || nameLower.endsWith('.xls') || nameLower.endsWith('.csv');
-    const isText =
-      file.type.startsWith('text/') ||
-      nameLower.endsWith('.txt') ||
-      nameLower.endsWith('.csv') ||
-      nameLower.endsWith('.json') ||
-      nameLower.endsWith('.geojson') ||
-      nameLower.endsWith('.kml') ||
-      nameLower.endsWith('.md');
-
-    if (isText) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setPendingAttachment({
-          file,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'text/plain',
-          textContent: ev.target.result,
-          dataUrl: null,
-          isImage: false,
-          isPdf: false,
-          isSpreadsheet,
-          isText: true,
-        });
-      };
-      reader.readAsText(file);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setPendingAttachment({
-          file,
-          name: file.name,
-          size: file.size,
-          type: file.type || (isPdf ? 'application/pdf' : 'application/octet-stream'),
-          textContent: null,
-          dataUrl: ev.target.result,
-          isImage: isImg,
-          isPdf,
-          isSpreadsheet,
-          isText: false,
-        });
-      };
-      reader.readAsDataURL(file);
+  const handleDocumentChange = async (e) => {
+    const items = await readFilesAsAttachments(e.target.files);
+    if (items.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...items]);
     }
     e.target.value = '';
   };
@@ -235,16 +173,16 @@ export function useMapIaController({
   const handleSendMapIaOrder = async () => {
     const textOrder = mapIaInput.trim();
     const audioOrder = pendingVoiceAudio;
-    const attOrder = pendingAttachment;
+    const attsOrder = pendingAttachments;
 
-    if (!textOrder && !audioOrder && !attOrder) return;
+    if (!textOrder && !audioOrder && attsOrder.length === 0) return;
     if (isProcessingIa) return;
 
     if (selectedTarget && (isDeleteIntent(textOrder) || (audioOrder && isDeleteIntent(audioOrder.transcription)))) {
       setMapIaInput('');
       syncTextareaHeight(mapIaTextareaRef.current, '');
       setPendingVoiceAudio(null);
-      setPendingAttachment(null);
+      setPendingAttachments([]);
       await handleDeleteTarget();
       return;
     }
@@ -253,7 +191,7 @@ export function useMapIaController({
     if (directParsed.points.length > 0 || directParsed.deletions.length > 0) {
       setMapIaInput('');
       setPendingVoiceAudio(null);
-      setPendingAttachment(null);
+      setPendingAttachments([]);
       setIsProcessingIa(true);
       setIaFeedback({
         type: 'info',
@@ -353,13 +291,14 @@ export function useMapIaController({
     setIaFeedback({ type: 'info', text: '🤖 Analizando orden y ejecutando cambios en el mapa...' });
 
     let uploadedPhotoUrl = null;
-    if (attOrder?.file && attOrder.isImage) {
+    const firstImageAtt = attsOrder.find((a) => a?.file && a.isImage) || null;
+    if (firstImageAtt) {
       try {
-        const fileExt = attOrder.name ? attOrder.name.split('.').pop() : 'jpg';
+        const fileExt = firstImageAtt.name ? firstImageAtt.name.split('.').pop() : 'jpg';
         const cleanFileName = `map-photos/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const { error: upErr } = await supabase.storage
           .from('comprobantes')
-          .upload(cleanFileName, attOrder.file, { contentType: attOrder.type || 'image/jpeg' });
+          .upload(cleanFileName, firstImageAtt.file, { contentType: firstImageAtt.type || 'image/jpeg' });
         if (!upErr) {
           const { data: pubData } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
           uploadedPhotoUrl = pubData?.publicUrl || null;
@@ -367,15 +306,15 @@ export function useMapIaController({
       } catch (upEx) {
         console.warn('[MapAI] Error subiendo foto a Supabase storage:', upEx);
       }
-      if (!uploadedPhotoUrl && attOrder.dataUrl) {
-        uploadedPhotoUrl = attOrder.dataUrl;
+      if (!uploadedPhotoUrl && firstImageAtt.dataUrl) {
+        uploadedPhotoUrl = firstImageAtt.dataUrl;
       }
     }
 
     setMapIaInput('');
     syncTextareaHeight(mapIaTextareaRef.current, '');
     setPendingVoiceAudio(null);
-    setPendingAttachment(null);
+    setPendingAttachments([]);
 
     const center = mapInstanceRef.current
       ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng]
@@ -421,7 +360,8 @@ export function useMapIaController({
       section: 'mapas',
       prompt: effectivePrompt,
       systemInstruction,
-      attachment: attOrder,
+      attachment: attsOrder[0] || null,
+      attachments: attsOrder,
       audio: audioOrder,
       responseMimeType: 'application/json',
       uiMeta: {
@@ -434,7 +374,8 @@ export function useMapIaController({
         const directParsed = await callGeminiForInventoryAction({
           prompt: textOrder,
           audio: audioOrder,
-          attachment: attOrder,
+          attachment: attsOrder[0] || null,
+          attachments: attsOrder,
           selectedTarget,
           visibleInventory: filteredInventory,
           visiblePaths: filteredPaths,

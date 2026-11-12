@@ -26,6 +26,7 @@ import {
 import { SYSTEM_PROMPT, buildComprehensiveFincaContext } from '../services/fincaContextBuilder';
 import { GEMINI_SERVERS, callGeminiDirect } from '../services/geminiDirectClient';
 import { processChatResponseActions, persistChatTurnToHistory } from '../services/chatIaActions';
+import { readFilesAsAttachments, normalizeAttachments } from '../utils/attachmentUtils';
 import { styles } from './chat/chatIaStyles';
 import ServerSelectorModal from './chat/ServerSelectorModal';
 import ChatInfoModal from './chat/ChatInfoModal';
@@ -35,6 +36,10 @@ import ChatInputBar from './chat/ChatInputBar';
 const CatastroLiveModal = lazy(() => import('./chat/CatastroLiveModal'));
 
 const chatIaRuntimeContextMap = new globalThis.Map();
+
+function stripLegacyGpsTag(text) {
+  return (text || '').replace(/\s*\[GPS:\s*-?\d+(?:\.\d+)?,\s*-?\d+(?:\.\d+)?\]$/i, '');
+}
 
 const WELCOME_MESSAGE = {
   id: 'welcome',
@@ -139,7 +144,13 @@ export default function ChatIA() {
       const cached = localStorage.getItem(`campito_chat_messages_${lastUid}`);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((m) =>
+            m?.role === 'user' && typeof m.content === 'string'
+              ? { ...m, content: stripLegacyGpsTag(m.content) }
+              : m
+          );
+        }
       }
     } catch (e) {
       console.warn('[ChatIA] Error leyendo caché local de mensajes:', e);
@@ -168,7 +179,7 @@ export default function ChatIA() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [pendingAttachment, setPendingAttachment] = useState(null);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
 
   const deviceGpsRef = useRef(null);
   const contextDataRef = useRef('');
@@ -233,18 +244,48 @@ export default function ChatIA() {
             .limit(40);
 
           if (!dbErr && dbHistory && dbHistory.length > 0 && isMounted) {
-            const restored = dbHistory.map((row) => ({
-              id: String(row.id),
-              role: row.role,
-              content: row.content || '',
-              image: row.file_url && /\.(jpg|jpeg|png|webp|gif)/i.test(row.file_url) ? row.file_url : null,
-              audio:
-                row.file_url && /\.(webm|mp4|m4a|ogg|wav|mp3)/i.test(row.file_url)
-                  ? { dataUrl: row.file_url }
-                  : null,
-              serverUsed: row.model_used ? { name: row.model_used } : null,
-              timestamp: row.created_at,
-            }));
+            const restored = dbHistory.map((row) => {
+              let fileUrls = [];
+              if (row.file_url) {
+                if (row.file_url.trim().startsWith('[')) {
+                  try {
+                    const parsed = JSON.parse(row.file_url);
+                    if (Array.isArray(parsed)) fileUrls = parsed.filter(Boolean);
+                  } catch {
+                    fileUrls = [row.file_url];
+                  }
+                } else {
+                  fileUrls = [row.file_url];
+                }
+              }
+              const restoredAttachments = fileUrls
+                .filter((u) => !/\.(webm|mp4|m4a|ogg|wav|mp3)(\?|$)/i.test(u))
+                .map((u, idx) => {
+                  const cleanName = decodeURIComponent(u.split('/').pop()?.split('?')[0] || `Archivo ${idx + 1}`);
+                  const isImg = /\.(jpg|jpeg|png|webp|gif|heic)(\?|$)/i.test(u);
+                  const isPdf = /\.pdf(\?|$)/i.test(u);
+                  const isSpreadsheet = /\.(xlsx|xls|csv)(\?|$)/i.test(u);
+                  return {
+                    name: cleanName,
+                    isImage: isImg,
+                    isPdf,
+                    isSpreadsheet,
+                    dataUrl: u,
+                  };
+                });
+              const firstAudioUrl =
+                fileUrls.find((u) => /\.(webm|mp4|m4a|ogg|wav|mp3)(\?|$)/i.test(u)) || null;
+
+              return {
+                id: String(row.id),
+                role: row.role,
+                content: stripLegacyGpsTag(row.content),
+                attachments: restoredAttachments.length > 0 ? restoredAttachments : null,
+                audio: firstAudioUrl ? { dataUrl: firstAudioUrl } : null,
+                serverUsed: row.model_used ? { name: row.model_used } : null,
+                timestamp: row.created_at,
+              };
+            });
 
             const merged = [WELCOME_MESSAGE, ...restored];
             setMessages(merged);
@@ -271,7 +312,7 @@ export default function ChatIA() {
     setMessages([WELCOME_MESSAGE]);
     setInput('');
     updatePendingAudio(null);
-    setPendingAttachment(null);
+    setPendingAttachments([]);
     if (currentUserId) {
       try {
         localStorage.removeItem(`campito_chat_messages_${currentUserId}`);
@@ -534,7 +575,7 @@ export default function ChatIA() {
       chatIaRuntimeContextMap.delete(job.jobId);
 
       const text = runtimeCtx.text ?? job.uiMeta?.text ?? '';
-      const att = runtimeCtx.att || null;
+      const atts = runtimeCtx.atts || (runtimeCtx.att ? [runtimeCtx.att] : []);
       const aud = runtimeCtx.aud || job.uiMeta?.audioMeta || null;
       const effectivePt = runtimeCtx.effectivePt || job.uiMeta?.effectivePt || deviceGpsRef.current || null;
       const currentEvents = runtimeCtx.currentEvents || (fincaEvents.length > 0 ? fincaEvents : outletEvents);
@@ -672,9 +713,8 @@ export default function ChatIA() {
       if (!job.persistedToDb) {
         persistChatTurnToHistory({
           userText: text,
-          att,
+          atts,
           aud,
-          effectivePt,
           displayedContent,
           serverThatAnswered,
         });
@@ -709,10 +749,10 @@ export default function ChatIA() {
   const sendMessage = useCallback(
     async (textOverride = null, attachmentData = null, audioData = null) => {
       const text = textOverride ?? input.trim();
-      const att = attachmentData ?? pendingAttachment;
+      const atts = attachmentData ? normalizeAttachments(attachmentData, attachmentData) : pendingAttachments;
       const aud = audioData ?? pendingAudio;
 
-      if (!text && !att && !aud) return;
+      if (!text && atts.length === 0 && !aud) return;
       if (isLoading) return;
 
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -721,14 +761,29 @@ export default function ChatIA() {
         return;
       }
 
+      const fallbackAttText =
+        atts.length > 1
+          ? `📎 ${atts.length} archivos (${atts.map((a) => a.name).join(', ')})`
+          : atts.length === 1
+            ? `📎 ${atts[0].name}`
+            : '';
+
       const userMsg = {
         id: Date.now().toString(),
         role: 'user',
-        content: text || (att ? `📎 ${att.name}` : aud ? '🎙️ Mensaje de voz' : ''),
-        image: att?.isImage ? att.dataUrl : null,
-        file: att
-          ? { name: att.name, size: att.size, type: att.type, isPdf: att.isPdf, isSpreadsheet: att.isSpreadsheet, dataUrl: att.dataUrl }
-          : null,
+        content: text || fallbackAttText || (aud ? '🎙️ Mensaje de voz' : ''),
+        attachments:
+          atts.length > 0
+            ? atts.map((a) => ({
+                name: a.name,
+                size: a.size,
+                type: a.type,
+                isImage: a.isImage,
+                isPdf: a.isPdf,
+                isSpreadsheet: a.isSpreadsheet,
+                dataUrl: a.dataUrl,
+              }))
+            : null,
         audio: aud ? { dataUrl: aud.dataUrl, duration: aud.duration } : null,
       };
 
@@ -746,7 +801,7 @@ export default function ChatIA() {
 
       setInput('');
       syncTextareaHeight(inputRef.current, '');
-      setPendingAttachment(null);
+      setPendingAttachments([]);
       updatePendingAudio(null);
       setIsLoading(true);
       setError(null);
@@ -754,7 +809,8 @@ export default function ChatIA() {
 
       const primaryIndex = selectedServerIndex;
       const isComplexRequest = Boolean(
-        att?.dataUrl || (aud?.dataUrl && ((aud?.duration || 0) >= 45 || aud.dataUrl.length > 600000))
+        atts.some((a) => Boolean(a?.dataUrl)) ||
+          (aud?.dataUrl && ((aud?.duration || 0) >= 45 || aud.dataUrl.length > 600000))
       );
       const fallbackPriority = isComplexRequest
         ? ['gemini-3.1-pro-preview', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-3.1-flash-lite']
@@ -856,14 +912,14 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
       contextDataRef.current = freshFincaContext;
 
       const systemInstruction = SYSTEM_PROMPT + '\n' + freshFincaContext + '\n' + gpsContextSnippet;
-      const gpsLabel = effectivePt ? ` [GPS: ${effectivePt.lat.toFixed(6)}, ${effectivePt.lng.toFixed(6)}]` : '';
 
       let effectivePrompt = text;
       if (!effectivePrompt && aud) {
         effectivePrompt =
           'Por favor, escucha atentamente este mensaje de voz del agricultor de Campito Jorox. Transcribe o interpreta lo que dice y responde a su consulta o petición. Si consulta sobre el calendario o turnos de riego, revisa el calendario inyectado y responde con el horario exacto. Si pide programar un turno o evento, usa [[CREAR_EVENTO: {...}]]. Si pide borrar o cancelar un evento del calendario, usa [[BORRAR_EVENTO: {"date": "YYYY-MM-DD", "query": "...", "event_id": "..."}]] o [[ELIMINAR_EVENTO: {"event_id": "..."}]]. Si consulta sobre la contabilidad, responde con los balances reales. Si describe árboles, plantas, arquetas o elementos de la finca para inventario, extrae los datos y ubícalos con [[REGISTRAR_PUNTOS: [...] ]]. Si pide recordar o aprender una regla de la finca, guárdala con [[MEMORIA: {...} ]]. Si pide borrar un punto, usa [[BORRAR_PUNTO: {...}]]. Responde detalladamente en español.';
-      } else if (!effectivePrompt && att) {
-        effectivePrompt = `Por favor analiza detalladamente el archivo adjunto ("${att.name || 'documento'}") para Campito Jorox. Sintetiza la información relevante y, si contiene pautas o reglas para alimentar el conocimiento de la finca, guárdalas con [[MEMORIA: {"category": "suelo|cultivo|riego|fertilizacion|general", "title": "...", "content": "..."}]]. Si contiene árboles o parcelas, regístralos con [[REGISTRAR_PUNTOS: [...] ]].`;
+      } else if (!effectivePrompt && atts.length > 0) {
+        const namesLabel = atts.map((a) => `"${a.name || 'documento'}"`).join(', ');
+        effectivePrompt = `Por favor analiza detalladamente ${atts.length > 1 ? 'los archivos adjuntos' : 'el archivo adjunto'} (${namesLabel}) para Campito Jorox. Sintetiza la información relevante y, si contiene pautas o reglas para alimentar el conocimiento de la finca, guárdalas con [[MEMORIA: {"category": "suelo|cultivo|riego|fertilizacion|general", "title": "...", "content": "..."}]]. Si contiene árboles o parcelas, regístralos con [[REGISTRAR_PUNTOS: [...] ]].`;
       }
 
       const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: {} }));
@@ -891,11 +947,10 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         prompt: effectivePrompt,
         systemInstruction,
         history,
-        attachment: att,
+        attachments: atts,
         audio: aud,
         models: modelsList,
         userMeta: { userId: authUser?.id || currentUserId || null, userName: currentUserName },
-        meta: { gpsLabel },
         persistToChatHistory: true,
         uiMeta: {
           text: text || '',
@@ -913,13 +968,12 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
               const aiResponse = await callGeminiDirect({
                 modelId: server.id,
                 prompt: text,
-                attachment: att,
-                image: att?.isImage ? att : null,
+                attachments: atts,
                 audio: aud,
                 history,
                 systemInstruction,
                 apiKey,
-                timeoutMs: aud || att ? 35000 : 18000,
+                timeoutMs: aud || atts.length > 0 ? 35000 : 18000,
               });
               return { rawText: aiResponse, modelUsed: server.id };
             } catch (err) {
@@ -931,13 +985,13 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         },
       });
 
-      chatIaRuntimeContextMap.set(jobId, { text, att, aud, effectivePt, currentEvents });
+      chatIaRuntimeContextMap.set(jobId, { text, atts, aud, effectivePt, currentEvents });
     },
     [
       input,
       messages,
       isLoading,
-      pendingAttachment,
+      pendingAttachments,
       pendingAudio,
       selectedServerIndex,
       autoFallback,
@@ -964,63 +1018,21 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
 
   const handleCameraClick = () => fileInputRef.current?.click();
 
-  const handleCameraChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPendingAttachment({
-        file,
-        name: file.name || `foto-${Date.now()}.jpg`,
-        size: file.size,
-        type: file.type || 'image/jpeg',
-        dataUrl: ev.target.result,
-        textContent: null,
-        isImage: true,
-        isPdf: false,
-        isSpreadsheet: false,
-        isText: false,
-      });
-    };
-    reader.readAsDataURL(file);
+  const handleCameraChange = async (e) => {
+    const items = await readFilesAsAttachments(e.target.files, { forceImage: true });
+    if (items.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...items]);
+    }
     e.target.value = '';
   };
 
   const handleAttachClick = () => docInputRef.current?.click();
 
-  const handleDocumentChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const nameLower = file.name.toLowerCase();
-    const isImg = file.type.startsWith('image/');
-    const isPdf = file.type === 'application/pdf' || nameLower.endsWith('.pdf');
-    const isSpreadsheet = nameLower.endsWith('.xlsx') || nameLower.endsWith('.xls') || nameLower.endsWith('.csv');
-    const isText =
-      file.type.startsWith('text/') ||
-      nameLower.endsWith('.txt') ||
-      nameLower.endsWith('.csv') ||
-      nameLower.endsWith('.json') ||
-      nameLower.endsWith('.geojson') ||
-      nameLower.endsWith('.kml') ||
-      nameLower.endsWith('.md');
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setPendingAttachment({
-        file,
-        name: file.name,
-        size: file.size,
-        type: file.type || (isText ? 'text/plain' : isPdf ? 'application/pdf' : 'application/octet-stream'),
-        textContent: isText ? ev.target.result : null,
-        dataUrl: isText ? null : ev.target.result,
-        isImage: !isText && isImg,
-        isPdf: !isText && isPdf,
-        isSpreadsheet,
-        isText,
-      });
-    };
-    if (isText) reader.readAsText(file);
-    else reader.readAsDataURL(file);
+  const handleDocumentChange = async (e) => {
+    const items = await readFilesAsAttachments(e.target.files);
+    if (items.length > 0) {
+      setPendingAttachments((prev) => [...prev, ...items]);
+    }
     e.target.value = '';
   };
 
@@ -1075,7 +1087,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
     }
   };
 
-  const hasText = input.trim().length > 0 || pendingAttachment !== null || pendingAudio !== null;
+  const hasText = input.trim().length > 0 || pendingAttachments.length > 0 || pendingAudio !== null;
   const currentBadgeServer = activeServer || GEMINI_SERVERS[selectedServerIndex];
 
   return (
@@ -1232,8 +1244,8 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         accuracyWarning={accuracyWarning}
         gpsPointsCount={gpsPointsCount}
         handleMicClick={handleMicClick}
-        pendingAttachment={pendingAttachment}
-        setPendingAttachment={setPendingAttachment}
+        pendingAttachments={pendingAttachments}
+        setPendingAttachments={setPendingAttachments}
         docInputRef={docInputRef}
         fileInputRef={fileInputRef}
         handleDocumentChange={handleDocumentChange}

@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import { selectModelsForRequest, callGeminiCascade } from './_lib/geminiCascade.js';
+import { selectModelsForRequest, callGeminiCascade, normalizeAttachments } from './_lib/geminiCascade.js';
 import {
   uploadDataUrlToStorage,
   executeServerCalendarActions,
@@ -137,21 +137,23 @@ async function processAiJob(jobId, body) {
       systemInstruction,
       history,
       attachment,
+      attachments,
       audio,
       models,
       responseMimeType,
       userMeta,
-      meta,
       persistToChatHistory,
     } = body;
 
-    const selectedModels = selectModelsForRequest({ models, prompt, attachment, audio });
+    const attList = normalizeAttachments(attachments, attachment);
+    const selectedModels = selectModelsForRequest({ models, prompt, attachment, attachments: attList, audio });
 
     const { rawText, modelUsed } = await callGeminiCascade({
       prompt,
       systemInstruction,
       history,
       attachment,
+      attachments: attList,
       audio,
       models: selectedModels,
       responseMimeType,
@@ -184,8 +186,9 @@ async function processAiJob(jobId, body) {
       const exec = await executeServerFinanceActions(
         supabaseAdmin,
         actions,
-        attachment,
-        userMeta?.userName || 'Ariel'
+        attList[0] || attachment || null,
+        userMeta?.userName || 'Ariel',
+        attList
       );
       const serverAppliedFin =
         actions.length === 0 ||
@@ -327,19 +330,22 @@ async function processAiJob(jobId, body) {
       let persistedToDb = false;
       if (persistToChatHistory && supabaseAdmin) {
         try {
-          let uploadedUrl = null;
-          let uploadedPath = null;
-          if (attachment?.dataUrl) {
+          const uploadedUrls = [];
+          const uploadedPaths = [];
+          for (const attItem of attList) {
+            if (!attItem?.dataUrl) continue;
             const up = await uploadDataUrlToStorage(
               supabaseAdmin,
-              attachment.dataUrl,
+              attItem.dataUrl,
               'chat-ia',
-              attachment.name || 'adjunto',
-              attachment.type
+              attItem.name || 'adjunto',
+              attItem.type
             );
-            uploadedUrl = up?.publicUrl || null;
-            uploadedPath = up?.storagePath || null;
-          } else if (audio?.dataUrl) {
+            if (up?.publicUrl) uploadedUrls.push(up.publicUrl);
+            if (up?.storagePath) uploadedPaths.push(up.storagePath);
+          }
+
+          if (uploadedUrls.length === 0 && audio?.dataUrl) {
             const ext = audio.mimeType?.includes('mp4')
               ? 'm4a'
               : audio.mimeType?.includes('ogg')
@@ -352,18 +358,29 @@ async function processAiJob(jobId, body) {
               `audio.${ext}`,
               audio.mimeType || 'audio/webm'
             );
-            uploadedUrl = up?.publicUrl || null;
-            uploadedPath = up?.storagePath || null;
+            if (up?.publicUrl) uploadedUrls.push(up.publicUrl);
+            if (up?.storagePath) uploadedPaths.push(up.storagePath);
           }
 
-          const gpsLabel = meta?.gpsLabel || '';
+          const uploadedUrl =
+            uploadedUrls.length > 1
+              ? JSON.stringify(uploadedUrls)
+              : uploadedUrls[0] || null;
+          const uploadedPath =
+            uploadedPaths.length > 1
+              ? JSON.stringify(uploadedPaths)
+              : uploadedPaths[0] || null;
+
+          const attNamesSummary =
+            attList.length > 1
+              ? `[${attList.length} archivos adjuntos: ${attList.map((a) => a.name).join(', ')}]`
+              : attList.length === 1
+                ? `[Archivo adjunto: ${attList[0].name}]`
+                : '';
+
           const userContent =
-            (prompt ||
-              (attachment
-                ? `[Archivo adjunto: ${attachment.name}]`
-                : audio
-                  ? `[Audio grabado: ${audio.duration || 1}s]`
-                  : '')) + gpsLabel;
+            prompt ||
+            (attNamesSummary || (audio ? `[Audio grabado: ${audio.duration || 1}s]` : ''));
 
           await supabaseAdmin.from('chat_history').insert({
             role: 'user',
