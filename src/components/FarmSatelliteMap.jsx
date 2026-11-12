@@ -36,6 +36,7 @@ import MapInfoModal from './map/MapInfoModal';
 import MapFilterDrawer from './map/MapFilterDrawer';
 import MapIaBottomBar from './map/MapIaBottomBar';
 import MapSavePathModal from './map/MapSavePathModal';
+import RagFileExplorerModal from './rag/RagFileExplorerModal';
 
 export default function FarmSatelliteMap({
   inventory = [],
@@ -217,6 +218,7 @@ export default function FarmSatelliteMap({
   );
   const [isLayersMenuOpen, setIsLayersMenuOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  const [isRagExplorerOpen, setIsRagExplorerOpen] = useState(false);
   const [isLocatingUser, setIsLocatingUser] = useState(false);
   const [liveUserGps, setLiveUserGps] = useState(null);
   const liveUserGpsRef = useRef(null);
@@ -845,6 +847,7 @@ export default function FarmSatelliteMap({
         setShowCatastro={setShowCatastro}
         handleExportVisiblePDF={handleExportVisiblePDF}
         setIsInfoModalOpen={setIsInfoModalOpen}
+        onOpenRagExplorer={() => setIsRagExplorerOpen(true)}
       />
 
       <div style={styles.mapContainer}>
@@ -954,6 +957,11 @@ export default function FarmSatelliteMap({
         newPathData={newPathData}
         setNewPathData={setNewPathData}
         onSave={handleSaveDrawnPath}
+      />
+
+      <RagFileExplorerModal
+        isOpen={isRagExplorerOpen}
+        onClose={() => setIsRagExplorerOpen(false)}
       />
     </div>
   );

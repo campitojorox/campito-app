@@ -12,7 +12,6 @@ import {
   insertFarmPath,
   updateFarmPath,
   deleteFarmPath,
-  getItemCategory,
 } from './farmInventoryStorage';
 import {
   interpolateGpsAtAudioTime,
@@ -168,13 +167,10 @@ export function buildUnifiedSystemPrompt({
   visiblePaths = [],
   events = [],
   transactions = [],
-  users = [],
   knowledge = [],
-  documents = [],
   customTools = [],
   mapCenter = DEFAULT_CENTER,
   currentGps = null,
-  audio = null,
 }) {
   const centerLat = selectedTarget?.lat || currentGps?.lat || mapCenter?.[0] || DEFAULT_CENTER[0];
   const centerLng = selectedTarget?.lng || currentGps?.lng || mapCenter?.[1] || DEFAULT_CENTER[1];

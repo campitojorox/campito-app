@@ -1,6 +1,8 @@
 // src/utils/attachmentUtils.js
 // Utilidades compartidas para leer, normalizar y enviar múltiples archivos adjuntos de distintos tipos en Chat IA.
 
+import { isKmzFile, extractKmlFromKmz } from './kmzReader';
+
 export const ACCEPTED_CHAT_FILE_TYPES =
   '.pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,.md,.json,.geojson,.kml,.kmz,.gpx,.dxf,.cad,.stl,.xml,image/*,text/*,application/pdf';
 
@@ -20,51 +22,78 @@ const TEXT_EXTENSIONS = [
 const SPREADSHEET_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
 
 export function readFileAsAttachment(file, { forceImage = false } = {}) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      resolve(null);
-      return;
-    }
+  if (!file) return Promise.resolve(null);
 
-    const name = file.name || (forceImage ? `foto-${Date.now()}.jpg` : `archivo-${Date.now()}`);
-    const nameLower = name.toLowerCase();
-    const isImg = forceImage || (file.type && file.type.startsWith('image/'));
-    const isPdf = !forceImage && (file.type === 'application/pdf' || nameLower.endsWith('.pdf'));
-    const isSpreadsheet = !forceImage && SPREADSHEET_EXTENSIONS.some((ext) => nameLower.endsWith(ext));
-    const isText =
-      !forceImage &&
-      ((file.type && file.type.startsWith('text/')) ||
-        TEXT_EXTENSIONS.some((ext) => nameLower.endsWith(ext)));
+  const name = file.name || (forceImage ? `foto-${Date.now()}.jpg` : `archivo-${Date.now()}`);
+  const nameLower = name.toLowerCase();
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      resolve({
-        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-        file,
-        name,
-        size: file.size || 0,
-        type:
-          file.type ||
-          (isImg
-            ? 'image/jpeg'
-            : isText
-              ? 'text/plain'
-              : isPdf
-                ? 'application/pdf'
-                : 'application/octet-stream'),
-        textContent: isText ? ev.target.result : null,
-        dataUrl: isText ? null : ev.target.result,
-        isImage: !isText && Boolean(isImg),
-        isPdf: !isText && Boolean(isPdf),
-        isSpreadsheet: Boolean(isSpreadsheet),
-        isText: Boolean(isText),
+  return isKmzFile(file)
+    .catch(() => false)
+    .then(async (detectedKmz) => {
+      const isKmz = !forceImage && (detectedKmz || nameLower.endsWith('.kmz'));
+
+      if (isKmz) {
+        try {
+          const extracted = await extractKmlFromKmz(file);
+          return {
+            id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            file,
+            name,
+            size: file.size || 0,
+            type: 'application/vnd.google-earth.kmz',
+            textContent: extracted.kmlText,
+            dataUrl: null,
+            isImage: false,
+            isPdf: false,
+            isSpreadsheet: false,
+            isText: true,
+            isKmz: true,
+            internalKmlName: extracted.filename,
+          };
+        } catch (kmzErr) {
+          console.warn('[attachmentUtils] No se pudo descomprimir KMZ como texto KML:', kmzErr.message);
+        }
+      }
+
+      const isImg = forceImage || (file.type && file.type.startsWith('image/'));
+      const isPdf = !forceImage && (file.type === 'application/pdf' || nameLower.endsWith('.pdf'));
+      const isSpreadsheet = !forceImage && SPREADSHEET_EXTENSIONS.some((ext) => nameLower.endsWith(ext));
+      const isText =
+        !forceImage &&
+        ((file.type && file.type.startsWith('text/')) ||
+          TEXT_EXTENSIONS.some((ext) => nameLower.endsWith(ext)));
+
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          resolve({
+            id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            file,
+            name,
+            size: file.size || 0,
+            type:
+              file.type ||
+              (isImg
+                ? 'image/jpeg'
+                : isText
+                  ? 'text/plain'
+                  : isPdf
+                    ? 'application/pdf'
+                    : 'application/octet-stream'),
+            textContent: isText ? ev.target.result : null,
+            dataUrl: isText ? null : ev.target.result,
+            isImage: !isText && Boolean(isImg),
+            isPdf: !isText && Boolean(isPdf),
+            isSpreadsheet: Boolean(isSpreadsheet),
+            isText: Boolean(isText),
+          });
+        };
+        reader.onerror = () => reject(reader.error || new Error(`No se pudo leer ${name}`));
+
+        if (isText) reader.readAsText(file);
+        else reader.readAsDataURL(file);
       });
-    };
-    reader.onerror = () => reject(reader.error || new Error(`No se pudo leer ${name}`));
-
-    if (isText) reader.readAsText(file);
-    else reader.readAsDataURL(file);
-  });
+    });
 }
 
 export async function readFilesAsAttachments(fileList, options = {}) {

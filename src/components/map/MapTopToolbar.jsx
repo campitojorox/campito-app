@@ -1,5 +1,5 @@
 // src/components/map/MapTopToolbar.jsx
-import { Filter, Route, Layers, X, Printer, Info } from 'lucide-react';
+import { Filter, Route, Layers, X, Printer, Info, FolderOpen } from 'lucide-react';
 import { styles } from './mapStyles';
 
 export default function MapTopToolbar({
@@ -21,6 +21,7 @@ export default function MapTopToolbar({
   setShowCatastro,
   handleExportVisiblePDF,
   setIsInfoModalOpen,
+  onOpenRagExplorer,
 }) {
   return (
     <div style={styles.topBarClean}>
@@ -177,6 +178,21 @@ export default function MapTopToolbar({
       >
         <Printer size={18} />
       </button>
+
+      {typeof onOpenRagExplorer === 'function' && (
+        <button
+          type="button"
+          onClick={onOpenRagExplorer}
+          style={{
+            ...styles.topBarIconBtn,
+            color: '#00979d',
+          }}
+          title="Biblioteca y Explorador de Archivos Vectorial RAG (KML, KMZ, GeoJSON)"
+          aria-label="Biblioteca de Archivos RAG"
+        >
+          <FolderOpen size={18} />
+        </button>
+      )}
 
       <button
         type="button"

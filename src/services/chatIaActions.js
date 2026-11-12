@@ -9,7 +9,6 @@ import { normalizeAttachments } from '../utils/attachmentUtils';
 import {
   parseAllStructuredCommands,
   saveNewCustomTool,
-  registerUnifiedDocument,
 } from './unifiedAiBrain';
 
 /**

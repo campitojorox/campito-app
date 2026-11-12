@@ -3,7 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Bot, Info, RotateCcw, ChevronDown, X } from 'lucide-react';
+import { Bot, Info, RotateCcw, ChevronDown, X, FolderOpen } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import {
   useVoiceGeoTracker,
@@ -27,11 +27,13 @@ import { SYSTEM_PROMPT, buildComprehensiveFincaContext } from '../services/finca
 import { GEMINI_SERVERS, callGeminiDirect } from '../services/geminiDirectClient';
 import { processChatResponseActions, persistChatTurnToHistory } from '../services/chatIaActions';
 import { readFilesAsAttachments, normalizeAttachments } from '../utils/attachmentUtils';
+import { indexDocumentForRag, searchRagKnowledge, formatRagContextForPrompt } from '../services/ragDocumentService';
 import { styles } from './chat/chatIaStyles';
 import ServerSelectorModal from './chat/ServerSelectorModal';
 import ChatInfoModal from './chat/ChatInfoModal';
 import ChatMessageList from './chat/ChatMessageList';
 import ChatInputBar from './chat/ChatInputBar';
+import RagFileExplorerModal from '../components/rag/RagFileExplorerModal';
 
 const CatastroLiveModal = lazy(() => import('./chat/CatastroLiveModal'));
 
@@ -72,6 +74,7 @@ export default function ChatIA() {
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const [isInventoryMapOpen, setIsInventoryMapOpen] = useState(false);
+  const [isRagExplorerOpen, setIsRagExplorerOpen] = useState(false);
   const [farmKnowledge, setFarmKnowledge] = useState(() => {
     try {
       const raw = localStorage.getItem('campito_farm_knowledge_all');
@@ -911,7 +914,40 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
       });
       contextDataRef.current = freshFincaContext;
 
-      const systemInstruction = SYSTEM_PROMPT + '\n' + freshFincaContext + '\n' + gpsContextSnippet;
+      // Auto-indexación en RAG de cualquier archivo nuevo adjuntado en este turno
+      if (atts.length > 0) {
+        for (const attItem of atts) {
+          indexDocumentForRag({
+            file: attItem.file,
+            name: attItem.name,
+            textContent: attItem.textContent,
+            dataUrl: attItem.dataUrl,
+            userName: currentUserName,
+            userId: authUser?.id || currentUserId || null,
+            apiKey,
+          }).catch((e) => console.warn('[ChatIA] Aviso indexando archivo en RAG:', e.message));
+        }
+      }
+
+      // Recuperación RAG contextual para preguntas sobre archivos históricos
+      let ragSnippet = '';
+      try {
+        const ragQuery = text || (aud ? 'resumen agronómico de la finca y archivos' : '');
+        if (ragQuery) {
+          const ragMatches = await searchRagKnowledge(ragQuery, {
+            matchThreshold: 0.30,
+            matchCount: 6,
+            apiKey,
+          });
+          if (ragMatches.length > 0) {
+            ragSnippet = formatRagContextForPrompt(ragMatches);
+          }
+        }
+      } catch (ragErr) {
+        console.warn('[ChatIA] Aviso en búsqueda RAG:', ragErr.message);
+      }
+
+      const systemInstruction = SYSTEM_PROMPT + '\n' + freshFincaContext + '\n' + gpsContextSnippet + (ragSnippet ? '\n\n' + ragSnippet : '');
 
       let effectivePrompt = text;
       if (!effectivePrompt && aud) {
@@ -1100,6 +1136,25 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
             <p style={styles.headerTitle}>CHAT IA</p>
             <button
+              onClick={() => setIsRagExplorerOpen(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                color: '#00979d',
+                borderRadius: '50%',
+                transition: 'color 0.15s, transform 0.15s',
+                flexShrink: 0,
+              }}
+              title="Explorador de Archivos y Memoria Vectorial (RAG: KML, KMZ, PDF, CSV)"
+              aria-label="Explorador de Archivos Vectorial RAG"
+            >
+              <FolderOpen size={16} />
+            </button>
+            <button
               onClick={() => setIsInfoModalOpen(true)}
               style={{
                 background: 'none',
@@ -1189,6 +1244,11 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
         setActiveServer={setActiveServer}
         autoFallback={autoFallback}
         setAutoFallback={setAutoFallback}
+      />
+
+      <RagFileExplorerModal
+        isOpen={isRagExplorerOpen}
+        onClose={() => setIsRagExplorerOpen(false)}
       />
 
       <ChatInfoModal

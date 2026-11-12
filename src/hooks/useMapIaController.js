@@ -25,7 +25,6 @@ import {
   callUnifiedAiBrain,
   executeUnifiedActions,
   parseAllStructuredCommands,
-  buildUnifiedSystemPrompt,
 } from '../services/unifiedAiBrain';
 import { parseKmlString, parseGeoJsonString, parseGpxString } from '../utils/kmlParser';
 import {
@@ -36,6 +35,8 @@ import {
 } from '../services/aiBackgroundJobManager';
 import { syncTextareaHeight } from '../utils/helpers';
 import { readFilesAsAttachments } from '../utils/attachmentUtils';
+import { indexDocumentForRag, searchRagKnowledge, formatRagContextForPrompt } from '../services/ragDocumentService';
+import { extractKmlFromKmz } from '../utils/kmzReader';
 import { DEFAULT_CENTER, isDeleteIntent } from '../components/map/mapUtils';
 
 const mapRuntimeContextMap = new globalThis.Map();
@@ -194,73 +195,98 @@ export function useMapIaController({
       return;
     }
 
-    // ─── IMPORTACIÓN DIRECTA DE ARCHIVOS KML / GEOJSON / GPX ───
+    // ─── IMPORTACIÓN DIRECTA DE ARCHIVOS KML / KMZ / GEOJSON / GPX CON AUTO-INDEXACIÓN RAG ───
     const geoAtt = attsOrder.find(
       (a) =>
         (a.name &&
           (a.name.toLowerCase().endsWith('.kml') ||
+            a.name.toLowerCase().endsWith('.kmz') ||
             a.name.toLowerCase().endsWith('.geojson') ||
             a.name.toLowerCase().endsWith('.gpx'))) ||
         (a.textContent &&
           (a.textContent.includes('<kml') ||
             a.textContent.includes('"FeatureCollection"') ||
-            a.textContent.includes('<gpx')))
+            a.textContent.includes('<gpx'))) ||
+        Boolean(a.isKmz)
     );
 
-    if (geoAtt && geoAtt.textContent) {
-      const isGeoJson =
-        geoAtt.name?.toLowerCase().endsWith('.geojson') || geoAtt.textContent.includes('"FeatureCollection"');
-      const isGpx = geoAtt.name?.toLowerCase().endsWith('.gpx') || geoAtt.textContent.includes('<gpx');
-      const parsedGeo = isGeoJson
-        ? parseGeoJsonString(geoAtt.textContent)
-        : isGpx
-          ? parseGpxString(geoAtt.textContent)
-          : parseKmlString(geoAtt.textContent);
-
-      if (parsedGeo.points.length > 0 || parsedGeo.paths.length > 0) {
-        setMapIaInput('');
-        syncTextareaHeight(mapIaTextareaRef.current, '');
-        setPendingVoiceAudio(null);
-        setPendingAttachments([]);
-        setIsProcessingIa(true);
-        setIaFeedback({
-          type: 'info',
-          text: `🗺️ Importando ${parsedGeo.points.length} punto(s) y ${parsedGeo.paths.length} camino(s) desde "${geoAtt.name}"...`,
-        });
-
+    if (geoAtt) {
+      let kmlText = geoAtt.textContent;
+      if (!kmlText && (geoAtt.isKmz || geoAtt.name?.toLowerCase().endsWith('.kmz')) && geoAtt.file) {
         try {
-          const execRes = await executeUnifiedActions({
-            parsedCommands: {
-              points: parsedGeo.points,
-              paths: parsedGeo.paths,
-            },
-            currentInventory: localInventory,
-            currentPaths: localPaths,
-          });
-
-          if (execRes.addedPoints.length > 0) {
-            setLocalInventory((prev) => [...execRes.addedPoints, ...prev]);
-            execRes.addedPoints.forEach((it) => {
-              const cat = getItemCategory(it);
-              setVisibleCategories((prev) => new Set([...prev, cat]));
-            });
-          }
-          if (execRes.addedPaths.length > 0) {
-            setLocalPaths((prev) => [...execRes.addedPaths, ...prev]);
-          }
-
-          setIaFeedback({
-            type: 'success',
-            text: `✨ Archivo KML importado con éxito: ${execRes.addedPoints.length} puntos y ${execRes.addedPaths.length} caminos registrados en el mapa.`,
-          });
-          if (onReloadInventory) await onReloadInventory();
-          if (onReloadPaths) await onReloadPaths();
-        } catch (err) {
-          setIaFeedback({ type: 'error', text: `Error importando KML: ${err.message}` });
-        } finally {
-          setIsProcessingIa(false);
+          const unzipped = await extractKmlFromKmz(geoAtt.file);
+          kmlText = unzipped.kmlText;
+          geoAtt.textContent = kmlText;
+        } catch (unzipErr) {
+          console.warn('[MapAI] Error descomprimiendo KMZ:', unzipErr.message);
         }
-        return;
+      }
+
+      if (kmlText) {
+        const isGeoJson =
+          geoAtt.name?.toLowerCase().endsWith('.geojson') || kmlText.includes('"FeatureCollection"');
+        const isGpx = geoAtt.name?.toLowerCase().endsWith('.gpx') || kmlText.includes('<gpx');
+        const parsedGeo = isGeoJson
+          ? parseGeoJsonString(kmlText)
+          : isGpx
+            ? parseGpxString(kmlText)
+            : parseKmlString(kmlText);
+
+        if (parsedGeo.points.length > 0 || parsedGeo.paths.length > 0) {
+          setMapIaInput('');
+          syncTextareaHeight(mapIaTextareaRef.current, '');
+          setPendingVoiceAudio(null);
+          setPendingAttachments([]);
+          setIsProcessingIa(true);
+          setIaFeedback({
+            type: 'info',
+            text: `🗺️ Importando e indexando ${parsedGeo.points.length} punto(s) y ${parsedGeo.paths.length} camino(s) desde "${geoAtt.name}"...`,
+          });
+
+          // Auto-indexar en el RAG para que quede aprendido en la biblioteca vectorial permanentemente
+          indexDocumentForRag({
+            file: geoAtt.file,
+            name: geoAtt.name,
+            textContent: kmlText,
+            dataUrl: geoAtt.dataUrl,
+            userName: 'Admin',
+            apiKey: import.meta.env.VITE_GEMINI_API_KEY,
+          }).catch((ragErr) => console.warn('[MapAI] Aviso indexando en RAG:', ragErr.message));
+
+          try {
+            const execRes = await executeUnifiedActions({
+              parsedCommands: {
+                points: parsedGeo.points,
+                paths: parsedGeo.paths,
+              },
+              currentInventory: localInventory,
+              currentPaths: localPaths,
+            });
+
+            if (execRes.addedPoints.length > 0) {
+              setLocalInventory((prev) => [...execRes.addedPoints, ...prev]);
+              execRes.addedPoints.forEach((it) => {
+                const cat = getItemCategory(it);
+                setVisibleCategories((prev) => new Set([...prev, cat]));
+              });
+            }
+            if (execRes.addedPaths.length > 0) {
+              setLocalPaths((prev) => [...execRes.addedPaths, ...prev]);
+            }
+
+            setIaFeedback({
+              type: 'success',
+              text: `✨ Archivo ${geoAtt.name.endsWith('.kmz') ? 'KMZ' : 'KML'} importado y aprendido con éxito: ${execRes.addedPoints.length} puntos y ${execRes.addedPaths.length} caminos registrados en el mapa.`,
+            });
+            if (onReloadInventory) await onReloadInventory();
+            if (onReloadPaths) await onReloadPaths();
+          } catch (err) {
+            setIaFeedback({ type: 'error', text: `Error importando archivo cartográfico: ${err.message}` });
+          } finally {
+            setIsProcessingIa(false);
+          }
+          return;
+        }
       }
     }
 
@@ -401,6 +427,22 @@ export function useMapIaController({
         ? audioOrder.gpsTrack[0]
         : liveUserGpsRef.current || voiceCurrentGps || null;
 
+    // Recuperación vectorial RAG previa a invocar a Gemini
+    let ragSnippet = '';
+    try {
+      const ragQuery = textOrder || (audioOrder?.transcription || 'elementos cartográficos KML y puntos de la finca');
+      const ragResults = await searchRagKnowledge(ragQuery, {
+        matchThreshold: 0.32,
+        matchCount: 6,
+        apiKey,
+      });
+      if (ragResults.length > 0) {
+        ragSnippet = formatRagContextForPrompt(ragResults);
+      }
+    } catch (ragSearchErr) {
+      console.warn('[MapAI] Error buscando en RAG:', ragSearchErr.message);
+    }
+
     const systemInstruction = buildMapSystemInstruction({
       selectedTarget,
       visibleInventory: filteredInventory,
@@ -408,7 +450,7 @@ export function useMapIaController({
       mapCenter: center,
       currentGps: gpsPos,
       audio: audioOrder,
-    });
+    }) + (ragSnippet ? '\n\n' + ragSnippet : '');
 
     let effectivePrompt = textOrder;
     if (!effectivePrompt && audioOrder) {
