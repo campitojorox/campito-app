@@ -4,18 +4,16 @@
 import { useEffect, useCallback } from 'react';
 import L from 'leaflet';
 import {
-  getCategoryColor,
   PATH_TYPE_COLORS,
   getItemCategory,
   updateFarmPath,
 } from '../services/farmInventoryStorage';
 import catastroJorox from '../data/catastroJorox.json';
+import joroxElevationContours from '../data/joroxElevationContours.json';
 import {
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
   calculatePathMeters,
-  getPinFamilySlug,
-  getPinStatusSlug,
   createFamilyPinIcon,
   createCotaPinIcon,
 } from '../components/map/mapUtils';
@@ -28,6 +26,7 @@ export function useLeafletMapLayers({
   pathNodesLayerRef,
   drawingLayerRef,
   catastroLayerRef,
+  elevationLayerRef,
   userLocationLayerRef,
   highlightLayerRef,
   isDrawingRef,
@@ -49,6 +48,7 @@ export function useLeafletMapLayers({
   filteredPaths,
   localPaths,
   showCatastro,
+  showElevationContours = true,
   inventory,
   paths,
 }) {
@@ -75,6 +75,11 @@ export function useLeafletMapLayers({
     esriLayer.addTo(map);
     map._esriLayer = esriLayer;
 
+    if (!map.getPane('elevationPane')) {
+      const elevPane = map.createPane('elevationPane');
+      elevPane.style.zIndex = '410';
+      elevPane.style.pointerEvents = 'none';
+    }
     if (!map.getPane('highlightPane')) {
       const hlPane = map.createPane('highlightPane');
       hlPane.style.zIndex = '610';
@@ -85,6 +90,7 @@ export function useLeafletMapLayers({
       markersPane.style.zIndex = '620';
     }
 
+    elevationLayerRef.current = L.featureGroup().addTo(map);
     catastroLayerRef.current = L.featureGroup().addTo(map);
     pathsLayerRef.current = L.featureGroup().addTo(map);
     pathNodesLayerRef.current = L.featureGroup().addTo(map);
@@ -135,6 +141,7 @@ export function useLeafletMapLayers({
     appendDrawPoint,
     catastroLayerRef,
     drawingLayerRef,
+    elevationLayerRef,
     highlightLayerRef,
     isDrawingRef,
     lastLayerClickedTimeRef,
@@ -166,24 +173,21 @@ export function useLeafletMapLayers({
 
     if (!selectedTarget) return;
 
-    if (selectedTarget.lat && selectedTarget.lng) {
-      L.circleMarker([selectedTarget.lat, selectedTarget.lng], {
-        radius: 16,
-        color: '#00d1da',
-        weight: 3,
-        fillColor: '#00979d',
-        fillOpacity: 0.25,
-        dashArray: '3, 4',
-        pane: 'highlightPane',
-        interactive: false,
-      }).addTo(layer);
-
-      L.circleMarker([selectedTarget.lat, selectedTarget.lng], {
-        radius: 4,
-        color: '#ffffff',
-        weight: 2,
-        fillColor: '#00d1da',
-        fillOpacity: 1,
+    if (selectedTarget.type === 'coord' && selectedTarget.lat && selectedTarget.lng) {
+      L.marker([selectedTarget.lat, selectedTarget.lng], {
+        icon: L.divIcon({
+          className: 'farm-pin-div-wrapper',
+          html: `
+            <div class="farm-pin-container is-selected">
+              <div class="farm-pin">
+                <div class="farm-pin__halo" style="background-color: #00979d;"></div>
+                <div class="farm-pin__body" style="background-color: #00979d;"></div>
+              </div>
+            </div>
+          `,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        }),
         pane: 'highlightPane',
         interactive: false,
       }).addTo(layer);
@@ -255,8 +259,6 @@ export function useLeafletMapLayers({
 
       const hasWarning = Boolean(item.gps_warning || item.advertencia_gps);
       const isSelected = selectedTarget && String(selectedTarget.id) === String(item.id);
-      const familySlug = getPinFamilySlug(item);
-      const statusSlug = getPinStatusSlug(item);
 
       const onSelect = (e) => {
         if (interceptLayerClickForDraw(e)) return;
@@ -291,22 +293,6 @@ export function useLeafletMapLayers({
       });
 
       marker.on('click', onSelect);
-
-      const parentCat = getItemCategory(item);
-      const catColor = getCategoryColor(parentCat);
-      const tooltipHtml = `
-        <div class="farm-pin-tooltip">
-          <span class="farm-pin-tooltip__badge farm-pin-tooltip__badge--${familySlug}" style="background-color: ${catColor}; color: #ffffff;">${parentCat}</span>
-          <span class="farm-pin-tooltip__title">${item.name || item.tipo || 'Punto'}</span>
-          ${item.variety_type ? `<span class="farm-pin-tooltip__sub">${item.variety_type}</span>` : ''}
-          ${item.status ? `<span class="farm-pin-tooltip__status farm-pin-tooltip__status--${statusSlug}">${item.status}</span>` : ''}
-        </div>
-      `;
-      marker.bindTooltip(tooltipHtml, {
-        direction: 'top',
-        offset: [0, -10],
-        className: 'campito-map-tooltip',
-      });
 
       marker.addTo(layer);
     });
@@ -370,12 +356,6 @@ export function useLeafletMapLayers({
         });
       });
 
-      const lengthText = path.length_meters ? ` (${Number(path.length_meters).toFixed(0)}m)` : '';
-      poly.bindTooltip(`<b>${path.name}</b>${lengthText}`, {
-        sticky: true,
-        className: 'campito-map-tooltip',
-      });
-
       poly.addTo(layer);
     });
   }, [
@@ -414,26 +394,33 @@ export function useLeafletMapLayers({
 
     coords.forEach((coord, idx) => {
       const isSelected = selectedNodeIdx === idx;
+      const nodeSize = isSelected ? 20 : 14;
       const nodeIcon = L.divIcon({
-        className: 'farm-path-node-marker',
-        html: `<div style="
-          width: ${isSelected ? 20 : 14}px;
-          height: ${isSelected ? 20 : 14}px;
-          border-radius: 50%;
-          background-color: ${isSelected ? '#00979d' : '#ffffff'};
-          border: 2.5px solid ${pathColor};
-          box-shadow: 0 1px 6px rgba(0,0,0,0.4);
-          cursor: grab;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: ${isSelected ? '#ffffff' : '#475569'};
-          font-size: 8px;
-          font-weight: 700;
-          user-select: none;
-        ">${idx + 1}</div>`,
-        iconSize: [isSelected ? 20 : 14, isSelected ? 20 : 14],
-        iconAnchor: [isSelected ? 10 : 7, isSelected ? 10 : 7],
+        className: 'farm-path-node-marker farm-pin-div-wrapper',
+        html: `
+          <div class="farm-pin-container ${isSelected ? 'is-selected' : ''}" style="width: ${nodeSize}px; height: ${nodeSize}px;">
+            ${isSelected ? `<div class="farm-pin__halo" style="background-color: ${pathColor}; top: -4px; left: -4px; width: 28px; height: 28px;"></div>` : ''}
+            <div style="
+              position: relative;
+              width: ${nodeSize}px;
+              height: ${nodeSize}px;
+              border-radius: 50%;
+              background-color: ${isSelected ? '#00979d' : '#ffffff'};
+              border: 2.5px solid ${pathColor};
+              box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+              cursor: grab;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: ${isSelected ? '#ffffff' : '#475569'};
+              font-size: 8px;
+              font-weight: 700;
+              user-select: none;
+            ">${idx + 1}</div>
+          </div>
+        `,
+        iconSize: [nodeSize, nodeSize],
+        iconAnchor: [nodeSize / 2, nodeSize / 2],
       });
 
       const marker = L.marker([coord.lat, coord.lng], {
@@ -547,11 +534,6 @@ export function useLeafletMapLayers({
         fillOpacity: 0.12,
       });
 
-      poly.bindTooltip(
-        `<b>🏛️ ${parcel.name}</b><br/><span style="font-size: 10px; color: #00979d">Superficie Catastral Oficial (${parcel.polygon.length} vértices)</span>`,
-        { sticky: true, className: 'campito-map-tooltip' }
-      );
-
       poly.on('click', (e) => {
         if (interceptLayerClickForDraw(e)) return;
         if (e) {
@@ -605,19 +587,6 @@ export function useLeafletMapLayers({
         zIndexOffset: isSelected ? 1000 : 80,
       });
 
-      marker.bindTooltip(
-        `<div class="farm-pin-tooltip">
-          <span class="farm-pin-tooltip__badge farm-pin-tooltip__badge--hito">Catastro Oficial</span>
-          <span class="farm-pin-tooltip__title">Cota Catastral ${cota.name}</span>
-          <span class="farm-pin-tooltip__sub">Mojón o linde oficial</span>
-        </div>`,
-        {
-          direction: 'top',
-          offset: [0, -10],
-          className: 'campito-map-tooltip',
-        }
-      );
-
       marker.on('click', onSelectCota);
       marker.addTo(layer);
     });
@@ -631,11 +600,6 @@ export function useLeafletMapLayers({
         weight: 3,
         opacity: 0.8,
         dashArray: '5, 5',
-      });
-
-      poly.bindTooltip(`<b>${track.name}</b> <span style="font-size:10px">(Catastro)</span>`, {
-        sticky: true,
-        className: 'campito-map-tooltip',
       });
 
       poly.on('click', (e) => {
@@ -665,6 +629,63 @@ export function useLeafletMapLayers({
     lastLayerClickedTimeRef,
     setSelectedTarget,
   ]);
+
+  // 5c. Cotas de altura y curvas de nivel (IGN 5m) sobre la vista satelital
+  useEffect(() => {
+    const layer = elevationLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    if (!showElevationContours || !joroxElevationContours?.contours) return;
+
+    const placedLabels = [];
+    const minLabelDistSq = 0.00038 * 0.00038;
+
+    const tryPlaceLabel = (pt, elevation, major) => {
+      if (!pt || pt.length < 2) return;
+      const tooClose = placedLabels.some((existing) => {
+        const dLat = existing[0] - pt[0];
+        const dLng = existing[1] - pt[1];
+        return dLat * dLat + dLng * dLng < minLabelDistSq;
+      });
+      if (tooClose) return;
+      placedLabels.push(pt);
+      const cls = major ? 'campito-elevation-label campito-elevation-label--major' : 'campito-elevation-label';
+      L.marker(pt, {
+        icon: L.divIcon({
+          className: 'campito-elevation-label-wrapper',
+          html: `<span class="${cls}">${elevation} m</span>`,
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        }),
+        pane: 'elevationPane',
+        interactive: false,
+      }).addTo(layer);
+    };
+
+    const sortedContours = [...joroxElevationContours.contours].sort((a, b) => Number(b.major) - Number(a.major));
+
+    sortedContours.forEach(({ elevation, major, lines }) => {
+      (lines || []).forEach((line) => {
+        if (!Array.isArray(line) || line.length < 2) return;
+        L.polyline(line, {
+          color: major ? '#fbbf24' : '#fcd34d',
+          weight: major ? 2 : 1.15,
+          opacity: major ? 0.78 : 0.48,
+          dashArray: major ? undefined : '4, 4',
+          pane: 'elevationPane',
+          interactive: false,
+        }).addTo(layer);
+
+        if (line.length >= 3) {
+          const step = Math.max(10, Math.floor(line.length / 4));
+          for (let idx = Math.floor(step / 2); idx < line.length; idx += step) {
+            tryPlaceLabel(line[idx], elevation, major);
+          }
+        }
+      });
+    });
+  }, [showElevationContours, elevationLayerRef]);
 
   // 6. Auto-ajuste de vista a todos los elementos
   const fitAllElements = useCallback(() => {

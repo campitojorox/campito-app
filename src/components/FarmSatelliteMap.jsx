@@ -54,6 +54,7 @@ export default function FarmSatelliteMap({
   const pathNodesLayerRef = useRef(null);
   const drawingLayerRef = useRef(null);
   const catastroLayerRef = useRef(null);
+  const elevationLayerRef = useRef(null);
   const userLocationLayerRef = useRef(null);
   const highlightLayerRef = useRef(null);
   const lastLayerClickedTimeRef = useRef(0);
@@ -92,10 +93,15 @@ export default function FarmSatelliteMap({
         if (e.detail.deleted && e.detail.id) {
           setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(e.detail.id)));
         } else {
-          setLocalInventory((prev) => [
-            e.detail,
-            ...prev.filter((i) => String(i.id) !== String(e.detail.id)),
-          ]);
+          setLocalInventory((prev) => {
+            const exists = prev.some((i) => String(i.id) === String(e.detail.id));
+            if (exists) {
+              return prev.map((i) =>
+                String(i.id) === String(e.detail.id) ? { ...i, ...e.detail } : i
+              );
+            }
+            return [e.detail, ...prev];
+          });
         }
       } else {
         setLocalInventory(getLocalInventory());
@@ -127,6 +133,9 @@ export default function FarmSatelliteMap({
   );
   const [showCatastro, setShowCatastro] = useState(() =>
     initialMapSettings?.showCatastro !== undefined ? Boolean(initialMapSettings.showCatastro) : true
+  );
+  const [showElevationContours, setShowElevationContours] = useState(() =>
+    initialMapSettings?.showElevationContours !== undefined ? Boolean(initialMapSettings.showElevationContours) : true
   );
   const [satelliteType] = useState(() => initialMapSettings?.satelliteType || 'esri');
   const [showLegend, setShowLegend] = useState(() =>
@@ -198,6 +207,7 @@ export default function FarmSatelliteMap({
         showNavControls,
         satelliteType,
         showCatastro,
+        showElevationContours,
         showPaths,
         showPoints,
         visibleCategories: Array.from(visibleCategories),
@@ -213,6 +223,7 @@ export default function FarmSatelliteMap({
     showNavControls,
     satelliteType,
     showCatastro,
+    showElevationContours,
     showPaths,
     showPoints,
     visibleCategories,
@@ -341,6 +352,7 @@ export default function FarmSatelliteMap({
     pathNodesLayerRef,
     drawingLayerRef,
     catastroLayerRef,
+    elevationLayerRef,
     userLocationLayerRef,
     highlightLayerRef,
     isDrawingRef,
@@ -362,6 +374,7 @@ export default function FarmSatelliteMap({
     filteredPaths,
     localPaths,
     showCatastro,
+    showElevationContours,
     inventory,
     paths,
   });
@@ -493,6 +506,7 @@ export default function FarmSatelliteMap({
     setVisibleSubcats(null);
     setVisiblePathTypes(new Set(PATH_TYPES));
     setShowCatastro(true);
+    setShowElevationContours(true);
     setShowPaths(true);
   };
 
@@ -501,6 +515,7 @@ export default function FarmSatelliteMap({
     setVisibleSubcats(null);
     setVisiblePathTypes(new Set());
     setShowCatastro(false);
+    setShowElevationContours(false);
     setShowPaths(false);
   };
 
@@ -560,6 +575,16 @@ export default function FarmSatelliteMap({
     }
   };
 
+  const directSaveTimersRef = useRef({});
+  const directSavePendingRef = useRef({});
+
+  useEffect(() => {
+    const timers = directSaveTimersRef.current;
+    return () => {
+      Object.values(timers).forEach((t) => clearTimeout(t));
+    };
+  }, []);
+
   const handleDirectFieldUpdate = async (field, value) => {
     if (!selectedTarget) return;
 
@@ -567,27 +592,51 @@ export default function FarmSatelliteMap({
       const targetId = selectedTarget.id;
       const updateObj = {};
       if (field === 'title' || field === 'name') updateObj.name = value;
+      else if (field === 'category') updateObj.category = value;
       else if (field === 'variety_type' || field === 'variety') updateObj.variety_type = value;
       else if (field === 'status') updateObj.status = value;
       else if (field === 'notes') updateObj.notes = value;
 
-      setSelectedTarget((prev) => ({
-        ...prev,
-        ...updateObj,
-        ...(updateObj.name ? { title: updateObj.name } : {}),
-        ...(updateObj.variety_type ? { variety: updateObj.variety_type } : {}),
-      }));
+      setSelectedTarget((prev) => {
+        if (!prev || String(prev.id) !== String(targetId)) return prev;
+        return {
+          ...prev,
+          ...updateObj,
+          ...('name' in updateObj ? { title: updateObj.name } : {}),
+          ...('variety_type' in updateObj ? { variety: updateObj.variety_type } : {}),
+        };
+      });
       setLocalInventory((prev) =>
         prev.map((item) => (String(item.id) === String(targetId) ? { ...item, ...updateObj } : item))
       );
 
-      try {
-        await updateFarmInventoryItem(targetId, updateObj);
-        window.dispatchEvent(
-          new CustomEvent('farm-inventory-updated', { detail: { id: targetId, ...updateObj } })
-        );
-      } catch (err) {
-        console.warn('Error guardando cambio directo en inventario:', err);
+      const saveKey = `point:${targetId}`;
+      directSavePendingRef.current[saveKey] = {
+        ...(directSavePendingRef.current[saveKey] || {}),
+        ...updateObj,
+      };
+      if (directSaveTimersRef.current[saveKey]) {
+        clearTimeout(directSaveTimersRef.current[saveKey]);
+      }
+
+      const flushPoint = async () => {
+        const payload = directSavePendingRef.current[saveKey];
+        if (!payload) return;
+        delete directSavePendingRef.current[saveKey];
+        try {
+          await updateFarmInventoryItem(targetId, payload);
+          window.dispatchEvent(
+            new CustomEvent('farm-inventory-updated', { detail: { id: targetId, ...payload } })
+          );
+        } catch (err) {
+          console.warn('Error guardando cambio directo en inventario:', err);
+        }
+      };
+
+      if (field === 'status') {
+        await flushPoint();
+      } else {
+        directSaveTimersRef.current[saveKey] = setTimeout(flushPoint, 450);
       }
     } else if (selectedTarget.type === 'path') {
       const targetId = selectedTarget.id;
@@ -599,19 +648,42 @@ export default function FarmSatelliteMap({
       } else if (field === 'color') updateObj.color = value;
       else if (field === 'notes') updateObj.notes = value;
 
-      setSelectedTarget((prev) => ({
-        ...prev,
-        ...updateObj,
-        ...(updateObj.name ? { title: updateObj.name } : {}),
-      }));
+      setSelectedTarget((prev) => {
+        if (!prev || String(prev.id) !== String(targetId)) return prev;
+        return {
+          ...prev,
+          ...updateObj,
+          ...('name' in updateObj ? { title: updateObj.name } : {}),
+        };
+      });
       setLocalPaths((prev) =>
         prev.map((p) => (String(p.id) === String(targetId) ? { ...p, ...updateObj } : p))
       );
 
-      try {
-        await updateFarmPath(targetId, updateObj);
-      } catch (err) {
-        console.warn('Error guardando cambio directo en camino:', err);
+      const saveKey = `path:${targetId}`;
+      directSavePendingRef.current[saveKey] = {
+        ...(directSavePendingRef.current[saveKey] || {}),
+        ...updateObj,
+      };
+      if (directSaveTimersRef.current[saveKey]) {
+        clearTimeout(directSaveTimersRef.current[saveKey]);
+      }
+
+      const flushPath = async () => {
+        const payload = directSavePendingRef.current[saveKey];
+        if (!payload) return;
+        delete directSavePendingRef.current[saveKey];
+        try {
+          await updateFarmPath(targetId, payload);
+        } catch (err) {
+          console.warn('Error guardando cambio directo en camino:', err);
+        }
+      };
+
+      if (field === 'path_type' || field === 'color') {
+        await flushPath();
+      } else {
+        directSaveTimersRef.current[saveKey] = setTimeout(flushPath, 450);
       }
     }
   };
@@ -698,6 +770,8 @@ export default function FarmSatelliteMap({
         setShowLegend={setShowLegend}
         showNavControls={showNavControls}
         setShowNavControls={setShowNavControls}
+        showElevationContours={showElevationContours}
+        setShowElevationContours={setShowElevationContours}
         handleExportVisiblePDF={handleExportVisiblePDF}
         setIsInfoModalOpen={setIsInfoModalOpen}
       />
@@ -750,12 +824,15 @@ export default function FarmSatelliteMap({
           togglePathType={togglePathType}
           showCatastro={showCatastro}
           setShowCatastro={setShowCatastro}
+          showElevationContours={showElevationContours}
+          setShowElevationContours={setShowElevationContours}
         />
 
         <MapIaBottomBar
           selectedTarget={selectedTarget}
           setSelectedTarget={setSelectedTarget}
           localPaths={localPaths}
+          allCategories={allCategories}
           handleDirectFieldUpdate={handleDirectFieldUpdate}
           handleDeleteTarget={handleDeleteTarget}
           handleDeleteNode={handleDeleteNode}

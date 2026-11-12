@@ -566,7 +566,23 @@ export function getItemCategory(item) {
     return item.category;
   }
 
-  const text = [item.category, item.tipo, item.variety_type, item.name, item.title]
+  const rawCat = (item.category || '').trim();
+  const normCat = rawCat
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (normCat) {
+    for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
+      if (parent === 'Otros') continue;
+      if (keywords.some((k) => normCat.includes(k))) return parent;
+    }
+    if (normCat !== 'otros' && normCat !== 'otro' && normCat !== 'inventario') {
+      return rawCat.charAt(0).toUpperCase() + rawCat.slice(1);
+    }
+  }
+
+  const text = [item.tipo, item.variety_type, item.name, item.title]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
@@ -578,9 +594,9 @@ export function getItemCategory(item) {
     if (keywords.some((k) => text.includes(k))) return parent;
   }
 
-  const explicitCat = (item.category || item.tipo || '').trim();
-  if (explicitCat && explicitCat.toLowerCase() !== 'otros' && explicitCat.toLowerCase() !== 'otro') {
-    return explicitCat.charAt(0).toUpperCase() + explicitCat.slice(1);
+  const explicitTipo = (item.tipo || '').trim();
+  if (explicitTipo && explicitTipo.toLowerCase() !== 'otros' && explicitTipo.toLowerCase() !== 'otro') {
+    return explicitTipo.charAt(0).toUpperCase() + explicitTipo.slice(1);
   }
 
   return 'Otros';

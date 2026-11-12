@@ -22,6 +22,7 @@ export default function MapIaBottomBar({
   selectedTarget,
   setSelectedTarget,
   localPaths,
+  allCategories = [],
   handleDirectFieldUpdate,
   handleDeleteTarget,
   handleDeleteNode,
@@ -68,6 +69,7 @@ export default function MapIaBottomBar({
         selectedTarget={selectedTarget}
         setSelectedTarget={setSelectedTarget}
         localPaths={localPaths}
+        allCategories={allCategories}
         handleDirectFieldUpdate={handleDirectFieldUpdate}
         handleDeleteTarget={handleDeleteTarget}
         handleDeleteNode={handleDeleteNode}

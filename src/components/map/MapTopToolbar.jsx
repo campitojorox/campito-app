@@ -15,6 +15,8 @@ export default function MapTopToolbar({
   setShowLegend,
   showNavControls,
   setShowNavControls,
+  showElevationContours = true,
+  setShowElevationContours,
   handleExportVisiblePDF,
   setIsInfoModalOpen,
 }) {
@@ -130,6 +132,18 @@ export default function MapTopToolbar({
               />
               <span style={styles.layerCheckboxLabel}>Navegación, Zoom y GPS</span>
             </label>
+
+            {typeof setShowElevationContours === 'function' && (
+              <label style={styles.layerCheckboxItem}>
+                <input
+                  type="checkbox"
+                  checked={showElevationContours}
+                  onChange={(e) => setShowElevationContours(e.target.checked)}
+                  style={{ accentColor: '#fbbf24', cursor: 'pointer' }}
+                />
+                <span style={styles.layerCheckboxLabel}>Cotas de altura (20m)</span>
+              </label>
+            )}
           </div>
         )}
       </div>

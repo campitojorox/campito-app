@@ -153,6 +153,10 @@ export default function MapOverlays({
               <span style={{ ...styles.colorLine, borderTop: '2px dashed #00d1da', height: 0 }} />
               <span>Parcela 195/196</span>
             </div>
+            <div style={styles.legendItem}>
+              <span style={{ ...styles.colorLine, backgroundColor: '#fbbf24' }} />
+              <span>Cotas altura (20m)</span>
+            </div>
           </div>
         </div>
       )}

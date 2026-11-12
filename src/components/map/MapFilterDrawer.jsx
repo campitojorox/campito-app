@@ -1,5 +1,6 @@
 // src/components/map/MapFilterDrawer.jsx
-import { X, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import FilterDrawerShell from '../common/FilterDrawerShell';
 import {
   getCategoryColor,
   PATH_TYPE_COLORS,
@@ -7,8 +8,8 @@ import {
   getSubcategoriesForParent,
 } from '../../services/farmInventoryStorage';
 import catastroJorox from '../../data/catastroJorox.json';
+import joroxElevationContours from '../../data/joroxElevationContours.json';
 import { PATH_TYPES, PATH_TYPE_LABELS } from './mapUtils';
-import { stylesFilter } from './mapStyles';
 
 export default function MapFilterDrawer({
   isOpen,
@@ -31,186 +32,283 @@ export default function MapFilterDrawer({
   togglePathType,
   showCatastro,
   setShowCatastro,
+  showElevationContours = true,
+  setShowElevationContours,
 }) {
-  if (!isOpen) return null;
+  const nonEmptyCategories = allCategories
+    .map((parent) => {
+      const count = localInventory.filter((i) => getItemCategory(i) === parent).length;
+      if (count === 0) return null;
+      const subcats = getSubcategoriesForParent(localInventory, parent)
+        .map((sub) => ({
+          sub,
+          subCount: localInventory.filter(
+            (i) => getItemCategory(i) === parent && (i.variety_type || i.category || i.tipo) === sub
+          ).length,
+        }))
+        .filter((s) => s.subCount > 0);
+      return { parent, count, subcats };
+    })
+    .filter(Boolean);
+
+  const nonEmptyPathTypes = PATH_TYPES
+    .map((pt) => ({
+      pt,
+      count: localPaths.filter((p) => (p.path_type || 'otro') === pt).length,
+    }))
+    .filter((item) => item.count > 0);
+
+  const parcelsCount = catastroJorox.parcels?.length || 0;
+  const cotasCount = catastroJorox.cotas?.length || 0;
+  const tracksCount = catastroJorox.tracks?.length || 0;
+  const catastroTotalCount = parcelsCount + cotasCount + tracksCount;
+
+  const visibleInventoryCount = localInventory.filter((item) => {
+    const parent = getItemCategory(item);
+    if (!visibleCategories.has(parent)) return false;
+    if (visibleSubcats !== null) {
+      const rawSub = item.variety_type || item.category || item.tipo || '';
+      if (!visibleSubcats.has(rawSub)) return false;
+    }
+    return true;
+  }).length;
+
+  const visiblePathsCount = showPaths
+    ? localPaths.filter((p) => visiblePathTypes.has(p.path_type || 'otro')).length
+    : 0;
+
+  const contoursCount = joroxElevationContours?.contours?.length || 0;
+  const visibleCatastroCount = showCatastro ? catastroTotalCount : 0;
+  const visibleContoursCount = showElevationContours ? contoursCount : 0;
+  const totalVisibleElements = visibleInventoryCount + visiblePathsCount + visibleCatastroCount + visibleContoursCount;
 
   return (
-    <div style={stylesFilter.overlay} onClick={onClose}>
-      <div style={stylesFilter.panel} onClick={(e) => e.stopPropagation()}>
-        <div style={stylesFilter.panelHeader}>
-          <span style={stylesFilter.panelTitle}>🔍 Filtros de Categoría</span>
-          <button onClick={onClose} style={stylesFilter.panelClose}>
-            <X size={16} />
+    <FilterDrawerShell
+      isOpen={isOpen}
+      onClose={onClose}
+      drawerId="map-filter-drawer"
+      title="Filtros"
+      actions={
+        <>
+          <button type="button" onClick={selectAllFilters} className="filter-drawer-action-btn">
+            Todo
           </button>
-        </div>
-
-        <div style={stylesFilter.panelActions}>
-          <button onClick={selectAllFilters} style={stylesFilter.actionBtn}>✅ Todo</button>
-          <button onClick={clearAllFilters} style={stylesFilter.actionBtn}>⬜ Ninguno</button>
-        </div>
-
-        <div style={stylesFilter.sectionLabel}>PUNTOS DE INVENTARIO</div>
-        {allCategories.map((parent) => {
-          const subcats = getSubcategoriesForParent(localInventory, parent);
-          const count = localInventory.filter((i) => getItemCategory(i) === parent).length;
-          const isActive = visibleCategories.has(parent);
-          const isExpanded = expandedParents.has(parent);
-          const color = getCategoryColor(parent);
-          return (
-            <div key={parent}>
-              <div style={stylesFilter.catRow}>
-                <label style={stylesFilter.catLabel}>
-                  <input
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={() => toggleParentCategory(parent)}
-                    style={{ marginRight: 6 }}
-                  />
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: color, display: 'inline-block', marginRight: 5 }} />
-                  <span style={{ flex: 1, fontWeight: 600, fontSize: '0.78rem' }}>{parent}</span>
-                  <span style={stylesFilter.countBadge}>{count}</span>
-                </label>
-                {subcats.length > 0 && (
-                  <button
-                    onClick={() =>
-                      setExpandedParents((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(parent)) next.delete(parent);
-                        else next.add(parent);
-                        return next;
-                      })
-                    }
-                    style={stylesFilter.expandBtn}
-                  >
-                    {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  </button>
-                )}
-              </div>
-              {isExpanded &&
-                subcats.map((sub) => {
-                  const subCount = localInventory.filter(
-                    (i) => (i.variety_type || i.category || i.tipo) === sub
-                  ).length;
-                  return (
-                    <div key={sub} style={stylesFilter.subcatRow}>
-                      <label style={stylesFilter.subcatLabel}>
+          <button type="button" onClick={clearAllFilters} className="filter-drawer-action-btn">
+            Ninguno
+          </button>
+        </>
+      }
+      footer={`${totalVisibleElements} ${totalVisibleElements === 1 ? 'elemento' : 'elementos'}`}
+    >
+      {nonEmptyCategories.length > 0 && (
+        <div id="map-filter-section-inventory">
+          <span className="filter-drawer-section-label">Puntos de inventario</span>
+          <div className="filter-drawer-list">
+            {nonEmptyCategories.map(({ parent, count, subcats }) => {
+              const isActive = visibleCategories.has(parent);
+              const isExpanded = expandedParents.has(parent);
+              const color = getCategoryColor(parent);
+              return (
+                <div key={parent}>
+                  <div className="filter-drawer-option-row">
+                    <label className={`filter-drawer-option ${isActive ? 'is-active' : ''}`}>
+                      <span className="filter-drawer-option-label">
                         <input
                           type="checkbox"
-                          checked={visibleSubcats === null || visibleSubcats.has(sub)}
-                          onChange={() => {
-                            setVisibleSubcats((prev) => {
-                              if (prev === null) {
-                                const allSubs = new Set(
-                                  localInventory.map((i) => i.variety_type || i.category || i.tipo).filter(Boolean)
-                                );
-                                allSubs.delete(sub);
-                                return allSubs;
-                              }
-                              const next = new Set(prev);
-                              if (next.has(sub)) next.delete(sub);
-                              else next.add(sub);
-                              return next;
-                            });
-                          }}
-                          style={{ marginRight: 6 }}
+                          checked={isActive}
+                          onChange={() => toggleParentCategory(parent)}
+                          style={{ accentColor: '#00979d' }}
                         />
-                        <span style={{ flex: 1, fontSize: '0.75rem' }}>{sub}</span>
-                        <span style={stylesFilter.countBadge}>{subCount}</span>
-                      </label>
-                    </div>
-                  );
-                })}
-            </div>
-          );
-        })}
+                        <span style={{ width: 9, height: 9, borderRadius: '50%', backgroundColor: color, flexShrink: 0 }} />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{parent}</span>
+                      </span>
+                      <span className="filter-drawer-badge">{count}</span>
+                    </label>
+                    {subcats.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedParents((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(parent)) next.delete(parent);
+                            else next.add(parent);
+                            return next;
+                          })
+                        }
+                        className="filter-drawer-expand-btn"
+                        aria-label={isExpanded ? `Contraer ${parent}` : `Expandir ${parent}`}
+                      >
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      </button>
+                    )}
+                  </div>
 
-        <div style={{ ...stylesFilter.sectionLabel, marginTop: 12 }}>CAMINOS Y TRAZADOS</div>
-        <div style={stylesFilter.catRow}>
-          <label style={stylesFilter.catLabel}>
-            <input
-              type="checkbox"
-              checked={showPaths && visiblePathTypes.size > 0}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setShowPaths(checked);
-                setVisiblePathTypes(checked ? new Set(PATH_TYPES) : new Set());
-              }}
-              style={{ marginRight: 6, accentColor: '#f97316' }}
-            />
-            <span style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: '#f97316', display: 'inline-block', marginRight: 5 }} />
-            <span style={{ flex: 1, fontWeight: 700, fontSize: '0.78rem' }}>
-              Todos los caminos ({localPaths.length})
-            </span>
-            <span style={stylesFilter.countBadge}>{localPaths.length}</span>
-          </label>
+                  {isExpanded && subcats.length > 0 && (
+                    <div className="filter-drawer-sublist">
+                      {subcats.map(({ sub, subCount }) => {
+                        const isSubActive = visibleSubcats === null || visibleSubcats.has(sub);
+                        return (
+                          <label key={sub} className={`filter-drawer-suboption ${isSubActive ? 'is-active' : ''}`}>
+                            <span className="filter-drawer-option-label">
+                              <input
+                                type="checkbox"
+                                checked={isSubActive}
+                                onChange={() => {
+                                  setVisibleSubcats((prev) => {
+                                    if (prev === null) {
+                                      const allSubs = new Set(
+                                        localInventory.map((i) => i.variety_type || i.category || i.tipo).filter(Boolean)
+                                      );
+                                      allSubs.delete(sub);
+                                      return allSubs;
+                                    }
+                                    const next = new Set(prev);
+                                    if (next.has(sub)) next.delete(sub);
+                                    else next.add(sub);
+                                    return next;
+                                  });
+                                }}
+                                style={{ accentColor: '#00979d' }}
+                              />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
+                            </span>
+                            <span className="filter-drawer-badge">{subCount}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        {PATH_TYPES.map((pt) => {
-          const count = localPaths.filter((p) => (p.path_type || 'otro') === pt).length;
-          const isChecked = showPaths && visiblePathTypes.has(pt);
-          return (
-            <div key={pt} style={stylesFilter.subcatRow}>
-              <label style={stylesFilter.subcatLabel}>
+      )}
+
+      {localPaths.length > 0 && (
+        <div id="map-filter-section-paths">
+          <span className="filter-drawer-section-label">Caminos y trazados</span>
+          <div className="filter-drawer-list">
+            <label className={`filter-drawer-option ${showPaths && visiblePathTypes.size > 0 ? 'is-active' : ''}`}>
+              <span className="filter-drawer-option-label">
                 <input
                   type="checkbox"
-                  checked={isChecked}
-                  onChange={() => {
-                    if (!showPaths) setShowPaths(true);
-                    togglePathType(pt);
+                  checked={showPaths && visiblePathTypes.size > 0}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setShowPaths(checked);
+                    setVisiblePathTypes(checked ? new Set(PATH_TYPES) : new Set());
                   }}
-                  style={{ marginRight: 6 }}
+                  style={{ accentColor: '#f97316' }}
                 />
-                <span style={{ width: 12, height: 3, borderRadius: 1, backgroundColor: PATH_TYPE_COLORS[pt] || '#64748b', display: 'inline-block', marginRight: 5 }} />
-                <span style={{ flex: 1, fontWeight: 500, fontSize: '0.75rem' }}>{PATH_TYPE_LABELS[pt]}</span>
-                <span style={stylesFilter.countBadge}>{count}</span>
-              </label>
-            </div>
-          );
-        })}
+                <span style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: '#f97316', flexShrink: 0 }} />
+                <span>Todos los caminos</span>
+              </span>
+              <span className="filter-drawer-badge">{localPaths.length}</span>
+            </label>
 
-        <div style={{ ...stylesFilter.sectionLabel, marginTop: 14 }}>CATASTRO OFICIAL</div>
-        <div style={stylesFilter.catRow}>
-          <label style={stylesFilter.catLabel}>
-            <input
-              type="checkbox"
-              checked={showCatastro}
-              onChange={(e) => setShowCatastro(e.target.checked)}
-              style={{ marginRight: 6, accentColor: '#00979d' }}
-            />
-            <span style={{ width: 14, height: 14, borderRadius: 3, border: '1.5px dashed #00d1da', backgroundColor: 'rgba(0,151,157,0.18)', display: 'inline-block', marginRight: 6 }} />
-            <span style={{ flex: 1, fontWeight: 700, fontSize: '0.78rem' }}>Catastro (Parcelas 195 y 196)</span>
-            <span style={stylesFilter.countBadge}>
-              {(catastroJorox.parcels?.length || 0) + (catastroJorox.cotas?.length || 0)}
-            </span>
-          </label>
+            {nonEmptyPathTypes.length > 0 && (
+              <div className="filter-drawer-sublist">
+                {nonEmptyPathTypes.map(({ pt, count }) => {
+                  const isChecked = showPaths && visiblePathTypes.has(pt);
+                  return (
+                    <label key={pt} className={`filter-drawer-suboption ${isChecked ? 'is-active' : ''}`}>
+                      <span className="filter-drawer-option-label">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (!showPaths) setShowPaths(true);
+                            togglePathType(pt);
+                          }}
+                          style={{ accentColor: '#00979d' }}
+                        />
+                        <span style={{ width: 12, height: 3, borderRadius: 1, backgroundColor: PATH_TYPE_COLORS[pt] || '#64748b', flexShrink: 0 }} />
+                        <span>{PATH_TYPE_LABELS[pt]}</span>
+                      </span>
+                      <span className="filter-drawer-badge">{count}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
+      )}
 
-        {showCatastro && (
-          <>
-            <div style={stylesFilter.subcatRow}>
-              <label style={stylesFilter.subcatLabel}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: '#00d1da', display: 'inline-block', marginRight: 6 }} />
-                <span style={{ flex: 1, fontSize: '0.74rem' }}>🏛️ Parcelas 195 y 196</span>
-                <span style={stylesFilter.countBadge}>{catastroJorox.parcels?.length || 2}</span>
-              </label>
-            </div>
-            <div style={stylesFilter.subcatRow}>
-              <label style={stylesFilter.subcatLabel}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ffffff', border: '1.5px solid #00979d', display: 'inline-block', marginRight: 6 }} />
-                <span style={{ flex: 1, fontSize: '0.74rem' }}>📍 Cotas catastrales</span>
-                <span style={stylesFilter.countBadge}>{catastroJorox.cotas?.length || 19}</span>
-              </label>
-            </div>
-            <div style={stylesFilter.subcatRow}>
-              <label style={stylesFilter.subcatLabel}>
-                <span style={{ width: 12, height: 2, borderTop: '2px dashed #94a3b8', display: 'inline-block', marginRight: 6 }} />
-                <span style={{ flex: 1, fontSize: '0.74rem' }}>〰️ Pistas catastrales</span>
-                <span style={stylesFilter.countBadge}>{catastroJorox.tracks?.length || 0}</span>
-              </label>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+      {catastroTotalCount > 0 && (
+        <div id="map-filter-section-catastro">
+          <span className="filter-drawer-section-label">Catastro oficial</span>
+          <div className="filter-drawer-list">
+            <label className={`filter-drawer-option ${showCatastro ? 'is-active' : ''}`}>
+              <span className="filter-drawer-option-label">
+                <input
+                  type="checkbox"
+                  checked={showCatastro}
+                  onChange={(e) => setShowCatastro(e.target.checked)}
+                  style={{ accentColor: '#00979d' }}
+                />
+                <span style={{ width: 14, height: 14, borderRadius: 3, border: '1.5px dashed #00d1da', backgroundColor: 'rgba(0,151,157,0.18)', flexShrink: 0 }} />
+                <span>Catastro (Parcelas 195 y 196)</span>
+              </span>
+              <span className="filter-drawer-badge">{catastroTotalCount}</span>
+            </label>
+
+            {showCatastro && (
+              <div className="filter-drawer-sublist">
+                {parcelsCount > 0 && (
+                  <div className="filter-drawer-suboption is-active" style={{ cursor: 'default' }}>
+                    <span className="filter-drawer-option-label">
+                      <span style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: '#00d1da', flexShrink: 0 }} />
+                      <span>Parcelas 195 y 196</span>
+                    </span>
+                    <span className="filter-drawer-badge">{parcelsCount}</span>
+                  </div>
+                )}
+                {cotasCount > 0 && (
+                  <div className="filter-drawer-suboption is-active" style={{ cursor: 'default' }}>
+                    <span className="filter-drawer-option-label">
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ffffff', border: '1.5px solid #00979d', flexShrink: 0 }} />
+                      <span>Cotas catastrales</span>
+                    </span>
+                    <span className="filter-drawer-badge">{cotasCount}</span>
+                  </div>
+                )}
+                {tracksCount > 0 && (
+                  <div className="filter-drawer-suboption is-active" style={{ cursor: 'default' }}>
+                    <span className="filter-drawer-option-label">
+                      <span style={{ width: 12, height: 2, borderTop: '2px dashed #94a3b8', flexShrink: 0 }} />
+                      <span>Pistas catastrales</span>
+                    </span>
+                    <span className="filter-drawer-badge">{tracksCount}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {contoursCount > 0 && typeof setShowElevationContours === 'function' && (
+        <div id="map-filter-section-elevation">
+          <span className="filter-drawer-section-label">Relieve satelital</span>
+          <div className="filter-drawer-list">
+            <label className={`filter-drawer-option ${showElevationContours ? 'is-active' : ''}`}>
+              <span className="filter-drawer-option-label">
+                <input
+                  type="checkbox"
+                  checked={showElevationContours}
+                  onChange={(e) => setShowElevationContours(e.target.checked)}
+                  style={{ accentColor: '#fbbf24' }}
+                />
+                <span style={{ width: 14, height: 3, borderRadius: 2, backgroundColor: '#fbbf24', flexShrink: 0 }} />
+                <span>Cotas de altura (20 m)</span>
+              </span>
+              <span className="filter-drawer-badge">{contoursCount}</span>
+            </label>
+          </div>
+        </div>
+      )}
+    </FilterDrawerShell>
   );
 }
-

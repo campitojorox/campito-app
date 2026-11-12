@@ -367,7 +367,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 2px solid #00d1da;
+  border: none;
   box-sizing: border-box;
   pointer-events: none;
 }
@@ -419,6 +419,10 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 
 /* Modificador específico para cotas oficiales de Catastro */
+.farm-pin--cota .farm-pin__halo {
+  background-color: #7c3aed;
+}
+
 .farm-pin--cota .farm-pin__body {
   background-color: #7c3aed;
   border-color: #ffffff;
@@ -505,4 +509,324 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 .farm-pin-tooltip__status--poda_requerida { background: rgba(234, 88, 12, 0.3); color: #fdba74; }
 .farm-pin-tooltip__status--enfermo,
 .farm-pin-tooltip__status--seco { background: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+
+/* Etiquetas de cotas de altura (curvas de nivel) sobre el mapa satelital */
+.campito-elevation-label-wrapper {
+  background: transparent !important;
+  border: none !important;
+  pointer-events: none !important;
+}
+
+.campito-elevation-label {
+  display: inline-block;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #fef3c7;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.campito-elevation-label--major {
+  font-size: 10.5px;
+  color: #fde68a;
+  background: rgba(15, 23, 42, 0.86);
+  border-color: rgba(251, 191, 36, 0.85);
+}
+
+/* ==========================================================================
+   SISTEMA DE DRAWER DE FILTROS UNIFICADO — CAMPITO JOROX
+   ========================================================================== */
+
+.filter-drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(3px);
+  z-index: 3500;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.filter-drawer-panel {
+  width: 300px;
+  max-width: 85vw;
+  background-color: #ffffff;
+  color: #1e293b;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  box-shadow: -4px 0 25px rgba(0, 0, 0, 0.3);
+  animation: slideInFromRight 0.22s ease-out;
+}
+
+.filter-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.filter-drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.filter-drawer-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.filter-drawer-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  background-color: #ffffff;
+}
+
+.filter-drawer-action-btn {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background-color: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+}
+
+.filter-drawer-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.filter-drawer-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.filter-drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-drawer-option-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-drawer-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.filter-drawer-option.is-active {
+  background-color: rgba(0, 151, 157, 0.12);
+  border-color: #00979d;
+  color: #0f766e;
+}
+
+.filter-drawer-option--danger {
+  color: #b91c1c;
+}
+
+.filter-drawer-option--danger.is-active {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+.filter-drawer-option--success {
+  color: #047857;
+}
+
+.filter-drawer-option--success.is-active {
+  background-color: rgba(16, 185, 129, 0.1);
+  border-color: #10b981;
+  color: #047857;
+}
+
+.filter-drawer-option--sky.is-active {
+  background-color: rgba(56, 189, 248, 0.12);
+  border-color: #38bdf8;
+  color: #0369a1;
+}
+
+.filter-drawer-option--emerald.is-active {
+  background-color: rgba(16, 185, 129, 0.12);
+  border-color: #10b981;
+  color: #047857;
+}
+
+.filter-drawer-option--violet.is-active {
+  background-color: rgba(136, 132, 216, 0.14);
+  border-color: #8884d8;
+  color: #5b21b6;
+}
+
+.filter-drawer-option-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-drawer-badge {
+  font-size: 0.72rem;
+  background-color: #e2e8f0;
+  color: #64748b;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.filter-drawer-option.is-active .filter-drawer-badge {
+  background-color: #ccfbf1;
+  color: #0f766e;
+}
+
+.filter-drawer-option--danger .filter-drawer-badge {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.filter-drawer-option--danger.is-active .filter-drawer-badge {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.filter-drawer-option--success .filter-drawer-badge,
+.filter-drawer-option--emerald.is-active .filter-drawer-badge {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.filter-drawer-option--sky.is-active .filter-drawer-badge {
+  background-color: #e0f2fe;
+  color: #075985;
+}
+
+.filter-drawer-option--violet.is-active .filter-drawer-badge {
+  background-color: #ede9fe;
+  color: #5b21b6;
+}
+
+.filter-drawer-expand-btn {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background-color: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  width: 32px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.filter-drawer-sublist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 2px solid #e2e8f0;
+}
+
+.filter-drawer-suboption {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.filter-drawer-suboption.is-active {
+  background-color: rgba(0, 151, 157, 0.08);
+  border-color: rgba(0, 151, 157, 0.45);
+  color: #0f766e;
+  font-weight: 600;
+}
+
+.filter-drawer-suboption.is-active .filter-drawer-badge {
+  background-color: #ccfbf1;
+  color: #0f766e;
+}
+
+.filter-drawer-footer {
+  margin-top: auto;
+  padding: 12px 16px;
+  border-top: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 600;
+}
 

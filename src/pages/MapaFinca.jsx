@@ -50,7 +50,21 @@ export default function MapaFinca() {
     };
     loadAll();
 
-    const handleInv = () => loadInventory();
+    const handleInv = (e) => {
+      if (e?.detail?.id && !e.detail.deleted && !e.detail.forceReload) {
+        setInventory((prev) => {
+          const exists = prev.some((i) => String(i.id) === String(e.detail.id));
+          if (exists) {
+            return prev.map((i) =>
+              String(i.id) === String(e.detail.id) ? { ...i, ...e.detail } : i
+            );
+          }
+          return [e.detail, ...prev];
+        });
+        return;
+      }
+      loadInventory();
+    };
     const handlePaths = () => loadPaths();
     window.addEventListener('farm-inventory-updated', handleInv);
     window.addEventListener('farm-paths-updated', handlePaths);
