@@ -34,91 +34,125 @@ const GEMINI_MODELS_CASCADE = [
   'gemini-3.1-flash-lite',
 ];
 
-/**
- * Analizador universal de comandos estructurados:
- * - [[REGISTRAR_PUNTOS: [ ... ] ]]
- * - [[REGISTRAR_PUNTO: { ... } ]]
- * - [[BORRAR_PUNTO: { ... } ]]
- */
-export function parseStructuredCommands(rawText) {
-  if (!rawText || typeof rawText !== 'string') return { points: [], deletions: [], paths: [], updates: [] };
-  const points = [];
-  const deletions = [];
+function parseLooseJson(rawJson) {
+  const cleaned = rawJson.replace(/,\s*([\]}])/g, '$1').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Si venía escapado dentro de un string JSON (\"name\"...)
+    if (cleaned.includes('\\"')) {
+      const unescaped = cleaned.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      return JSON.parse(unescaped.replace(/,\s*([\]}])/g, '$1'));
+    }
+    throw new Error('JSON inválido');
+  }
+}
 
-  // 1. Bloques múltiples: [[REGISTRAR_PUNTOS: [...] ]]
-  const batchRegex = /\[\[REGISTRAR_PUNTOS:\s*(\[[\s\S]*?\])\s*\]\]/gi;
-  let batchMatch;
-  while ((batchMatch = batchRegex.exec(rawText)) !== null) {
-    try {
-      const cleanJson = batchMatch[1].replace(/,\s*([\]}])/g, '$1');
-      const items = JSON.parse(cleanJson);
-      if (Array.isArray(items)) points.push(...items);
-    } catch {
-      const objMatches = batchMatch[1].match(/\{[\s\S]*?\}/g);
-      if (objMatches) {
-        for (const om of objMatches) {
-          try {
-            points.push(JSON.parse(om.replace(/,\s*([\]}])/g, '$1')));
-          } catch {
-            // Ignorar fragmentos JSON malformados individuales
+/**
+ * Extrae payloads JSON balanceados ({...} o [...]) tras una etiqueta [[TAG: ...]].
+ * Evita truncar cuando existen arrays u objetos anidados en el interior.
+ */
+function extractTagPayloads(rawText, tagNames) {
+  const results = [];
+  if (!rawText || typeof rawText !== 'string') return results;
+
+  const tagRegex = new RegExp(`\\[\\[(?:${tagNames.join('|')}):\\s*`, 'gi');
+  let match;
+  while ((match = tagRegex.exec(rawText)) !== null) {
+    const startIdx = match.index + match[0].length;
+    const openChar = rawText[startIdx];
+    if (openChar !== '[' && openChar !== '{') continue;
+    const closeChar = openChar === '[' ? ']' : '}';
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let endIdx = -1;
+
+    for (let i = startIdx; i < rawText.length; i++) {
+      const ch = rawText[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === openChar) depth++;
+      else if (ch === closeChar) {
+        depth--;
+        if (depth === 0) {
+          endIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (endIdx > startIdx) {
+      const jsonSlice = rawText.slice(startIdx, endIdx + 1);
+      try {
+        results.push(parseLooseJson(jsonSlice));
+      } catch {
+        // Fallback: extraer objetos individuales si es un array parcialmente malformado
+        if (openChar === '[') {
+          const objMatches = jsonSlice.match(/\{[^{}]*\}/g) || [];
+          for (const om of objMatches) {
+            try {
+              results.push(parseLooseJson(om));
+            } catch {
+              // Ignorar objeto malformado
+            }
           }
         }
       }
     }
   }
+  return results;
+}
 
-  // 2. Punto individual: [[REGISTRAR_PUNTO: {...} ]]
-  const singleRegex = /\[\[REGISTRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi;
-  let singleMatch;
-  while ((singleMatch = singleRegex.exec(rawText)) !== null) {
-    try {
-      const cleanJson = singleMatch[1].replace(/,\s*([\]}])/g, '$1');
-      const item = JSON.parse(cleanJson);
-      if (item && typeof item === 'object') points.push(item);
-    } catch {
-      // Ignorar comando malformado
-    }
-  }
-
-  // 3. Borrado: [[BORRAR_PUNTO: {...} ]]
-  const delRegex = /\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi;
-  let delMatch;
-  while ((delMatch = delRegex.exec(rawText)) !== null) {
-    try {
-      const cleanJson = delMatch[1].replace(/,\s*([\]}])/g, '$1');
-      const item = JSON.parse(cleanJson);
-      if (item && typeof item === 'object') deletions.push(item);
-    } catch {
-      // Ignorar comando malformado
-    }
-  }
-
-  // 4. Camino / Trazado / Línea de riego: [[REGISTRAR_CAMINO: {...} ]]
-  const pathRegex = /\[\[REGISTRAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi;
-  let pathMatch;
+/**
+ * Analizador universal de comandos estructurados:
+ * - [[REGISTRAR_PUNTOS: [ ... ] ]]
+ * - [[REGISTRAR_PUNTO: { ... } ]]
+ * - [[BORRAR_PUNTO: { ... } ]]
+ * - [[REGISTRAR_CAMINO: { ... } ]]
+ * - [[EDITAR_PUNTO: { ... } ]]
+ */
+export function parseStructuredCommands(rawText) {
+  if (!rawText || typeof rawText !== 'string') return { points: [], deletions: [], paths: [], updates: [] };
+  const points = [];
+  const deletions = [];
   const paths = [];
-  while ((pathMatch = pathRegex.exec(rawText)) !== null) {
-    try {
-      const cleanJson = pathMatch[1].replace(/,\s*([\]}])/g, '$1');
-      const item = JSON.parse(cleanJson);
-      if (item && typeof item === 'object') paths.push(item);
-    } catch {
-      // Ignorar comando malformado
+  const updates = [];
+
+  for (const payload of extractTagPayloads(rawText, ['REGISTRAR_PUNTOS', 'REGISTRAR_PUNTO'])) {
+    if (Array.isArray(payload)) points.push(...payload.filter((p) => p && typeof p === 'object'));
+    else if (payload && typeof payload === 'object') {
+      if (Array.isArray(payload.points)) points.push(...payload.points);
+      else if (Array.isArray(payload.puntos)) points.push(...payload.puntos);
+      else points.push(payload);
     }
   }
 
-  // 5. Edición de punto: [[EDITAR_PUNTO: {...} ]]
-  const editRegex = /\[\[EDITAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi;
-  let editMatch;
-  const updates = [];
-  while ((editMatch = editRegex.exec(rawText)) !== null) {
-    try {
-      const cleanJson = editMatch[1].replace(/,\s*([\]}])/g, '$1');
-      const item = JSON.parse(cleanJson);
-      if (item && typeof item === 'object') updates.push(item);
-    } catch {
-      // Ignorar comando malformado
-    }
+  for (const payload of extractTagPayloads(rawText, ['BORRAR_PUNTO', 'ELIMINAR_PUNTO'])) {
+    if (Array.isArray(payload)) deletions.push(...payload.filter((d) => d && typeof d === 'object'));
+    else if (payload && typeof payload === 'object') deletions.push(payload);
+  }
+
+  for (const payload of extractTagPayloads(rawText, ['REGISTRAR_CAMINO', 'CREAR_CAMINO'])) {
+    if (Array.isArray(payload)) paths.push(...payload.filter((p) => p && typeof p === 'object'));
+    else if (payload && typeof payload === 'object') paths.push(payload);
+  }
+
+  for (const payload of extractTagPayloads(rawText, ['EDITAR_PUNTO', 'ACTUALIZAR_PUNTO'])) {
+    if (Array.isArray(payload)) updates.push(...payload.filter((u) => u && typeof u === 'object'));
+    else if (payload && typeof payload === 'object') updates.push(payload);
   }
 
   return { points, deletions, paths, updates };
@@ -181,85 +215,183 @@ Elementos visibles en la zona:
 - Puntos (${inventoryContext.length}): ${JSON.stringify(inventoryContext)}
 - Caminos (${pathsContext.length}): ${JSON.stringify(pathsContext)}
 
-FORMATOS ADMITIDOS:
-1. Puntos nuevos:
-[[REGISTRAR_PUNTOS: [
-  {
-    "name": "Nombre descriptivo (ej: 'Aguacate Hass 3', 'Arqueta Principal')",
-    "category": "arbol|riego|edificio|planta|herramienta|hito|o categoría nueva",
-    "variedad": "variedad botánica o subtipo si aplica",
-    "estado": "saludable|clorosis|poda_requerida|enfermo|seco",
-    "observaciones": "notas del agricultor",
-    "latitude": null,
-    "longitude": null,
-    "timestamp_audio_s": 0.0
-  }
-] ]]
-*NOTA GPS*: Si el usuario habla mientras camina, no fijes lat/lng arbitrarias; deja latitude: null y asigna "timestamp_audio_s" con el segundo del audio para interpolación satelital.
-
-2. Borrado:
-[[BORRAR_PUNTO: { "target": "ultimo|especifico", "query": "nombre o descripción" } ]]
-
-3. Esquema JSON estándar de acciones:
+FORMATOS ADMITIDOS (RESPONDE SIEMPRE EN JSON VÁLIDO):
 {
-  "description": "Resumen conciso en español...",
-  "transcription": "Texto transcrito del audio si lo hubo...",
+  "description": "Resumen conciso en español de lo registrado o modificado...",
+  "transcription": "Texto literal transcrito del audio si hubo audio...",
   "actions": [
     {
-      "type": "ADD_POINT" | "CREATE_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH",
-      "target_id": "uuid si es update/delete",
-      "data": { ... }
+      "type": "ADD_POINT",
+      "data": {
+        "name": "Nombre descriptivo (ej: 'Aguacate Hass 3', 'Arqueta Principal')",
+        "category": "arbol|riego|edificio|planta|herramienta|hito|o categoría nueva",
+        "variety_type": "variedad botánica o subtipo si aplica",
+        "status": "saludable|clorosis|poda_requerida|enfermo|seco",
+        "notes": "observaciones del agricultor",
+        "latitude": null,
+        "longitude": null,
+        "timestamp_audio_s": 2.5
+      }
     }
   ]
-}`;
+}
+Tipos de acción soportados en "actions": "ADD_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH" (incluye "target_id" para UPDATE/DELETE).
+*REGLA CRÍTICA DE AUDIO Y REGISTRO*:
+- Si el usuario menciona, describe, dicta o pide registrar cualquier árbol, planta, arqueta, llave de riego, tubería, herramienta, edificio o camino, DEBES incluir una entrada en "actions" para cada elemento. NUNCA devuelvas "actions": [] si el audio describe elementos para el inventario.
+- Si el usuario habla mientras camina, deja latitude: null y longitude: null y asigna "timestamp_audio_s" con el segundo del audio donde mencionó cada elemento para interpolación GPS satelital.`;
 }
 
-export function parseMapGeminiRawText(rawText, audio = null) {
-  const parsedCmds = parseStructuredCommands(rawText);
-  if (parsedCmds.points.length > 0 || parsedCmds.deletions.length > 0) {
-    const actions = [];
-    for (const p of parsedCmds.points) {
-      actions.push({
-        type: 'ADD_POINT',
-        data: {
-          name: p.name || p.nombre || p.tipo || 'Punto registrado',
-          category: p.category || p.categoria || p.tipo || 'arbol',
-          variety_type: p.variedad || p.variety_type || p.variety || null,
-          status: p.estado || p.status || 'saludable',
-          notes: p.observaciones || p.notes || p.observacion || '',
-          latitude: p.latitude !== undefined && p.latitude !== null ? Number(p.latitude) : undefined,
-          longitude: p.longitude !== undefined && p.longitude !== null ? Number(p.longitude) : undefined,
-          timestamp_audio_s: p.timestamp_audio_s !== undefined ? Number(p.timestamp_audio_s) : undefined,
-        },
-      });
-    }
-    for (const d of parsedCmds.deletions) {
-      actions.push({
-        type: 'DELETE_POINT',
-        target: d.target || 'especifico',
-        query: d.query || d.nombre || '',
-      });
-    }
+function structuredCommandsToActions(parsedCmds) {
+  const actions = [];
+  for (const p of parsedCmds.points || []) {
+    actions.push({
+      type: 'ADD_POINT',
+      data: {
+        name: p.name || p.nombre || p.title || p.tipo || 'Punto registrado',
+        category: p.category || p.categoria || p.tipo || 'arbol',
+        variety_type: p.variedad || p.variety_type || p.variety || null,
+        status: p.estado || p.status || 'saludable',
+        notes: p.observaciones || p.notes || p.observacion || '',
+        latitude: p.latitude !== undefined && p.latitude !== null ? Number(p.latitude) : undefined,
+        longitude: p.longitude !== undefined && p.longitude !== null ? Number(p.longitude) : undefined,
+        timestamp_audio_s: p.timestamp_audio_s !== undefined ? Number(p.timestamp_audio_s) : undefined,
+      },
+    });
+  }
+  for (const d of parsedCmds.deletions || []) {
+    actions.push({
+      type: 'DELETE_POINT',
+      target: d.target || 'especifico',
+      target_id: d.target_id || d.id,
+      query: d.query || d.nombre || d.name || '',
+    });
+  }
+  for (const pth of parsedCmds.paths || []) {
+    actions.push({ type: 'ADD_PATH', data: pth });
+  }
+  for (const upd of parsedCmds.updates || []) {
+    actions.push({ type: 'UPDATE_POINT', target_id: upd.target_id || upd.id, data: upd });
+  }
+  return actions;
+}
 
-    const cleanDescription = rawText
-      .replace(/\[\[REGISTRAR_PUNTOS:[\s\S]*?\]\]/gi, '')
-      .replace(/\[\[REGISTRAR_PUNTO:[\s\S]*?\]\]/gi, '')
-      .replace(/\[\[BORRAR_PUNTO:[\s\S]*?\]\]/gi, '')
-      .trim();
+function normalizeParsedMapObject(parsed, audio = null) {
+  if (!parsed) return null;
 
+  // Caso 1: Gemini devolvió un array raíz de puntos directamente
+  if (Array.isArray(parsed)) {
+    const actions = parsed
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => (item.type ? item : { type: 'ADD_POINT', data: item }));
     return {
-      description: cleanDescription || `Procesados ${actions.length} cambio(s) en el inventario`,
+      description: `Procesados ${actions.length} elemento(s) en el inventario`,
       transcription: audio?.transcription || '',
       actions,
     };
   }
 
+  if (typeof parsed !== 'object') return null;
+
+  let actions = Array.isArray(parsed.actions) ? [...parsed.actions] : [];
+  if (actions.length === 0 && parsed.action && typeof parsed.action === 'object') {
+    actions.push(parsed.action);
+  }
+
+  // Caso 2: Claves alternativas en vez de "actions"
+  const pointContainers = parsed.points || parsed.puntos || parsed.items || parsed.elements || parsed.elementos || parsed.inventory || parsed.registros;
+  if (actions.length === 0 && Array.isArray(pointContainers)) {
+    actions.push(...pointContainers.map((p) => ({ type: 'ADD_POINT', data: p })));
+  }
+
+  const pathContainers = parsed.paths || parsed.caminos || parsed.trazados;
+  if (actions.length === 0 && Array.isArray(pathContainers)) {
+    actions.push(...pathContainers.map((pth) => ({ type: 'ADD_PATH', data: pth })));
+  }
+
+  // Caso 3: Etiquetas [[REGISTRAR_PUNTOS]] embebidas dentro de description/summary tras JSON.parse
+  if (actions.length === 0) {
+    const textFields = [parsed.description, parsed.summary, parsed.message, parsed.respuesta]
+      .filter((v) => typeof v === 'string' && v.trim())
+      .join('\n');
+    if (textFields) {
+      const embeddedCmds = parseStructuredCommands(textFields);
+      const embeddedActions = structuredCommandsToActions(embeddedCmds);
+      if (embeddedActions.length > 0) {
+        actions = embeddedActions;
+      }
+    }
+  }
+
+  // Caso 4: El objeto completo parece un único punto sin envoltorio "actions"
+  if (actions.length === 0 && (parsed.name || parsed.nombre) && (parsed.category || parsed.categoria || parsed.timestamp_audio_s !== undefined)) {
+    actions.push({ type: 'ADD_POINT', data: parsed });
+  }
+
+  return {
+    ...parsed,
+    description: parsed.description || parsed.summary || (actions.length > 0 ? `Procesados ${actions.length} cambio(s) en el inventario` : ''),
+    transcription: parsed.transcription || audio?.transcription || '',
+    actions,
+  };
+}
+
+export function parseMapGeminiRawText(rawText, audio = null) {
+  if (!rawText || typeof rawText !== 'string') {
+    return { description: '', transcription: audio?.transcription || '', actions: [] };
+  }
+
   const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+  // Si es JSON completo (empieza por { o [), parsear primero para des-escapar strings correctamente
+  if (cleanJson.startsWith('{') || cleanJson.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(cleanJson);
+      const normalized = normalizeParsedMapObject(parsed, audio);
+      if (normalized && normalized.actions && normalized.actions.length > 0) {
+        return normalized;
+      }
+      // Si el JSON no trajo acciones, probar comandos estructurados sobre el rawText completo
+      const rawCmds = parseStructuredCommands(rawText);
+      const rawActions = structuredCommandsToActions(rawCmds);
+      if (rawActions.length > 0) {
+        return {
+          ...(normalized || {}),
+          description: normalized?.description || `Procesados ${rawActions.length} cambio(s) en el inventario`,
+          transcription: normalized?.transcription || audio?.transcription || '',
+          actions: rawActions,
+        };
+      }
+      if (normalized) return normalized;
+    } catch {
+      // Continuar con extractores tolerantes
+    }
+  }
+
+  const parsedCmds = parseStructuredCommands(rawText);
+  const cmdActions = structuredCommandsToActions(parsedCmds);
+  if (cmdActions.length > 0) {
+    const cleanDescription = rawText
+      .replace(/\[\[(?:REGISTRAR_PUNTOS|REGISTRAR_PUNTO|BORRAR_PUNTO|ELIMINAR_PUNTO|REGISTRAR_CAMINO|CREAR_CAMINO|EDITAR_PUNTO|ACTUALIZAR_PUNTO):[\s\S]*?\]\]/gi, '')
+      .trim();
+
+    return {
+      description: cleanDescription || `Procesados ${cmdActions.length} cambio(s) en el inventario`,
+      transcription: audio?.transcription || '',
+      actions: cmdActions,
+    };
+  }
+
   try {
-    return JSON.parse(cleanJson);
+    return normalizeParsedMapObject(JSON.parse(cleanJson), audio);
   } catch (e) {
-    const match = rawText.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
+    const objMatch = rawText.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      return normalizeParsedMapObject(JSON.parse(objMatch[0]), audio);
+    }
+    const arrMatch = rawText.match(/\[[\s\S]*\]/);
+    if (arrMatch) {
+      return normalizeParsedMapObject(JSON.parse(arrMatch[0]), audio);
+    }
     throw e;
   }
 }
@@ -294,9 +426,9 @@ export async function callGeminiForInventoryAction({
       userParts.push({ text: `\n\n📄 **CONTENIDO ADJUNTO ("${attachment.name || 'documento'}")**:\n\`\`\`\n${attachment.textContent}\n\`\`\`\n` });
     }
     if (attachment.dataUrl) {
-      const match = attachment.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+      const match = attachment.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
       if (match) {
-        const cleanMime = match[1].toLowerCase().split(';')[0].trim();
+        const cleanMime = match[1].toLowerCase().trim();
         if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
           userParts.push({ inlineData: { mimeType: cleanMime, data: match[2] } });
         }
@@ -305,9 +437,9 @@ export async function callGeminiForInventoryAction({
   }
 
   if (audio && audio.dataUrl) {
-    const match = audio.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+    const match = audio.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
     if (match) {
-      userParts.push({ inlineData: { mimeType: match[1].split(';')[0].trim(), data: match[2] } });
+      userParts.push({ inlineData: { mimeType: match[1].toLowerCase().trim(), data: match[2] } });
     } else {
       const cleanMime = (audio.mimeType || 'audio/webm').split(';')[0].trim();
       const cleanBase64 = audio.dataUrl.replace(/^data:.*?;base64,/, '');
@@ -340,7 +472,7 @@ El agricultor caminaba por la finca mientras hablaba. Para cada árbol, arqueta 
   for (const modelId of GEMINI_MODELS_CASCADE) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), audio || attachment ? 35000 : 20000);
+      const timeoutId = setTimeout(() => controller.abort(), audio || attachment ? 45000 : 20000);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
       const res = await fetch(url, {
@@ -361,55 +493,7 @@ El agricultor caminaba por la finca mientras hablaba. Para cada árbol, arqueta 
       const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!rawText) throw new Error('Respuesta vacía del modelo');
 
-      const parsedCmds = parseStructuredCommands(rawText);
-      if (parsedCmds.points.length > 0 || parsedCmds.deletions.length > 0) {
-        const actions = [];
-        for (const p of parsedCmds.points) {
-          actions.push({
-            type: 'ADD_POINT',
-            data: {
-              name: p.name || p.nombre || p.tipo || 'Punto registrado',
-              category: p.category || p.categoria || p.tipo || 'arbol',
-              variety_type: p.variedad || p.variety_type || p.variety || null,
-              status: p.estado || p.status || 'saludable',
-              notes: p.observaciones || p.notes || p.observacion || '',
-              latitude: p.latitude !== undefined && p.latitude !== null ? Number(p.latitude) : undefined,
-              longitude: p.longitude !== undefined && p.longitude !== null ? Number(p.longitude) : undefined,
-              timestamp_audio_s: p.timestamp_audio_s !== undefined ? Number(p.timestamp_audio_s) : undefined,
-            },
-          });
-        }
-        for (const d of parsedCmds.deletions) {
-          actions.push({
-            type: 'DELETE_POINT',
-            target: d.target || 'especifico',
-            query: d.query || d.nombre || '',
-          });
-        }
-
-        const cleanDescription = rawText
-          .replace(/\[\[REGISTRAR_PUNTOS:[\s\S]*?\]\]/gi, '')
-          .replace(/\[\[REGISTRAR_PUNTO:[\s\S]*?\]\]/gi, '')
-          .replace(/\[\[BORRAR_PUNTO:[\s\S]*?\]\]/gi, '')
-          .trim();
-
-        return {
-          description: cleanDescription || `Procesados ${actions.length} cambio(s) en el inventario`,
-          transcription: audio?.transcription || '',
-          actions,
-        };
-      }
-
-      let parsed;
-      try {
-        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-        parsed = JSON.parse(cleanJson);
-      } catch (e) {
-        const match = rawText.match(/\{[\s\S]*\}/);
-        if (match) parsed = JSON.parse(match[0]);
-        else throw e;
-      }
-      return parsed;
+      return parseMapGeminiRawText(rawText, audio);
     } catch (err) {
       console.warn(`[MapAIOrchestrator] Falló ${modelId}:`, err.message);
       lastError = err;
@@ -445,12 +529,42 @@ export async function executeInventoryActions({
 
   const center = mapCenter || DEFAULT_CENTER;
 
+  // Normalizar acciones que envuelvan arrays (ej: REGISTRAR_PUNTOS con data: [...])
+  const ADD_POINT_TYPES = new Set([
+    'ADD_POINT', 'CREATE_POINT', 'INSERT_POINT', 'NEW_POINT',
+    'REGISTRAR_PUNTO', 'REGISTRAR_PUNTOS', 'CREAR_PUNTO',
+    'ANADIR_PUNTO', 'AÑADIR_PUNTO', 'REGISTER_POINT', 'ADD', 'CREATE',
+  ]);
+  const DELETE_POINT_TYPES = new Set(['DELETE_POINT', 'REMOVE_POINT', 'BORRAR_PUNTO', 'ELIMINAR_PUNTO']);
+  const UPDATE_POINT_TYPES = new Set(['UPDATE_POINT', 'EDIT_POINT', 'MODIFY_POINT', 'EDITAR_PUNTO', 'ACTUALIZAR_PUNTO']);
+  const ADD_PATH_TYPES = new Set(['ADD_PATH', 'CREATE_PATH', 'INSERT_PATH', 'REGISTRAR_CAMINO', 'CREAR_CAMINO', 'DRAW_PATH']);
+  const UPDATE_PATH_TYPES = new Set(['UPDATE_PATH', 'EDIT_PATH', 'EDITAR_CAMINO']);
+  const DELETE_PATH_TYPES = new Set(['DELETE_PATH', 'REMOVE_PATH', 'BORRAR_CAMINO', 'ELIMINAR_CAMINO']);
+
+  const normalizedActions = [];
   for (const act of actions) {
-    const actType = (act.type || '').toUpperCase();
+    if (!act || typeof act !== 'object') continue;
+    const rawType = (act.type || '').toString().toUpperCase().trim();
+    if (Array.isArray(act.data)) {
+      act.data.forEach((item) => {
+        if (item && typeof item === 'object') normalizedActions.push({ ...act, type: rawType || 'ADD_POINT', data: item });
+      });
+    } else if (Array.isArray(act.points) || Array.isArray(act.puntos)) {
+      const arr = act.points || act.puntos;
+      arr.forEach((item) => {
+        if (item && typeof item === 'object') normalizedActions.push({ ...act, type: rawType || 'ADD_POINT', data: item });
+      });
+    } else {
+      normalizedActions.push({ ...act, type: rawType || 'ADD_POINT' });
+    }
+  }
+
+  for (const act of normalizedActions) {
+    const actType = act.type;
     const actData = act.data || act;
 
     // ── BORRAR PUNTO ──────────────────────────────────────────────────────────
-    if (actType === 'DELETE_POINT' || actType === 'REMOVE_POINT') {
+    if (DELETE_POINT_TYPES.has(actType)) {
       const rawIdCandidate = act.target_id || act.id || actData.id;
       let targetId = null;
 
@@ -507,7 +621,7 @@ export async function executeInventoryActions({
     }
 
     // ── BORRAR CAMINO ─────────────────────────────────────────────────────────
-    else if (actType === 'DELETE_PATH' || actType === 'REMOVE_PATH') {
+    else if (DELETE_PATH_TYPES.has(actType)) {
       const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
       if (targetId) {
         const path = currentPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
@@ -523,7 +637,7 @@ export async function executeInventoryActions({
     }
 
     // ── EDITAR PUNTO ──────────────────────────────────────────────────────────
-    else if (actType === 'UPDATE_POINT' || actType === 'EDIT_POINT' || actType === 'MODIFY_POINT') {
+    else if (UPDATE_POINT_TYPES.has(actType)) {
       const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
       if (targetId && actData) {
         const item = currentInventory.find((i) => String(i.id) === String(targetId)) || selectedTarget?.raw;
@@ -549,7 +663,7 @@ export async function executeInventoryActions({
     }
 
     // ── EDITAR CAMINO ─────────────────────────────────────────────────────────
-    else if (actType === 'UPDATE_PATH' || actType === 'EDIT_PATH') {
+    else if (UPDATE_PATH_TYPES.has(actType)) {
       const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
       if (targetId && actData) {
         const path = currentPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
@@ -569,7 +683,7 @@ export async function executeInventoryActions({
     }
 
     // ── AÑADIR PUNTO (PIN) ────────────────────────────────────────────────────
-    else if (actType === 'ADD_POINT' || actType === 'CREATE_POINT' || actType === 'INSERT_POINT' || actType === 'NEW_POINT') {
+    else if (ADD_POINT_TYPES.has(actType)) {
       let lat = actData.latitude !== undefined && actData.latitude !== null ? Number(actData.latitude) : undefined;
       let lng = actData.longitude !== undefined && actData.longitude !== null ? Number(actData.longitude) : undefined;
 
@@ -598,14 +712,14 @@ export async function executeInventoryActions({
       lat = Number(lat || selectedTarget?.lat || audio?.gpsTrack?.[0]?.lat || liveGps?.lat || center[0] || DEFAULT_CENTER[0]);
       lng = Number(lng || selectedTarget?.lng || audio?.gpsTrack?.[0]?.lng || liveGps?.lng || center[1] || DEFAULT_CENTER[1]);
 
-      const rawName = actData.name || actData.title || actData.tipo || 'Punto registrado';
-      const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+      const rawName = actData.name || actData.nombre || actData.title || actData.titulo || actData.tipo || 'Punto registrado';
+      const formattedName = String(rawName).charAt(0).toUpperCase() + String(rawName).slice(1);
       let category = actData.category || actData.categoria || actData.tipo;
       if (!category || category === 'Otros' || category === 'otro') {
         category = getItemCategory({ name: formattedName, ...actData });
       }
 
-      const notes = actData.notes || actData.observaciones || actData.notas || '';
+      const notes = actData.notes || actData.observaciones || actData.observacion || actData.notas || '';
 
       const newItem = {
         name: formattedName,
@@ -632,7 +746,7 @@ export async function executeInventoryActions({
     }
 
     // ── AÑADIR CAMINO / LÍNEA DE RIEGO (POLILÍNEA) ────────────────────────────
-    else if (actType === 'ADD_PATH' || actType === 'CREATE_PATH' || actType === 'INSERT_PATH') {
+    else if (ADD_PATH_TYPES.has(actType)) {
       let coords = actData.coordinates || actData.coords || [];
 
       // Si provino de audio continuo con recorrido GPS:
@@ -649,11 +763,11 @@ export async function executeInventoryActions({
 
       if (coords && coords.length >= 2) {
         const lengthMeters = calculateTrackLengthMeters(coords);
-        const pathType = actData.path_type || 'linea_riego';
+        const pathType = actData.path_type || actData.tipo || 'linea_riego';
         const color = actData.color || (pathType === 'linea_riego' ? '#0284c7' : '#f97316');
 
         const newPath = {
-          name: actData.name || `Trazado ${pathType}`,
+          name: actData.name || actData.nombre || `Trazado ${pathType}`,
           path_type: pathType,
           color,
           coordinates: coords,

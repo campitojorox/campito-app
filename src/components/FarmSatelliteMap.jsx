@@ -1642,6 +1642,7 @@ export default function FarmSatelliteMap({
     isRecording: isVoiceRecording,
     elapsedSeconds: voiceRecordingSeconds,
     currentGps: voiceCurrentGps,
+    wakeLockActive,
     startTracking: startVoiceTracking,
     stopTracking: stopVoiceTracking,
     cancelTracking: cancelVoiceTracking,
@@ -2014,6 +2015,22 @@ export default function FarmSatelliteMap({
         : 'Escucha atentamente este audio de campo. Transcribe en "transcription", extrae los elementos descritos y genera las acciones correspondientes (ADD_POINT, ADD_PATH, etc.) indicando timestamp_audio_s para cada uno.';
     }
 
+    const slimAudioMeta = audioOrder
+      ? {
+          t0: audioOrder.t0,
+          duration: audioOrder.duration || 1,
+          gpsTrack: Array.isArray(audioOrder.gpsTrack)
+            ? audioOrder.gpsTrack.slice(0, 200).map((p) => ({
+                timestamp: p.timestamp,
+                lat: p.lat,
+                lng: p.lng,
+                accuracy: p.accuracy,
+                altitude: p.altitude ?? null,
+              }))
+            : [],
+        }
+      : null;
+
     const { jobId } = startAiBackgroundJob({
       section: 'mapas',
       prompt: effectivePrompt,
@@ -2021,7 +2038,12 @@ export default function FarmSatelliteMap({
       attachment: attOrder,
       audio: audioOrder,
       responseMimeType: 'application/json',
-      uiMeta: { textOrder },
+      uiMeta: {
+        textOrder,
+        audioMeta: slimAudioMeta,
+        gpsPos,
+        targetSnapshot: selectedTarget || null,
+      },
       directFallbackFn: async () => {
         const directParsed = await callGeminiForInventoryAction({
           prompt: textOrder,
@@ -2060,16 +2082,19 @@ export default function FarmSatelliteMap({
     mapRuntimeContextMap.delete(job.jobId);
 
     const textOrder = ctx.textOrder ?? job.uiMeta?.textOrder ?? '';
-    const audioOrder = ctx.audioOrder || null;
+    const audioOrder = ctx.audioOrder || job.uiMeta?.audioMeta || null;
     const uploadedPhotoUrl = ctx.uploadedPhotoUrl || null;
     const center = ctx.center || (mapInstanceRef.current ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng] : DEFAULT_CENTER);
-    const gpsPos = ctx.gpsPos || liveUserGpsRef.current || voiceCurrentGps || null;
-    const targetSnap = ctx.targetSnapshot !== undefined ? ctx.targetSnapshot : selectedTarget;
+    const gpsPos = ctx.gpsPos || job.uiMeta?.gpsPos || liveUserGpsRef.current || voiceCurrentGps || null;
+    const targetSnap = ctx.targetSnapshot !== undefined ? ctx.targetSnapshot : (job.uiMeta?.targetSnapshot ?? selectedTarget);
 
     try {
       let result = job.result?.parsed || null;
       if (!result && job.result?.rawText) {
         result = parseMapGeminiRawText(job.result.rawText, audioOrder);
+      }
+      if (result && (!result.actions || result.actions.length === 0) && job.result?.rawText) {
+        result = parseMapGeminiRawText(job.result.rawText, audioOrder) || result;
       }
       if (!result) {
         setIaFeedback({ type: 'info', text: 'Respuesta procesada.' });
@@ -2196,7 +2221,10 @@ export default function FarmSatelliteMap({
           }
         }
 
-        setIaFeedback({ type: 'info', text: result.description || 'No se requirieron cambios en el mapa.' });
+        setIaFeedback({
+          type: 'info',
+          text: result.description || result.transcription || 'No se requirieron cambios en el mapa.',
+        });
         return;
       }
 
@@ -2259,6 +2287,10 @@ export default function FarmSatelliteMap({
         execResult.addedItems.forEach((it) => {
           const cat = getItemCategory(it);
           setVisibleCategories((prev) => new Set([...prev, cat]));
+          const rawSub = it.variety_type || it.category || it.tipo || '';
+          if (rawSub) {
+            setVisibleSubcats((prev) => (prev === null ? prev : new Set([...prev, rawSub])));
+          }
         });
         const lastOne = execResult.addedItems[execResult.addedItems.length - 1];
         if (mapInstanceRef.current && lastOne.latitude && lastOne.longitude) {
@@ -3429,6 +3461,11 @@ export default function FarmSatelliteMap({
                 <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
                   {formatAudioTime(voiceRecordingSeconds)}
                 </span>
+                {wakeLockActive && (
+                  <span title="Pantalla bloqueada encendida durante la grabación" style={{ fontSize: '0.72rem', color: '#0f766e', flexShrink: 0 }}>
+                    🔒
+                  </span>
+                )}
                 {voiceCurrentGps ? (
                   <span style={styles.previewGpsTagActive}>
                     📍 ±{voiceCurrentGps.accuracy?.toFixed(1)}m

@@ -387,6 +387,19 @@ export function startAiBackgroundJob({
   const runnerPromise = (async () => {
     try {
       const bodyStr = JSON.stringify(fullBody);
+      // Si el payload supera ~3.8 MB (límite serverless 4.5 MB en Vercel), usar ejecución directa sin fallar por HTTP 413
+      if (bodyStr.length > 3800000 && typeof directFallbackFn === 'function') {
+        const directResult = await directFallbackFn();
+        return upsertJobRecord({
+          ...jobRecord,
+          status: 'completed',
+          actionsApplied: Boolean(directResult?.actionsApplied),
+          persistedToDb: Boolean(directResult?.persistedToDb),
+          result: directResult,
+          error: null,
+        });
+      }
+
       // keepalive: true permite que el navegador complete el envío incluso si el usuario pulsa F5 inmediatamente (límite 60KB)
       const useKeepalive = bodyStr.length < 55000;
 

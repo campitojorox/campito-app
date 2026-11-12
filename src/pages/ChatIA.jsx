@@ -446,7 +446,7 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
     throw new Error('API_KEY_MISSING');
   }
 
-  const effectiveTimeout = (audio || attachment) ? Math.max(timeoutMs, 35000) : timeoutMs;
+  const effectiveTimeout = (audio || attachment) ? Math.max(timeoutMs, 45000) : timeoutMs;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
@@ -479,10 +479,9 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
     }
 
     if (att.dataUrl) {
-      const match = att.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+      const match = att.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
       if (match) {
-        const rawMime = match[1].toLowerCase();
-        const cleanMime = rawMime.split(';')[0].trim();
+        const cleanMime = match[1].toLowerCase().trim();
         // Imágenes y documentos PDF soportados nativamente por Gemini generateContent
         if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
           userParts.push({
@@ -498,10 +497,9 @@ async function callGeminiDirect({ modelId, prompt, attachment, image, audio, his
 
   // Soporte nativo multimodal de Audio en Gemini
   if (audio && audio.dataUrl) {
-    const match = audio.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+    const match = audio.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
     if (match) {
-      const rawMime = match[1].toLowerCase();
-      const cleanMime = rawMime.split(';')[0].trim();
+      const cleanMime = match[1].toLowerCase().trim();
       userParts.push({
         inlineData: {
           mimeType: cleanMime,
@@ -1077,8 +1075,10 @@ export default function ChatIA() {
     currentGps,
     gpsPointsCount,
     accuracyWarning,
+    wakeLockActive,
     startTracking,
     stopTracking,
+    cancelTracking,
   } = useVoiceGeoTracker();
 
   const [autoFallback, setAutoFallback] = useState(true);
@@ -1193,7 +1193,11 @@ export default function ChatIA() {
 
   const handleCancelRecording = async () => {
     try {
-      await stopTracking();
+      if (cancelTracking) {
+        cancelTracking();
+      } else {
+        await stopTracking();
+      }
     } catch (e) {
       console.error('Error cancelando grabación:', e);
     }
@@ -1574,8 +1578,8 @@ export default function ChatIA() {
 
       const text = runtimeCtx.text ?? job.uiMeta?.text ?? '';
       const att = runtimeCtx.att || null;
-      const aud = runtimeCtx.aud || null;
-      const effectivePt = runtimeCtx.effectivePt || deviceGpsRef.current || null;
+      const aud = runtimeCtx.aud || job.uiMeta?.audioMeta || null;
+      const effectivePt = runtimeCtx.effectivePt || job.uiMeta?.effectivePt || deviceGpsRef.current || null;
       const currentEvents = runtimeCtx.currentEvents || (fincaEvents.length > 0 ? fincaEvents : outletEvents);
 
       const successResult = job.result?.rawText || job.result?.displayedContent || '';
@@ -1674,7 +1678,8 @@ export default function ChatIA() {
           }
 
           if (execResult.deletedItems.length > 0) {
-            setFarmInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
+            const deletedSet = new Set(execResult.deletedItems.map((id) => String(id)));
+            setFarmInventory((prev) => prev.filter((i) => !deletedSet.has(String(i.id))));
           }
 
           if (execResult.updatedItems.length > 0) {
@@ -1694,7 +1699,8 @@ export default function ChatIA() {
           }
 
           if (execResult.deletedPaths.length > 0) {
-            setFarmPaths((prev) => prev.filter((p) => !execResult.deletedPaths.includes(p.id)));
+            const deletedPathSet = new Set(execResult.deletedPaths.map((id) => String(id)));
+            setFarmPaths((prev) => prev.filter((p) => !deletedPathSet.has(String(p.id))));
           }
 
           if (execResult.updatedPaths.length > 0) {
@@ -2235,6 +2241,22 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
       const authUser = authData?.user;
       const currentUserName = authUser?.user_metadata?.name || authUser?.email?.split('@')[0] || 'Admin';
 
+      const slimAudioMeta = aud
+        ? {
+            t0: aud.t0,
+            duration: aud.duration || 1,
+            gpsTrack: Array.isArray(aud.gpsTrack)
+              ? aud.gpsTrack.slice(0, 200).map((p) => ({
+                  timestamp: p.timestamp,
+                  lat: p.lat,
+                  lng: p.lng,
+                  accuracy: p.accuracy,
+                  altitude: p.altitude ?? null,
+                }))
+              : [],
+          }
+        : null;
+
       const { jobId } = startAiBackgroundJob({
         section: 'chat-ia',
         prompt: effectivePrompt,
@@ -2250,6 +2272,8 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
           text: text || '',
           primaryIndex,
           userMsgId: userMsg.id,
+          audioMeta: slimAudioMeta,
+          effectivePt: effectivePt || null,
         },
         directFallbackFn: async () => {
           let lastError = null;
@@ -4312,6 +4336,11 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#dc2626', whiteSpace: 'nowrap' }}>
               {formatAudioTime(recordingSeconds)}
             </span>
+            {wakeLockActive && (
+              <span title="Pantalla bloqueada encendida durante la grabación" style={{ fontSize: '0.72rem', color: '#0f766e', flexShrink: 0 }}>
+                🔒
+              </span>
+            )}
             {currentGps ? (
               <span
                 style={{

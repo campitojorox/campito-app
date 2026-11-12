@@ -225,9 +225,9 @@ async function callGeminiCascade({
       });
     }
     if (attachment.dataUrl) {
-      const match = attachment.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+      const match = attachment.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
       if (match) {
-        const cleanMime = match[1].toLowerCase().split(';')[0].trim();
+        const cleanMime = match[1].toLowerCase().trim();
         if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
           userParts.push({ inlineData: { mimeType: cleanMime, data: match[2] } });
         }
@@ -236,9 +236,9 @@ async function callGeminiCascade({
   }
 
   if (audio && audio.dataUrl) {
-    const match = audio.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+    const match = audio.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
     if (match) {
-      userParts.push({ inlineData: { mimeType: match[1].split(';')[0].trim(), data: match[2] } });
+      userParts.push({ inlineData: { mimeType: match[1].toLowerCase().trim(), data: match[2] } });
     } else {
       const cleanMime = (audio.mimeType || 'audio/webm').split(';')[0].trim();
       const cleanBase64 = audio.dataUrl.replace(/^data:.*?;base64,/, '');

@@ -251,8 +251,9 @@ export function useVoiceGeoTracker({
   const [accuracyWarning, setAccuracyWarning] = useState(false);
   const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
   const [error, setError] = useState(null);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
 
-  // Referencias mutables para sincronización de audio y telemetría
+  // Referencias mutables para sincronización de audio, telemetría y bloqueo de pantalla
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
@@ -261,6 +262,62 @@ export function useVoiceGeoTracker({
   const gpsTrackRef = useRef([]);
   const lastSampleTimeRef = useRef(0);
   const timerIntervalRef = useRef(null);
+  const wakeLockRef = useRef(null);
+  const isRecordingRef = useRef(false);
+
+  const releaseWakeLock = useCallback(async () => {
+    const sentinel = wakeLockRef.current;
+    wakeLockRef.current = null;
+    setWakeLockActive(false);
+    if (sentinel) {
+      try {
+        await sentinel.release();
+      } catch {
+        // Ignorar si ya fue liberado por el sistema
+      }
+    }
+  }, []);
+
+  const acquireWakeLock = useCallback(async () => {
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator) || !navigator.wakeLock?.request) {
+      return false;
+    }
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return false;
+    }
+    try {
+      if (wakeLockRef.current && !wakeLockRef.current.released) {
+        setWakeLockActive(true);
+        return true;
+      }
+      const sentinel = await navigator.wakeLock.request('screen');
+      wakeLockRef.current = sentinel;
+      setWakeLockActive(true);
+      sentinel.addEventListener('release', () => {
+        if (wakeLockRef.current === sentinel) {
+          wakeLockRef.current = null;
+          setWakeLockActive(false);
+        }
+      });
+      return true;
+    } catch (wakeErr) {
+      console.warn('[VoiceGeoTracker] Wake Lock no disponible:', wakeErr?.message || wakeErr);
+      setWakeLockActive(false);
+      return false;
+    }
+  }, []);
+
+  // Re-adquirir Wake Lock automáticamente si el usuario vuelve a la app mientras sigue grabando
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isRecordingRef.current) {
+        acquireWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [acquireWakeLock]);
 
   // Actualizar conteo de tracks pendientes al montar
   useEffect(() => {
@@ -296,6 +353,10 @@ export function useVoiceGeoTracker({
     }
 
     try {
+      // Activar Wake Lock inmediatamente para evitar que el bloqueo de pantalla de 30s interrumpa la grabación
+      isRecordingRef.current = true;
+      acquireWakeLock();
+
       // 2. Solicitar y abrir el stream del micrófono para esta sesión
       // La primera vez que el usuario use la app, el navegador pedirá confirmación de permisos.
       // Una vez autorizado, el navegador lo recuerda permanentemente y en las
@@ -461,6 +522,8 @@ export function useVoiceGeoTracker({
       setIsRecording(true);
     } catch (err) {
       console.error('[VoiceGeoTracker] Error iniciando captura:', err);
+      isRecordingRef.current = false;
+      releaseWakeLock();
       if (streamRef.current) {
         stopMediaStream(streamRef.current);
         streamRef.current = null;
@@ -468,13 +531,18 @@ export function useVoiceGeoTracker({
       setError(err.message || 'Error al iniciar captura de voz y GPS');
       throw err;
     }
-  }, [gpsSampleIntervalMs, maxAccuracyThreshold]);
+  }, [gpsSampleIntervalMs, maxAccuracyThreshold, acquireWakeLock, releaseWakeLock]);
 
   // ── Detener grabación y retornar paquete sincronizado ───────────────────────
   const stopTracking = useCallback(async () => {
     if (!isRecording && !mediaRecorderRef.current) {
+      isRecordingRef.current = false;
+      releaseWakeLock();
       return null;
     }
+
+    isRecordingRef.current = false;
+    releaseWakeLock();
 
     // 1. Limpiar GPS y reloj
     if (watchIdRef.current !== null) {
@@ -495,18 +563,26 @@ export function useVoiceGeoTracker({
         return;
       }
 
-      recorder.onstop = () => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(safetyTimer);
         const mime = recorder.mimeType || 'audio/webm';
-        const blob = new Blob(audioChunksRef.current, { type: mime });
-        resolve(blob);
+        resolve(new Blob(audioChunksRef.current, { type: mime }));
       };
 
+      const safetyTimer = setTimeout(finish, 1500);
+      recorder.onstop = finish;
+
       try {
+        if (typeof recorder.requestData === 'function' && recorder.state === 'recording') {
+          recorder.requestData();
+        }
         recorder.stop();
       } catch (e) {
         console.warn('[VoiceGeoTracker] Error deteniendo recorder:', e);
-        const mime = recorder.mimeType || 'audio/webm';
-        resolve(new Blob(audioChunksRef.current, { type: mime }));
+        finish();
       }
     });
 
@@ -575,10 +651,12 @@ export function useVoiceGeoTracker({
 
     setIsRecording(false);
     return result;
-  }, [isRecording, autoPersistOffline, currentGps]);
+  }, [isRecording, autoPersistOffline, currentGps, releaseWakeLock]);
 
   // ── Cancelar grabación y liberar micrófono de inmediato ─────────────────────
   const cancelTracking = useCallback(() => {
+    isRecordingRef.current = false;
+    releaseWakeLock();
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -604,11 +682,13 @@ export function useVoiceGeoTracker({
     gpsTrackRef.current = [];
     setIsRecording(false);
     setElapsedSeconds(0);
-  }, []);
+  }, [releaseWakeLock]);
 
   // Limpieza al desmontar
   useEffect(() => {
     return () => {
+      isRecordingRef.current = false;
+      releaseWakeLock();
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
@@ -620,7 +700,7 @@ export function useVoiceGeoTracker({
         streamRef.current = null;
       }
     };
-  }, []);
+  }, [releaseWakeLock]);
 
   return {
     isRecording,
@@ -630,6 +710,7 @@ export function useVoiceGeoTracker({
     accuracyWarning,
     pendingOfflineCount,
     error,
+    wakeLockActive,
     startTracking,
     stopTracking,
     cancelTracking,
