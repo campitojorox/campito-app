@@ -29,7 +29,7 @@ export default function AddTransactionForm({
         padding: '1.25rem',
         marginTop: '0.65rem',
         marginBottom: '1rem',
-        border: '1px solid #e7e0d8',
+        border: '1px solid #efeae4',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
       }}
     >

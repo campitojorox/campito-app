@@ -1,11 +1,13 @@
 import { useState, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext, useLocation } from 'react-router-dom';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfYear, endOfYear, isSameMonth, isSameDay, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '../supabaseClient';
-import { Plus, Calendar, Clock, AlignLeft } from 'lucide-react';
+import { Plus, Calendar, Clock, AlignLeft, X, Filter } from 'lucide-react';
 import SectionChatIA from '../components/SectionChatIA';
+import CalendarFilterDrawer from '../components/calendar/CalendarFilterDrawer';
+import { matchesCalendarCategory, matchesCalendarUser } from '../services/calendarService';
 
 const categoryColors = {
   'RIEGO': '#38bdf8', // Azul claro (Tailwind sky-400)
@@ -76,6 +78,10 @@ export default function Calendario() {
   const [newCategory, setNewCategory] = useState('');
   const [newSubcategory, setNewSubcategory] = useState('');
   const [newRiegoZones, setNewRiegoZones] = useState([]);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterDateRange, setFilterDateRange] = useState('DAY');
+  const [filterCategory, setFilterCategory] = useState('ALL');
+  const [filterUser, setFilterUser] = useState('ALL');
   const [newResponsibles, setNewResponsibles] = useState([]);
 
   const toggleRiegoZone = (zone) => {
@@ -220,16 +226,65 @@ export default function Calendario() {
   const endDate = useMemo(() => endOfWeek(monthEnd, { weekStartsOn: 1 }), [monthEnd]);
   const days = useMemo(() => eachDayOfInterval({ start: startDate, end: endDate }), [startDate, endDate]);
 
-  const selectedDayEvents = useMemo(() => {
+  const dayEventsList = useMemo(() => {
     const currentDay = new Date(selectedDate);
     currentDay.setHours(0, 0, 0, 0);
-    return events.filter(ev => {
+    return events.filter((ev) => {
       if (!ev.Date) return false;
-      const startDate = parseLocalYMD(ev.Date);
-      const endDate = parseLocalYMD(ev['End Date'] || ev.Date);
-      return startDate && endDate && currentDay >= startDate && currentDay <= endDate;
+      const start = parseLocalYMD(ev.Date);
+      const end = parseLocalYMD(ev['End Date'] || ev.Date);
+      return start && end && currentDay >= start && currentDay <= end;
     });
   }, [events, selectedDate]);
+
+  const monthEventsList = useMemo(() => {
+    const mStart = new Date(monthStart);
+    mStart.setHours(0, 0, 0, 0);
+    const mEnd = new Date(monthEnd);
+    mEnd.setHours(0, 0, 0, 0);
+    return events.filter((ev) => {
+      if (!ev.Date) return false;
+      const start = parseLocalYMD(ev.Date);
+      const end = parseLocalYMD(ev['End Date'] || ev.Date);
+      return start && end && start <= mEnd && end >= mStart;
+    });
+  }, [events, monthStart, monthEnd]);
+
+  const yearEventsList = useMemo(() => {
+    const yStart = startOfYear(currentMonth);
+    yStart.setHours(0, 0, 0, 0);
+    const yEnd = endOfYear(currentMonth);
+    yEnd.setHours(0, 0, 0, 0);
+    return events.filter((ev) => {
+      if (!ev.Date) return false;
+      const start = parseLocalYMD(ev.Date);
+      const end = parseLocalYMD(ev['End Date'] || ev.Date);
+      return start && end && start <= yEnd && end >= yStart;
+    });
+  }, [events, currentMonth]);
+
+  const dateRangeCounts = useMemo(
+    () => ({
+      DAY: dayEventsList.length,
+      MONTH: monthEventsList.length,
+      YEAR: yearEventsList.length,
+    }),
+    [dayEventsList.length, monthEventsList.length, yearEventsList.length]
+  );
+
+  const dateFilteredEvents = useMemo(() => {
+    if (filterDateRange === 'MONTH') return monthEventsList;
+    if (filterDateRange === 'YEAR') return yearEventsList;
+    return dayEventsList;
+  }, [filterDateRange, dayEventsList, monthEventsList, yearEventsList]);
+
+  const filteredEvents = useMemo(() => {
+    return dateFilteredEvents.filter(
+      (ev) => matchesCalendarCategory(ev, filterCategory) && matchesCalendarUser(ev, filterUser)
+    );
+  }, [dateFilteredEvents, filterCategory, filterUser]);
+
+  const hasActiveFilters = filterDateRange !== 'DAY' || filterCategory !== 'ALL' || filterUser !== 'ALL';
 
   const searchResults = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -727,7 +782,23 @@ export default function Calendario() {
             <button
               type="button"
               onClick={prevMonth}
-              style={{ fontSize: '1.4rem', color: '#666666', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.4rem' }}
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--primary)',
+                color: '#ffffff',
+                border: 'none',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                lineHeight: 1,
+                paddingRight: '2px',
+                boxShadow: '0 2px 8px rgba(0, 151, 157, 0.35)',
+                flexShrink: 0,
+              }}
               title="Mes anterior"
               aria-label="Mes anterior"
             >
@@ -739,7 +810,23 @@ export default function Calendario() {
             <button
               type="button"
               onClick={nextMonth}
-              style={{ fontSize: '1.4rem', color: '#666666', border: 'none', background: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', padding: '0.4rem' }}
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--primary)',
+                color: '#ffffff',
+                border: 'none',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                lineHeight: 1,
+                paddingLeft: '2px',
+                boxShadow: '0 2px 8px rgba(0, 151, 157, 0.35)',
+                flexShrink: 0,
+              }}
               title="Mes siguiente"
               aria-label="Mes siguiente"
             >
@@ -819,25 +906,36 @@ export default function Calendario() {
             })}
           </div>
 
-          {/* Botón / Formulario Registrar Actividad dentro del div calendario, debajo del calendario y sobre preview actividades */}
+          {/* Sección Registros dentro del div calendario, debajo del calendario y sobre preview actividades */}
           <div
             style={{
+              borderTop: '1px solid #e2e8f0',
               marginTop: '1rem',
-              paddingTop: isAddFormOpen ? '0.9rem' : '0.25rem',
-              borderTop: isAddFormOpen ? '1px solid #e2e8f0' : 'none',
+              paddingTop: '0.85rem',
             }}
           >
-            {!isAddFormOpen ? (
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: isAddFormOpen ? '0.65rem' : '0',
+              }}
+            >
+              <h2 className="section-title" style={{ margin: 0, padding: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b' }}>
+                Registros
+              </h2>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
                 <button
                   type="button"
-                  onClick={toggleAddForm}
-                  aria-label="Abrir formulario Registrar Actividad"
-                  title="Registrar Actividad"
+                  onClick={() => setIsFilterOpen((prev) => !prev)}
+                  title={isFilterOpen ? 'Cerrar filtros' : 'Filtrar registros'}
+                  aria-label={isFilterOpen ? 'Cerrar filtros' : 'Filtrar registros'}
                   style={{
-                    width: '80%',
-                    height: '46px',
-                    borderRadius: '12px',
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '50%',
                     backgroundColor: 'var(--primary)',
                     color: '#ffffff',
                     display: 'flex',
@@ -845,64 +943,94 @@ export default function Calendario() {
                     justifyContent: 'center',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '1.6rem',
-                    fontWeight: 700,
-                    lineHeight: 1,
                     boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
-                    transition: 'transform 0.15s ease, background-color 0.2s ease',
+                    transition: 'transform 0.2s ease, background-color 0.2s ease',
+                    position: 'relative',
+                    flexShrink: 0,
                   }}
                 >
-                  <Plus size={26} strokeWidth={2.75} />
+                  <Filter size={18} strokeWidth={2.2} />
+                  {hasActiveFilters && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: '1px',
+                        right: '1px',
+                        width: '10px',
+                        height: '10px',
+                        borderRadius: '50%',
+                        backgroundColor: '#9edb9e',
+                        boxShadow: '0 0 0 2px #ffffff',
+                      }}
+                    />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleAddForm}
+                  aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Agregar Actividad'}
+                  title={isAddFormOpen ? 'Cerrar formulario' : 'Agregar Actividad'}
+                  style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--primary)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    cursor: 'pointer',
+                    boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
+                    transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.22s ease, background-color 0.2s ease',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Plus size={24} />
                 </button>
               </div>
-            ) : (
+            </div>
+
+            {isAddFormOpen && (
               <div
-                className="form-container"
+                className="form-container form-container-green"
                 style={{
-                  padding: '0.25rem 0 0.5rem 0',
-                  margin: 0,
-                  boxShadow: 'none',
+                  padding: '1.25rem',
+                  marginTop: '0.65rem',
+                  marginBottom: '0.5rem',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
                 }}
               >
                 <div
-                  onClick={toggleAddForm}
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    cursor: 'pointer',
-                    marginBottom: '1rem',
+                    marginBottom: '1.15rem',
                   }}
                 >
-                  <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#000000', fontWeight: 'bold' }}>
-                    Registrar Actividad
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#000000', fontWeight: 'bold' }}>
+                    Agregar Actividad
                   </h2>
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleAddForm();
-                    }}
+                    onClick={toggleAddForm}
                     aria-label="Cerrar formulario"
                     title="Cerrar formulario"
                     style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '50%',
-                      backgroundColor: 'var(--primary)',
-                      color: '#ffffff',
+                      background: 'none',
+                      border: 'none',
+                      color: '#1e293b',
+                      cursor: 'pointer',
+                      padding: '4px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      border: 'none',
-                      cursor: 'pointer',
-                      boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
-                      transform: 'rotate(45deg)',
-                      transition: 'transform 0.22s ease, background-color 0.2s ease',
-                      flexShrink: 0,
+                      borderRadius: '6px',
                     }}
                   >
-                    <Plus size={22} />
+                    <X size={20} />
                   </button>
                 </div>
 
@@ -911,8 +1039,8 @@ export default function Calendario() {
             )}
           </div>
 
-          {/* Previsualización integrada de las actividades del día seleccionado dentro del mismo div del calendario */}
-          {selectedDayEvents.length > 0 && (
+          {/* Previsualización integrada de las actividades filtradas dentro del mismo div del calendario */}
+          {(filteredEvents.length > 0 || hasActiveFilters) && (
             <div
               style={{
                 borderTop: '1px solid #e2e8f0',
@@ -922,16 +1050,62 @@ export default function Calendario() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', padding: '0 0.25rem' }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'capitalize' }}>
-                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                  {filterDateRange === 'MONTH'
+                    ? format(currentMonth, 'MMMM yyyy', { locale: es })
+                    : filterDateRange === 'YEAR'
+                      ? format(currentMonth, 'yyyy')
+                      : format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
                 </span>
                 <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#00979d' }}>
-                  {selectedDayEvents.length} {selectedDayEvents.length === 1 ? 'actividad' : 'actividades'}
+                  {filteredEvents.length} {filteredEvents.length === 1 ? 'actividad' : 'actividades'}
                 </span>
               </div>
-              {renderEventsList(selectedDayEvents, { insideCalendar: true })}
+              {filteredEvents.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '1rem 0.5rem', color: '#64748b', fontSize: '0.85rem' }}>
+                  <div>No hay registros con los filtros aplicados.</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterDateRange('DAY');
+                      setFilterCategory('ALL');
+                      setFilterUser('ALL');
+                    }}
+                    style={{
+                      marginTop: '0.65rem',
+                      padding: '0.4rem 0.95rem',
+                      borderRadius: '8px',
+                      backgroundColor: 'var(--primary)',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: 600,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Restablecer Filtros
+                  </button>
+                </div>
+              ) : (
+                renderEventsList(filteredEvents, { insideCalendar: true })
+              )}
             </div>
           )}
         </div>
+
+        <CalendarFilterDrawer
+          isFilterOpen={isFilterOpen}
+          setIsFilterOpen={setIsFilterOpen}
+          filterDateRange={filterDateRange}
+          setFilterDateRange={setFilterDateRange}
+          filterCategory={filterCategory}
+          setFilterCategory={setFilterCategory}
+          filterUser={filterUser}
+          setFilterUser={setFilterUser}
+          dateRangeCounts={dateRangeCounts}
+          events={events}
+          users={users}
+          filteredEventsCount={filteredEvents.length}
+        />
         </>
       )}
 

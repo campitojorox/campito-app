@@ -271,9 +271,9 @@ export default function GastoIngreso() {
 
       <div
         style={{
-          backgroundColor: '#f1ebe6',
+          backgroundColor: '#f8f5f2',
           borderRadius: '14px',
-          border: '1px solid #e7e0d8',
+          border: '1px solid #efeae4',
           padding: '1.15rem 1rem 0.5rem 1rem',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
           marginTop: '1.5rem',
@@ -287,53 +287,16 @@ export default function GastoIngreso() {
             marginBottom: isAddFormOpen || hasActiveFilters || displayRecords.length > 0 || selectedRecord ? '0.65rem' : '0.35rem',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-            <h2 className="section-title" style={{ margin: 0, padding: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#2b1d14' }}>
-              {isSearchOpen && searchQuery.trim() !== '' ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
-            </h2>
+          <h2 className="section-title" style={{ margin: 0, padding: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#2b1d14' }}>
+            {isSearchOpen && searchQuery.trim() !== '' ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
+          </h2>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
               title={isFilterOpen ? 'Cerrar filtros' : 'Filtrar transacciones'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0.4rem',
-                borderRadius: '6px',
-                backgroundColor: isFilterOpen || hasActiveFilters ? 'rgba(0, 151, 157, 0.16)' : 'transparent',
-                color: isFilterOpen || hasActiveFilters ? '#00979d' : '#5c4436',
-                border: isFilterOpen || hasActiveFilters ? '1px solid #00979d' : '1px solid transparent',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                position: 'relative',
-                flexShrink: 0,
-              }}
-            >
-              <Filter size={22} />
-              {hasActiveFilters && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '3px',
-                    right: '3px',
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: '#00979d',
-                    boxShadow: '0 0 0 2px #f1ebe6',
-                  }}
-                />
-              )}
-            </button>
-          </div>
-
-          {!(isSearchOpen && searchQuery.trim() !== '') && (
-            <button
-              type="button"
-              onClick={() => setIsAddFormOpen((prev) => !prev)}
-              aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Agregar Movimiento'}
-              title={isAddFormOpen ? 'Cerrar formulario' : 'Agregar Movimiento'}
+              aria-label={isFilterOpen ? 'Cerrar filtros' : 'Filtrar transacciones'}
               style={{
                 width: '44px',
                 height: '44px',
@@ -346,14 +309,55 @@ export default function GastoIngreso() {
                 border: 'none',
                 cursor: 'pointer',
                 boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
-                transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-                transition: 'transform 0.22s ease, background-color 0.2s ease',
+                transition: 'transform 0.2s ease, background-color 0.2s ease',
+                position: 'relative',
                 flexShrink: 0,
               }}
             >
-              <Plus size={24} />
+              <Filter size={18} strokeWidth={2.2} />
+              {hasActiveFilters && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '1px',
+                    right: '1px',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    backgroundColor: '#9edb9e',
+                    boxShadow: '0 0 0 2px #f8f5f2',
+                  }}
+                />
+              )}
             </button>
-          )}
+
+            {!(isSearchOpen && searchQuery.trim() !== '') && (
+              <button
+                type="button"
+                onClick={() => setIsAddFormOpen((prev) => !prev)}
+                aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Agregar Movimiento'}
+                title={isAddFormOpen ? 'Cerrar formulario' : 'Agregar Movimiento'}
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--primary)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
+                  transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.22s ease, background-color 0.2s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <Plus size={24} />
+              </button>
+            )}
+          </div>
         </div>
 
         {!(isSearchOpen && searchQuery.trim() !== '') && (

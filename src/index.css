@@ -103,16 +103,22 @@ button {
   margin-bottom: 2rem;
 }
 
+.form-container.form-container-green {
+  background-color: rgba(158, 219, 158, 0.5) !important;
+  border-radius: 14px;
+  border: 1px solid rgba(158, 219, 158, 0.85);
+}
+
 /* Contabilidad Container — Café con Leche Muy Suave (50% más claro) */
 .contabilidad-container {
-  background-color: #f1ebe6 !important;
+  background-color: #f8f5f2 !important;
   border-radius: 16px;
   padding: 2rem 1.6rem;
   color: #2b1d14;
   margin-top: 3.5rem;
   margin-bottom: 3.5rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-  border: 1px solid #e7e0d8;
+  border: 1px solid #efeae4;
 }
 
 .contabilidad-table {

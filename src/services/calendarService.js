@@ -215,3 +215,28 @@ export async function createCalendarEvent(eventData) {
     return { success: false, error: err.message };
   }
 }
+
+export function matchesCalendarCategory(ev, catKey) {
+  if (!catKey || catKey === 'ALL') return true;
+  const cat = (ev?.Category || '').trim().toUpperCase();
+  if (catKey === 'RIEGO') return cat.startsWith('RIEGO');
+  if (catKey === 'MANTENIMIENTO') return cat.startsWith('MANT');
+  if (catKey === 'OTRO') return cat === 'OTRO' || (!cat.startsWith('RIEGO') && !cat.startsWith('MANT') && cat !== '');
+  return true;
+}
+
+export function matchesCalendarUser(ev, userName) {
+  if (!userName || userName === 'ALL') return true;
+  const target = userName.trim().toLowerCase();
+  if (Array.isArray(ev?.responsibles) && ev.responsibles.length > 0) {
+    return ev.responsibles.some((r) => {
+      const val = String(r || '').trim().toLowerCase();
+      return val === target || val === 'todos';
+    });
+  }
+  if (ev?.Responsible && ev.Responsible !== 'Sin Asignar') {
+    const resp = ev.Responsible.toLowerCase();
+    return resp.includes(target) || resp === 'todos';
+  }
+  return false;
+}
