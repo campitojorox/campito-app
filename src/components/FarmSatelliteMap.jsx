@@ -107,8 +107,79 @@ export default function FarmSatelliteMap({
         setLocalInventory(getLocalInventory());
       }
     };
+    const handlePathsUpdated = (e) => {
+      if (e?.detail) {
+        if (e.detail.deleted) {
+          setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(e.detail.id)));
+        } else {
+          setLocalPaths((prev) => {
+            const exists = prev.some((p) => String(p.id) === String(e.detail.id));
+            if (exists) {
+              return prev.map((p) =>
+                String(p.id) === String(e.detail.id) ? { ...p, ...e.detail } : p
+              );
+            }
+            return [e.detail, ...prev];
+          });
+        }
+      } else {
+        setLocalPaths(getLocalPaths());
+      }
+    };
+
     window.addEventListener('farm-inventory-updated', handleInvUpdated);
-    return () => window.removeEventListener('farm-inventory-updated', handleInvUpdated);
+    window.addEventListener('farm-paths-updated', handlePathsUpdated);
+
+    // ─── Sincronización Multi-Usuario Realtime con Supabase ───
+    const realtimeChannel = supabase
+      .channel('public:map_realtime_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'farm_inventory' },
+        (payload) => {
+          if (payload.eventType === 'DELETE' || payload.new?.is_active === false) {
+            const delId = payload.old?.id || payload.new?.id;
+            if (delId) {
+              setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(delId)));
+            }
+          } else if (payload.new) {
+            setLocalInventory((prev) => {
+              const exists = prev.some((i) => String(i.id) === String(payload.new.id));
+              if (exists) {
+                return prev.map((i) => (String(i.id) === String(payload.new.id) ? payload.new : i));
+              }
+              return [payload.new, ...prev];
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'farm_paths' },
+        (payload) => {
+          if (payload.eventType === 'DELETE' || payload.new?.is_active === false) {
+            const delId = payload.old?.id || payload.new?.id;
+            if (delId) {
+              setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(delId)));
+            }
+          } else if (payload.new) {
+            setLocalPaths((prev) => {
+              const exists = prev.some((p) => String(p.id) === String(payload.new.id));
+              if (exists) {
+                return prev.map((p) => (String(p.id) === String(payload.new.id) ? payload.new : p));
+              }
+              return [payload.new, ...prev];
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('farm-inventory-updated', handleInvUpdated);
+      window.removeEventListener('farm-paths-updated', handlePathsUpdated);
+      supabase.removeChannel(realtimeChannel);
+    };
   }, []);
 
   // ─── Descubrimiento dinámico de categorías ─────────────────────────────────

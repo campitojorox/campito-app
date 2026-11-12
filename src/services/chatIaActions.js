@@ -6,6 +6,11 @@ import { parseStructuredCommands, executeInventoryActions } from './mapIaOrchest
 import { deleteCalendarEvent } from './calendarService';
 import { extractTableFromMarkdown } from '../utils/exportTools';
 import { normalizeAttachments } from '../utils/attachmentUtils';
+import {
+  parseAllStructuredCommands,
+  saveNewCustomTool,
+  registerUnifiedDocument,
+} from './unifiedAiBrain';
 
 /**
  * Ejecuta comandos estructurados devueltos por Gemini (inventario, caminos, calendario,
@@ -55,17 +60,25 @@ export async function processChatResponseActions({
   }
 
   const structured = parseStructuredCommands(successResult);
+  const uCmds = parseAllStructuredCommands(successResult);
 
   displayedContent = displayedContent
     .replace(/\[\[REGISTRAR_PUNTOS:\s*(\[[\s\S]*?\])\s*\]\]/gi, '')
     .replace(/\[\[REGISTRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[BORRAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[REGISTRAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[EDITAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[ACTUALIZAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[MODIFICAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[BORRAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[ELIMINAR_CAMINO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[EDITAR_PUNTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[CREAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[BORRAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[ELIMINAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[CREAR_TRANSACCION:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[REGISTRAR_HERRAMIENTA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[CREAR_HERRAMIENTA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .trim();
 
   const actionsToExecute = [
@@ -73,6 +86,8 @@ export async function processChatResponseActions({
     ...structured.deletions.map((d) => ({ type: 'DELETE_POINT', data: d })),
     ...structured.paths.map((pth) => ({ type: 'ADD_PATH', data: pth })),
     ...structured.updates.map((u) => ({ type: 'UPDATE_POINT', data: u })),
+    ...uCmds.pathUpdates.map((pth) => ({ type: 'UPDATE_PATH', data: pth })),
+    ...uCmds.pathDeletions.map((d) => ({ type: 'DELETE_PATH', data: d })),
   ];
 
   if (userText && actionsToExecute.filter((a) => a.type === 'DELETE_POINT').length === 0) {
@@ -375,6 +390,14 @@ export async function processChatResponseActions({
         })
         .then(() => {})
         .catch(() => {});
+    }
+  }
+
+  if (Array.isArray(uCmds.customTools) && uCmds.customTools.length > 0) {
+    for (const tool of uCmds.customTools) {
+      saveNewCustomTool(tool, { userId: currentUserId }).catch((e) =>
+        console.warn('Error guardando herramienta dinámica:', e)
+      );
     }
   }
 

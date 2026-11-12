@@ -28,6 +28,7 @@ import {
   executeFinanceIaActions,
   revertFinanceIaActions,
 } from '../services/sectionIaService';
+import { callUnifiedAiBrain } from '../services/unifiedAiBrain';
 import {
   startAiBackgroundJob,
   subscribeSectionJobs,
@@ -440,17 +441,33 @@ export default function SectionChatIA({
       attachments: attsOrder,
       audio: audioOrder,
       responseMimeType: 'application/json',
-      userMeta: { userName: contextData.currentUser || 'Ariel' },
-      directFallbackFn: () =>
-        callSectionGemini({
-          section,
-          prompt: textOrder,
-          audio: audioOrder,
-          attachment: attsOrder[0] || null,
-          attachments: attsOrder,
-          contextData,
-          apiKey,
-        }),
+      userMeta: { userName: contextData.currentUser || 'Usuario' },
+      directFallbackFn: async () => {
+        try {
+          const brainRes = await callUnifiedAiBrain({
+            prompt: textOrder,
+            section,
+            audio: audioOrder,
+            attachments: attsOrder,
+            events: contextData.events || [],
+            transactions: contextData.transactions || [],
+            users: contextData.users || [],
+            userMeta: { userName: contextData.currentUser || 'Usuario' },
+            apiKey,
+          });
+          return { rawText: brainRes.rawText, parsed: brainRes.parsedCommands };
+        } catch {
+          return callSectionGemini({
+            section,
+            prompt: textOrder,
+            audio: audioOrder,
+            attachment: attsOrder[0] || null,
+            attachments: attsOrder,
+            contextData,
+            apiKey,
+          });
+        }
+      },
     });
 
     if (attsOrder.length > 0) {
@@ -656,7 +673,11 @@ export default function SectionChatIA({
                   handleSendOrder();
                 }
               }}
-              placeholder="Mensaje..."
+              placeholder={
+                section === 'calendario'
+                  ? 'Pregunta fechas, agenda un riego o dicta con voz...'
+                  : 'Apunta un gasto, consulta saldos o sube tickets...'
+              }
               style={styles.chatIaTextInput}
               disabled={isProcessingIa}
               autoComplete="off"

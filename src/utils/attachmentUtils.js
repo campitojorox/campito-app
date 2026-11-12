@@ -2,9 +2,21 @@
 // Utilidades compartidas para leer, normalizar y enviar múltiples archivos adjuntos de distintos tipos en Chat IA.
 
 export const ACCEPTED_CHAT_FILE_TYPES =
-  '.pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,.md,.json,.geojson,.kml,.kmz,.xml,image/*,text/*,application/pdf';
+  '.pdf,.csv,.xlsx,.xls,.doc,.docx,.txt,.md,.json,.geojson,.kml,.kmz,.gpx,.dxf,.cad,.stl,.xml,image/*,text/*,application/pdf';
 
-const TEXT_EXTENSIONS = ['.txt', '.csv', '.json', '.geojson', '.kml', '.md', '.xml'];
+const TEXT_EXTENSIONS = [
+  '.txt',
+  '.csv',
+  '.json',
+  '.geojson',
+  '.kml',
+  '.gpx',
+  '.dxf',
+  '.cad',
+  '.stl',
+  '.md',
+  '.xml',
+];
 const SPREADSHEET_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
 
 export function readFileAsAttachment(file, { forceImage = false } = {}) {

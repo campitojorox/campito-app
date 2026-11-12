@@ -104,26 +104,35 @@ export default function ChatInfoModal({
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1e293b', fontWeight: 700, fontSize: '0.85rem' }}>
               <Zap size={15} color="#f59e0b" />
-              <span>3. Modo de Operación y Capacidades en Vivo</span>
+              <span>3. Capacidades del Cerebro IA Unificado</span>
             </div>
             <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.75rem', color: '#475569', lineHeight: 1.5 }}>
               <li>
-                <b>📅 Calendario y Riego en Vivo:</b> Consulta turnos de riego (La Nana, El Moro), horarios, fechas y responsables con sincronización directa a la base de datos.
+                <b>🛣️ Edición y Control de Caminos:</b> Puedes cambiar el trazado, color, nombre o coordenadas de cualquier pista o tubería de la sección Mapas directamente desde este chat.
               </li>
               <li>
-                <b>💰 Contabilidad y Balances Reales:</b> Consulta gastos, ventas, balance neto y liquidaciones individuales de socios (Ariel, Carlos) sin inventar cifras.
+                <b>📐 Planos Técnicos y Croquis Vectoriales (SVG):</b> Pídele planos acotados en metros de bancales o goteros y visualízalos con visor interactivo (zoom, descarga e impresión).
               </li>
               <li>
-                <b>✍️ Acciones Directas en la DB:</b> Crea eventos en el calendario o apunta transacciones contables desde el chat con lenguaje natural.
+                <b>📊 Diagramas y Esquemas Mermaid:</b> Genera circuitos hidráulicos de riego, diagramas de flujo y calendarios de labores agrícolas.
               </li>
               <li>
-                <b>🎙️ Micrófono Unificado con GPS:</b> Un solo botón para todo: dictar consultas, registrar transacciones o inventariar árboles y arquetas caminando por los bancales con telemetría GPS continua.
+                <b>👁️ Diagnóstico Fitosanitario y OCR:</b> Análisis visual de hojas y plagas en fotos, OCR de facturas de abono y lectura de contadores de agua.
               </li>
               <li>
-                <b>📎 Botón '+' Multiformato:</b> Adjunta análisis foliares y de suelo en PDF, albaranes, fotos de plagas o archivos Excel/CSV para nutrir el conocimiento del chat.
+                <b>🛠️ Creador de Nuevas Herramientas (Meta-Tool):</b> Pídele a la IA inventar herramientas de cálculo personalizadas; quedarán guardadas para todos los usuarios.
               </li>
               <li>
-                <b>⚡ Cascada de IA Inteligente:</b> Conexión multinivel con modelos Pro y Flash que desciende automáticamente si se agota la cuota para garantizar disponibilidad 24/7.
+                <b>📅 Calendario y Riego en Vivo:</b> Consulta turnos (La Nana, El Moro), horarios y responsables con sincronización directa a la base de datos.
+              </li>
+              <li>
+                <b>💰 Contabilidad y Balances Reales:</b> Consulta gastos, ventas, balance neto y liquidaciones individuales sin inventar cifras.
+              </li>
+              <li>
+                <b>👥 Colaboración Multi-Usuario:</b> Todos los usuarios registrados tienen acceso total y equitativo con sincronización instantánea en tiempo real.
+              </li>
+              <li>
+                <b>🎙️ Micrófono Unificado con GPS:</b> Dicta consultas o inventaría árboles y caminos mientras caminas con telemetría GPS continua.
               </li>
             </ul>
           </div>

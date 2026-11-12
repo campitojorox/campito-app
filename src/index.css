@@ -833,3 +833,49 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   font-weight: 600;
 }
 
+/* ─── OPTIMIZACIONES GPU Y ANIMACIONES COMPARTIDAS CHAT IA ─── */
+@keyframes pulseGpu {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(220, 38, 38, 0.6);
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+}
+
+@keyframes spinGpu {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes waveBarGpu {
+  0%, 100% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.ai-pulse-gpu {
+  animation: pulseGpu 1.2s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.ai-spin-gpu {
+  animation: spinGpu 0.8s linear infinite;
+  will-change: transform;
+}
+
+

@@ -22,6 +22,13 @@ import {
   parseStructuredCommands,
 } from '../services/mapIaOrchestrator';
 import {
+  callUnifiedAiBrain,
+  executeUnifiedActions,
+  parseAllStructuredCommands,
+  buildUnifiedSystemPrompt,
+} from '../services/unifiedAiBrain';
+import { parseKmlString, parseGeoJsonString, parseGpxString } from '../utils/kmlParser';
+import {
   startAiBackgroundJob,
   subscribeSectionJobs,
   acknowledgeAiJob,
@@ -185,6 +192,76 @@ export function useMapIaController({
       setPendingAttachments([]);
       await handleDeleteTarget();
       return;
+    }
+
+    // ─── IMPORTACIÓN DIRECTA DE ARCHIVOS KML / GEOJSON / GPX ───
+    const geoAtt = attsOrder.find(
+      (a) =>
+        (a.name &&
+          (a.name.toLowerCase().endsWith('.kml') ||
+            a.name.toLowerCase().endsWith('.geojson') ||
+            a.name.toLowerCase().endsWith('.gpx'))) ||
+        (a.textContent &&
+          (a.textContent.includes('<kml') ||
+            a.textContent.includes('"FeatureCollection"') ||
+            a.textContent.includes('<gpx')))
+    );
+
+    if (geoAtt && geoAtt.textContent) {
+      const isGeoJson =
+        geoAtt.name?.toLowerCase().endsWith('.geojson') || geoAtt.textContent.includes('"FeatureCollection"');
+      const isGpx = geoAtt.name?.toLowerCase().endsWith('.gpx') || geoAtt.textContent.includes('<gpx');
+      const parsedGeo = isGeoJson
+        ? parseGeoJsonString(geoAtt.textContent)
+        : isGpx
+          ? parseGpxString(geoAtt.textContent)
+          : parseKmlString(geoAtt.textContent);
+
+      if (parsedGeo.points.length > 0 || parsedGeo.paths.length > 0) {
+        setMapIaInput('');
+        syncTextareaHeight(mapIaTextareaRef.current, '');
+        setPendingVoiceAudio(null);
+        setPendingAttachments([]);
+        setIsProcessingIa(true);
+        setIaFeedback({
+          type: 'info',
+          text: `🗺️ Importando ${parsedGeo.points.length} punto(s) y ${parsedGeo.paths.length} camino(s) desde "${geoAtt.name}"...`,
+        });
+
+        try {
+          const execRes = await executeUnifiedActions({
+            parsedCommands: {
+              points: parsedGeo.points,
+              paths: parsedGeo.paths,
+            },
+            currentInventory: localInventory,
+            currentPaths: localPaths,
+          });
+
+          if (execRes.addedPoints.length > 0) {
+            setLocalInventory((prev) => [...execRes.addedPoints, ...prev]);
+            execRes.addedPoints.forEach((it) => {
+              const cat = getItemCategory(it);
+              setVisibleCategories((prev) => new Set([...prev, cat]));
+            });
+          }
+          if (execRes.addedPaths.length > 0) {
+            setLocalPaths((prev) => [...execRes.addedPaths, ...prev]);
+          }
+
+          setIaFeedback({
+            type: 'success',
+            text: `✨ Archivo KML importado con éxito: ${execRes.addedPoints.length} puntos y ${execRes.addedPaths.length} caminos registrados en el mapa.`,
+          });
+          if (onReloadInventory) await onReloadInventory();
+          if (onReloadPaths) await onReloadPaths();
+        } catch (err) {
+          setIaFeedback({ type: 'error', text: `Error importando KML: ${err.message}` });
+        } finally {
+          setIsProcessingIa(false);
+        }
+        return;
+      }
     }
 
     const directParsed = parseStructuredCommands(textOrder);
@@ -371,19 +448,37 @@ export function useMapIaController({
         targetSnapshot: selectedTarget || null,
       },
       directFallbackFn: async () => {
-        const directParsed = await callGeminiForInventoryAction({
-          prompt: textOrder,
-          audio: audioOrder,
-          attachment: attsOrder[0] || null,
-          attachments: attsOrder,
-          selectedTarget,
-          visibleInventory: filteredInventory,
-          visiblePaths: filteredPaths,
-          mapCenter: center,
-          currentGps: gpsPos,
-          apiKey,
-        });
-        return { parsed: directParsed };
+        try {
+          const brainRes = await callUnifiedAiBrain({
+            prompt: textOrder,
+            section: 'mapas',
+            audio: audioOrder,
+            attachments: attsOrder,
+            selectedTarget,
+            visibleInventory: filteredInventory,
+            visiblePaths: filteredPaths,
+            mapCenter: center,
+            currentGps: gpsPos,
+            apiKey,
+          });
+          const parsed = parseMapGeminiRawText(brainRes.rawText, audioOrder);
+          return { parsed, rawText: brainRes.rawText, unifiedCommands: brainRes.parsedCommands };
+        } catch (brainErr) {
+          console.warn('[MapAI] Fallback a orquestador legacy:', brainErr.message);
+          const directParsed = await callGeminiForInventoryAction({
+            prompt: textOrder,
+            audio: audioOrder,
+            attachment: attsOrder[0] || null,
+            attachments: attsOrder,
+            selectedTarget,
+            visibleInventory: filteredInventory,
+            visiblePaths: filteredPaths,
+            mapCenter: center,
+            currentGps: gpsPos,
+            apiKey,
+          });
+          return { parsed: directParsed };
+        }
       },
     });
 
@@ -431,6 +526,22 @@ export function useMapIaController({
       if (!result) {
         setIaFeedback({ type: 'info', text: 'Respuesta procesada.' });
         return;
+      }
+
+      if (job.result?.rawText) {
+        const uCmds = job.result.unifiedCommands || parseAllStructuredCommands(job.result.rawText);
+        if (
+          (uCmds.memories && uCmds.memories.length > 0) ||
+          (uCmds.customTools && uCmds.customTools.length > 0) ||
+          (uCmds.events && uCmds.events.length > 0) ||
+          (uCmds.transactions && uCmds.transactions.length > 0)
+        ) {
+          executeUnifiedActions({
+            parsedCommands: uCmds,
+            currentInventory: localInventory,
+            currentPaths: localPaths,
+          }).catch((err) => console.warn('[MapAI] Error ejecutando acciones complementarias:', err));
+        }
       }
 
       if (!result.actions || result.actions.length === 0) {

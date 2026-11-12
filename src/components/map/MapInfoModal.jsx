@@ -74,11 +74,17 @@ export default function MapInfoModal({ isOpen, onClose }) {
           <div style={styles.infoBlock}>
             <div style={styles.infoBlockTitle}>
               <Bot size={15} color="#00979d" />
-              <span>Registro en Terreno con GPS (Chat IA)</span>
+              <span>Cerebro IA Unificado y Sincronización en Tiempo Real</span>
             </div>
             <p style={styles.infoBlockText}>
-              También puedes abrir la sección <b>Chat IA</b> mientras caminas por la finca: al dictar por voz con el micrófono, la app captura automáticamente tu posición satelital y ubica el objeto en sus coordenadas reales.
+              Este mapa está conectado al <b>Cerebro IA Unificado</b> de Campito Jorox con <b>sincronización multi-usuario en tiempo real</b>:
             </p>
+            <ul style={styles.infoList}>
+              <li><b>🔄 En vivo para todos:</b> Cualquier cambio (añadir un árbol, cambiar un gotero o modificar un camino) realizado por ti o por otro usuario desde el móvil o el PC se refleja inmediatamente en pantalla.</li>
+              <li><b>🛣️ Trazado y Edición de Caminos:</b> Puedes crear y editar caminos arrastrando nodos en este mapa o pidiéndoselo en lenguaje natural al <b>Chat IA</b>.</li>
+              <li><b>🧠 Memoria y Documentos Compartidos:</b> La IA recuerda reglas de la finca y accede al catálogo de fotos y documentos comunes.</li>
+              <li><b>🎙️ Registro en Terreno con GPS:</b> Camina por los bancales con el micrófono activo; la app interpola las coordenadas satelitales exactas de cada elemento descrito.</li>
+            </ul>
           </div>
 
           <div style={styles.infoBlock}>

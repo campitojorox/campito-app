@@ -31,6 +31,9 @@ CREATE POLICY "Insercion de conocimiento para autenticados" ON public.farm_knowl
 DROP POLICY IF EXISTS "Modificacion de conocimiento para autenticados" ON public.farm_knowledge;
 CREATE POLICY "Modificacion de conocimiento para autenticados" ON public.farm_knowledge FOR UPDATE TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Eliminacion de conocimiento para autenticados" ON public.farm_knowledge;
+CREATE POLICY "Eliminacion de conocimiento para autenticados" ON public.farm_knowledge FOR DELETE TO authenticated USING (true);
+
 DROP POLICY IF EXISTS "Acceso completo service_role para backup" ON public.farm_knowledge;
 CREATE POLICY "Acceso completo service_role para backup" ON public.farm_knowledge FOR ALL TO service_role USING (true) WITH CHECK (true);
 
@@ -71,6 +74,9 @@ CREATE POLICY "Insercion de inventario para autenticados" ON public.farm_invento
 
 DROP POLICY IF EXISTS "Modificacion de inventario para autenticados" ON public.farm_inventory;
 CREATE POLICY "Modificacion de inventario para autenticados" ON public.farm_inventory FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Eliminacion de inventario para autenticados" ON public.farm_inventory;
+CREATE POLICY "Eliminacion de inventario para autenticados" ON public.farm_inventory FOR DELETE TO authenticated USING (true);
 
 DROP POLICY IF EXISTS "Acceso completo service_role para backup" ON public.farm_inventory;
 CREATE POLICY "Acceso completo service_role para backup" ON public.farm_inventory FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -172,4 +178,112 @@ CREATE POLICY "Acceso completo service_role para ai_jobs" ON public.ai_jobs FOR 
 
 DROP POLICY IF EXISTS "Lectura ai_jobs para usuarios autenticados" ON public.ai_jobs;
 CREATE POLICY "Lectura ai_jobs para usuarios autenticados" ON public.ai_jobs FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Insercion ai_jobs para usuarios autenticados" ON public.ai_jobs;
+CREATE POLICY "Insercion ai_jobs para usuarios autenticados" ON public.ai_jobs FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Modificacion ai_jobs para usuarios autenticados" ON public.ai_jobs;
+CREATE POLICY "Modificacion ai_jobs para usuarios autenticados" ON public.ai_jobs FOR UPDATE TO authenticated USING (true);
+
+-- 6. FARM_DOCUMENTS (Almacenamiento Centralizado de Documentos y Fotos)
+CREATE TABLE IF NOT EXISTS public.farm_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    name TEXT NOT NULL,
+    storage_path TEXT NOT NULL,
+    public_url TEXT NOT NULL,
+    file_type TEXT,
+    file_size BIGINT,
+    section_origin TEXT NOT NULL DEFAULT 'chat', -- 'chat' | 'mapas' | 'calendario' | 'finanzas'
+    category TEXT NOT NULL DEFAULT 'general', -- 'catastro' | 'suelo' | 'riego' | 'factura' | 'foto_terreno' | 'general'
+    inventory_id UUID REFERENCES public.farm_inventory(id) ON DELETE SET NULL,
+    path_id UUID REFERENCES public.farm_paths(id) ON DELETE SET NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    user_name TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE INDEX IF NOT EXISTS idx_farm_documents_category ON public.farm_documents (category);
+CREATE INDEX IF NOT EXISTS idx_farm_documents_section ON public.farm_documents (section_origin);
+CREATE INDEX IF NOT EXISTS idx_farm_documents_active ON public.farm_documents (is_active);
+ALTER TABLE public.farm_documents ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Lectura de documentos para autenticados" ON public.farm_documents;
+CREATE POLICY "Lectura de documentos para autenticados" ON public.farm_documents FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Insercion de documentos para autenticados" ON public.farm_documents;
+CREATE POLICY "Insercion de documentos para autenticados" ON public.farm_documents FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Modificacion de documentos para autenticados" ON public.farm_documents;
+CREATE POLICY "Modificacion de documentos para autenticados" ON public.farm_documents FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Eliminacion de documentos para autenticados" ON public.farm_documents;
+CREATE POLICY "Eliminacion de documentos para autenticados" ON public.farm_documents FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acceso completo service_role para farm_documents" ON public.farm_documents;
+CREATE POLICY "Acceso completo service_role para farm_documents" ON public.farm_documents FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- 7. FARM_CUSTOM_TOOLS (Meta-Tool Manager: Herramientas Dinámicas Creadas en el Chat)
+CREATE TABLE IF NOT EXISTS public.farm_custom_tools (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    name TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'agronomia' CHECK (category IN ('agronomia', 'riego', 'finanzas', 'maquinaria', 'utilidad', 'documento')),
+    parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
+    execution_recipe TEXT NOT NULL,
+    output_format TEXT NOT NULL DEFAULT 'markdown' CHECK (output_format IN ('markdown', 'card', 'svg', 'table', 'pdf')),
+    created_by_user UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_by_name TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE INDEX IF NOT EXISTS idx_farm_custom_tools_name ON public.farm_custom_tools (name);
+CREATE INDEX IF NOT EXISTS idx_farm_custom_tools_active ON public.farm_custom_tools (is_active);
+ALTER TABLE public.farm_custom_tools ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Lectura de herramientas para autenticados" ON public.farm_custom_tools;
+CREATE POLICY "Lectura de herramientas para autenticados" ON public.farm_custom_tools FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Insercion de herramientas para autenticados" ON public.farm_custom_tools;
+CREATE POLICY "Insercion de herramientas para autenticados" ON public.farm_custom_tools FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Modificacion de herramientas para autenticados" ON public.farm_custom_tools;
+CREATE POLICY "Modificacion de herramientas para autenticados" ON public.farm_custom_tools FOR UPDATE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Eliminacion de herramientas para autenticados" ON public.farm_custom_tools;
+CREATE POLICY "Eliminacion de herramientas para autenticados" ON public.farm_custom_tools FOR DELETE TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acceso completo service_role para farm_custom_tools" ON public.farm_custom_tools;
+CREATE POLICY "Acceso completo service_role para farm_custom_tools" ON public.farm_custom_tools FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- 8. PUBLICACION SUPABASE REALTIME (Colaboracion Multi-Usuario Instantanea)
+DO $$
+BEGIN
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.farm_inventory;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.farm_paths;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.farm_documents;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.farm_knowledge;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.farm_custom_tools;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END;
+END $$;
+
 

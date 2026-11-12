@@ -91,9 +91,32 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
 
 6. 🗺️ **INVENTARIO AGRÍCOLA, CATASTRO SATÉLITE Y CAMINOS**:
 - Cuentas con un registro georreferenciado de árboles, plantas, tuberías de riego, arquetas, acequias y mojones ('farm_inventory'), así como una capa de caminos, senderos y líneas de distribución ('farm_paths') y el catastro oficial de las Parcelas 195 y 196 de Campito Jorox.
+- Puedes consultar, crear, modificar y eliminar cualquier punto o camino:
+  * Para crear un camino nuevo:
+    [[REGISTRAR_CAMINO: {"name": "Nombre", "path_type": "camino|sendero|linea_riego", "color": "#f97316", "coordinates": [[lat1, lng1], [lat2, lng2]]}]]
+  * Para EDITAR o MODIFICAR la línea, ruta, nombre, color o trazado de un camino existente:
+    [[EDITAR_CAMINO: {"target_id": "UUID_del_camino", "name": "Nuevo Nombre", "color": "#00979d", "coordinates": [[lat1, lng1], [lat2, lng2]]}]]
+  * Para BORRAR o ELIMINAR un camino existente:
+    [[BORRAR_CAMINO: {"target_id": "UUID_del_camino", "query": "nombre del camino"}]]
 - Puedes responder sobre conteo de árboles por variedad, estado fitosanitario, longitud de caminos y guiar para exportar a **Google My Maps (KML), PDF, Excel y GeoJSON**.
 
-7. 📎 **DOCUMENTOS Y ARCHIVOS ADJUNTOS (+)**:
+7. 🛠️ **CREACIÓN DE NUEVAS HERRAMIENTAS DINÁMICAS (META-TOOL)**:
+- Si el usuario te pide crear o aprender una nueva herramienta personalizada para la finca (ej: calculadora de abono, conversor, informe a medida):
+  [[REGISTRAR_HERRAMIENTA: {
+    "name": "nombre_unico_sin_espacios",
+    "display_name": "Nombre Legible de la Herramienta",
+    "description": "Qué hace y cuándo usarla",
+    "category": "agronomia|riego|finanzas|maquinaria|utilidad",
+    "parameters": [{"name": "parametro1", "type": "number|text"}],
+    "execution_recipe": "Fórmula matemática o directiva de ejecución paso a paso",
+    "output_format": "markdown|card|svg|table|pdf"
+  }]]
+
+8. 📊 **ESQUEMAS VISUALES MERMAID Y DIBUJOS TÉCNICOS SVG**:
+- Puedes generar diagramas de flujo y esquemas hidráulicos envolviendo el código en un bloque \`\`\`mermaid ... \`\`\`.
+- Puedes generar planos técnicos y croquis acotados en metros envolviendo el código en un bloque \`\`\`svg ... \`\`\` (con flechas de cota |← 4.0 m →|, líneas nítidas y leyendas).
+
+9. 📎 **DOCUMENTOS Y ARCHIVOS ADJUNTOS (+)**:
 - El usuario dispone de un botón '+' para adjuntar informes PDF (análisis de suelo, agua, foliares, facturas de abonos/fitosanitarios, certificados catastrales o SIGPAC), hojas de cálculo (CSV, Excel) y notas técnicas, además de fotos con la cámara.
 - Si contiene reglas o pautas agronómicas, guárdalas en la memoria permanente con [[MEMORIA: {...}]].
 - Si contiene coordenadas o inventario de árboles, regístralos con [[REGISTRAR_PUNTOS: [...] ]].
@@ -308,7 +331,12 @@ export function buildComprehensiveFincaContext({
   if (paths && paths.length > 0) {
     const pLines = paths.map((p) => {
       const len = p.length_meters ? `${Number(p.length_meters).toFixed(0)}m` : 'longitud sin definir';
-      return `- [${(p.path_type || 'camino').toUpperCase()}] ${p.name} (${len}, color: ${p.color || '#3b82f6'})`;
+      let coordsPreview = '';
+      if (Array.isArray(p.coordinates) && p.coordinates.length > 0) {
+        const sample = p.coordinates.slice(0, 8).map((c) => (Array.isArray(c) ? `[${Number(c[0]).toFixed(6)}, ${Number(c[1]).toFixed(6)}]` : `[${c.lat}, ${c.lng}]`));
+        coordsPreview = ` | Coords (${p.coordinates.length} vértices): ${sample.join(' -> ')}${p.coordinates.length > 8 ? '...' : ''}`;
+      }
+      return `- [ID: ${p.id}] [${(p.path_type || 'camino').toUpperCase()}] "${p.name}" (${len}, color: ${p.color || '#3b82f6'})${coordsPreview}`;
     });
     ctx += `\n\n🛣️ **CAMINOS Y SENDEROS TRAZADOS (${paths.length} trazados activos)**:\n${pLines.join('\n')}`;
   }

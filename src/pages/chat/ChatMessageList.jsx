@@ -1,6 +1,7 @@
 // src/pages/chat/ChatMessageList.jsx
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import InteractiveVisualRenderer from '../../components/chat/InteractiveVisualRenderer';
 import {
   User,
   Bot,
@@ -196,7 +197,59 @@ export default function ChatMessageList({
                   <span style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</span>
                 ) : (
                   <div className="chatia-markdown">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        code({ inline, className, children, ...props }) {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const lang = match ? match[1].toLowerCase() : '';
+                          const codeText = String(children).replace(/\n$/, '');
+
+                          if (!inline && (lang === 'mermaid' || lang === 'svg' || lang === 'croquis')) {
+                            return (
+                              <InteractiveVisualRenderer
+                                type={lang === 'mermaid' ? 'mermaid' : 'svg'}
+                                code={codeText}
+                                title={lang === 'mermaid' ? 'Esquema de Flujo' : 'Plano Técnico / Croquis'}
+                              />
+                            );
+                          }
+
+                          return !inline ? (
+                            <pre
+                              style={{
+                                backgroundColor: '#1e293b',
+                                color: '#f8fafc',
+                                padding: '10px 12px',
+                                borderRadius: 8,
+                                overflowX: 'auto',
+                                fontSize: '0.78rem',
+                              }}
+                            >
+                              <code className={className} {...props}>
+                                {children}
+                              </code>
+                            </pre>
+                          ) : (
+                            <code
+                              style={{
+                                backgroundColor: '#f1f5f9',
+                                color: '#0f172a',
+                                padding: '2px 4px',
+                                borderRadius: 4,
+                                fontSize: '0.85em',
+                              }}
+                              className={className}
+                              {...props}
+                            >
+                              {children}
+                            </code>
+                          );
+                        },
+                      }}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
                   </div>
                 ))}
               {msg.learnedMemory && (
