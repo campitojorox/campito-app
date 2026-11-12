@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { subscribeGlobalJobs, getGlobalJobsSummary } from '../services/aiBackgroundJobManager';
+import { version as appVersion } from '../../package.json';
 
 export default function Layout({ session }) {
   const location = useLocation();
@@ -286,33 +287,38 @@ export default function Layout({ session }) {
                   Instalar Aplicación
                 </button>
               )}
-              <button 
-                onClick={() => {
-                  if (needRefresh) {
-                    updateServiceWorker(true);
-                  }
-                }} 
-                disabled={!needRefresh}
-                className={`btn ${needRefresh ? 'btn-primary' : 'btn-secondary'}`} 
-                style={{ 
-                  width: '100%', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', 
-                  backgroundColor: needRefresh ? 'var(--primary)' : 'var(--surface)', 
-                  color: needRefresh ? 'white' : 'var(--text-primary)', 
-                  border: '1px solid var(--border)' 
-                }}
-              >
-                {needRefresh ? (
-                  <div className="text-pulse">
-                    <RefreshCw size={20} />
-                    <span>Actualizar</span>
-                  </div>
-                ) : (
-                  <>
-                    <CheckCircle size={20} />
-                    <span>Actualizado</span>
-                  </>
-                )}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <button 
+                  onClick={() => {
+                    if (needRefresh) {
+                      updateServiceWorker(true);
+                    }
+                  }} 
+                  disabled={!needRefresh}
+                  className={`btn ${needRefresh ? 'btn-primary' : 'btn-secondary'}`} 
+                  style={{ 
+                    width: '100%', margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', 
+                    backgroundColor: needRefresh ? 'var(--primary)' : 'var(--surface)', 
+                    color: needRefresh ? 'white' : 'var(--text-primary)', 
+                    border: '1px solid var(--border)' 
+                  }}
+                >
+                  {needRefresh ? (
+                    <div className="text-pulse">
+                      <RefreshCw size={20} />
+                      <span>Actualizar</span>
+                    </div>
+                  ) : (
+                    <>
+                      <CheckCircle size={20} />
+                      <span>Actualizado</span>
+                    </>
+                  )}
+                </button>
+                <span style={{ textAlign: 'center', fontSize: '0.78rem', color: '#b0b0b0' }}>
+                  Versión {appVersion}
+                </span>
+              </div>
             </div>
             
             <div style={{ marginTop: 'auto' }}>

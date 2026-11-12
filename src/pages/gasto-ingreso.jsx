@@ -2,7 +2,7 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useOutletContext } from 'react-router-dom';
-import { Trash2, Filter, X, FileText } from 'lucide-react';
+import { Filter, X, FileText, Plus } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { formatCurrency, highlightText } from '../utils/helpers';
 import SectionChatIA from '../components/SectionChatIA';
@@ -27,7 +27,6 @@ export default function GastoIngreso() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterCategory, setFilterCategory] = useState('ALL');
   const [filterUser, setFilterUser] = useState('ALL');
-  const [filterSearchTerm, setFilterSearchTerm] = useState('');
 
   const [formErrors, setFormErrors] = useState({});
   const [editErrors, setEditErrors] = useState({});
@@ -76,13 +75,10 @@ export default function GastoIngreso() {
     }));
   }, [users, records]);
 
-  const hasActiveFilters = filterCategory !== 'ALL' || filterUser !== 'ALL' || filterSearchTerm.trim() !== '';
+  const hasActiveFilters = filterCategory !== 'ALL' || filterUser !== 'ALL';
 
   const displayRecords = useMemo(() => {
-    let list;
-    if (filterCategory === 'TRASH') list = records.filter((r) => r.status === 'DELETED');
-    else if (filterCategory === 'ALL_WITH_TRASH') list = records;
-    else list = records.filter((r) => r.status === 'ACTIVE');
+    let list = records.filter((r) => r.status === 'ACTIVE');
 
     list = [...list].sort((a, b) => {
       const dayDiff = new Date(b.Date) - new Date(a.Date);
@@ -107,17 +103,8 @@ export default function GastoIngreso() {
 
     if (filterUser !== 'ALL') list = list.filter((r) => r.User === filterUser);
 
-    if (filterSearchTerm.trim() !== '') {
-      const term = filterSearchTerm.toLowerCase();
-      list = list.filter(
-        (r) =>
-          (r.User && r.User.toLowerCase().includes(term)) ||
-          (r.Description && r.Description.toLowerCase().includes(term))
-      );
-    }
-
     return list;
-  }, [records, isSearchOpen, searchQuery, filterCategory, filterUser, filterSearchTerm]);
+  }, [records, isSearchOpen, searchQuery, filterCategory, filterUser]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -208,7 +195,7 @@ export default function GastoIngreso() {
     const key = r.TransactionID || i;
     const isDeleted = r.status === 'DELETED';
     const isRetiro = r.Category === 'Retiro';
-    const activeSearchHighlight = isSearchOpen && searchQuery.trim() ? searchQuery : filterSearchTerm;
+    const activeSearchHighlight = isSearchOpen && searchQuery.trim() ? searchQuery : '';
     const itemColor = isDeleted ? '#b91c1c' : isRetiro ? '#166534' : '#5c4436';
 
     return (
@@ -275,12 +262,101 @@ export default function GastoIngreso() {
   return (
     <div className="container" style={{ padding: '1rem', paddingBottom: '8rem' }}>
       {!(isSearchOpen && searchQuery.trim() !== '') && (
-        <>
-          <BalancesSummary
-            finances={finances}
-            showFinanceDetails={showFinanceDetails}
-            setShowFinanceDetails={setShowFinanceDetails}
-          />
+        <BalancesSummary
+          finances={finances}
+          showFinanceDetails={showFinanceDetails}
+          setShowFinanceDetails={setShowFinanceDetails}
+        />
+      )}
+
+      <div
+        style={{
+          backgroundColor: '#f1ebe6',
+          borderRadius: '14px',
+          border: '1px solid #e7e0d8',
+          padding: '1.15rem 1rem 0.5rem 1rem',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
+          marginTop: '1.5rem',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: isAddFormOpen || hasActiveFilters || displayRecords.length > 0 || selectedRecord ? '0.65rem' : '0.35rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+            <h2 className="section-title" style={{ margin: 0, padding: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#2b1d14' }}>
+              {isSearchOpen && searchQuery.trim() !== '' ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              title={isFilterOpen ? 'Cerrar filtros' : 'Filtrar transacciones'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.4rem',
+                borderRadius: '6px',
+                backgroundColor: isFilterOpen || hasActiveFilters ? 'rgba(0, 151, 157, 0.16)' : 'transparent',
+                color: isFilterOpen || hasActiveFilters ? '#00979d' : '#5c4436',
+                border: isFilterOpen || hasActiveFilters ? '1px solid #00979d' : '1px solid transparent',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                position: 'relative',
+                flexShrink: 0,
+              }}
+            >
+              <Filter size={22} />
+              {hasActiveFilters && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '3px',
+                    right: '3px',
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: '#00979d',
+                    boxShadow: '0 0 0 2px #f1ebe6',
+                  }}
+                />
+              )}
+            </button>
+          </div>
+
+          {!(isSearchOpen && searchQuery.trim() !== '') && (
+            <button
+              type="button"
+              onClick={() => setIsAddFormOpen((prev) => !prev)}
+              aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Agregar Movimiento'}
+              title={isAddFormOpen ? 'Cerrar formulario' : 'Agregar Movimiento'}
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--primary)',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
+                transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                transition: 'transform 0.22s ease, background-color 0.2s ease',
+                flexShrink: 0,
+              }}
+            >
+              <Plus size={24} />
+            </button>
+          )}
+        </div>
+
+        {!(isSearchOpen && searchQuery.trim() !== '') && (
           <AddTransactionForm
             isAddFormOpen={isAddFormOpen}
             setIsAddFormOpen={setIsAddFormOpen}
@@ -300,67 +376,7 @@ export default function GastoIngreso() {
             loading={loading}
             handleAdd={handleAdd}
           />
-        </>
-      )}
-
-      <div
-        style={{
-          backgroundColor: '#f1ebe6',
-          borderRadius: '14px',
-          border: '1px solid #e7e0d8',
-          padding: '1.15rem 1rem 0.5rem 1rem',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
-          marginTop: '1.5rem',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: hasActiveFilters || displayRecords.length > 0 || selectedRecord ? '0.65rem' : '0.35rem',
-          }}
-        >
-          <h2 className="section-title" style={{ margin: 0, padding: 0, fontSize: '1.5rem', fontWeight: 'bold', color: '#2b1d14' }}>
-            {isSearchOpen && searchQuery.trim() !== '' ? `Resultados de búsqueda (${displayRecords.length})` : 'Transacciones'}
-          </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <button
-              type="button"
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              title={isFilterOpen ? 'Cerrar filtros' : 'Filtrar transacciones o ver papelera'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0.45rem',
-                borderRadius: '6px',
-                backgroundColor: isFilterOpen || hasActiveFilters ? 'rgba(0, 151, 157, 0.16)' : 'transparent',
-                color: isFilterOpen || hasActiveFilters ? '#00979d' : '#5c4436',
-                border: isFilterOpen || hasActiveFilters ? '1px solid #00979d' : '1px solid transparent',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                position: 'relative',
-              }}
-            >
-              <Filter size={24} />
-              {hasActiveFilters && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: '3px',
-                    right: '3px',
-                    width: '8px',
-                    height: '8px',
-                    borderRadius: '50%',
-                    backgroundColor: filterCategory === 'TRASH' ? '#ef4444' : '#00979d',
-                    boxShadow: '0 0 0 2px #f1ebe6',
-                  }}
-                />
-              )}
-            </button>
-          </div>
-        </div>
+        )}
 
         {hasActiveFilters && (
           <div
@@ -387,24 +403,9 @@ export default function GastoIngreso() {
                 Categoría: Ingreso <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
               </span>
             )}
-            {filterCategory === 'TRASH' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#dc2626', fontWeight: 700, border: '1px solid rgba(239, 68, 68, 0.45)' }}>
-                <Trash2 size={13} /> Papelera (Eliminadas) <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
-              </span>
-            )}
-            {filterCategory === 'ALL_WITH_TRASH' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', backgroundColor: 'rgba(148, 163, 184, 0.18)', color: '#475569', fontWeight: 600, border: '1px solid rgba(148, 163, 184, 0.35)' }}>
-                Todas (con Papelera) <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
-              </span>
-            )}
             {filterUser !== 'ALL' && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', backgroundColor: 'rgba(0, 151, 157, 0.15)', color: '#007a7f', fontWeight: 600, border: '1px solid rgba(0, 151, 157, 0.3)' }}>
                 Usuario: {filterUser} <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterUser('ALL')} />
-              </span>
-            )}
-            {filterSearchTerm.trim() !== '' && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', backgroundColor: 'rgba(99, 102, 241, 0.15)', color: '#4338ca', fontWeight: 600, border: '1px solid rgba(99, 102, 241, 0.3)' }}>
-                "{filterSearchTerm}" <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterSearchTerm('')} />
               </span>
             )}
             <button
@@ -412,7 +413,6 @@ export default function GastoIngreso() {
               onClick={() => {
                 setFilterCategory('ALL');
                 setFilterUser('ALL');
-                setFilterSearchTerm('');
               }}
               style={{ background: 'none', border: 'none', color: '#5c4436', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto' }}
             >
@@ -424,16 +424,14 @@ export default function GastoIngreso() {
         {!selectedRecord ? (
           displayRecords.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '1.6rem 1rem 1.8rem 1rem', color: '#5c4436' }}>
-              <div style={{ fontSize: '2.1rem', marginBottom: '0.45rem' }}>{filterCategory === 'TRASH' ? '🗑️' : '🍃'}</div>
+              <div style={{ fontSize: '2.1rem', marginBottom: '0.45rem' }}>🍃</div>
               <div style={{ fontWeight: 700, fontSize: '1rem', color: '#2b1d14' }}>
-                {filterCategory === 'TRASH' ? 'La papelera está vacía' : 'No hay transacciones'}
+                No hay transacciones
               </div>
               <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', color: '#5c4436' }}>
-                {filterCategory === 'TRASH'
-                  ? 'No hay movimientos eliminados actualmente.'
-                  : hasActiveFilters
-                    ? 'No se encontraron resultados con los filtros aplicados.'
-                    : 'No se han registrado movimientos todavía.'}
+                {hasActiveFilters
+                  ? 'No se encontraron resultados con los filtros aplicados.'
+                  : 'No se han registrado movimientos todavía.'}
               </div>
               {hasActiveFilters && (
                 <button
@@ -441,7 +439,6 @@ export default function GastoIngreso() {
                   onClick={() => {
                     setFilterCategory('ALL');
                     setFilterUser('ALL');
-                    setFilterSearchTerm('');
                   }}
                   style={{ marginTop: '1rem', padding: '0.5rem 1.2rem', borderRadius: '8px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}
                 >
@@ -485,8 +482,6 @@ export default function GastoIngreso() {
         setFilterCategory={setFilterCategory}
         filterUser={filterUser}
         setFilterUser={setFilterUser}
-        filterSearchTerm={filterSearchTerm}
-        setFilterSearchTerm={setFilterSearchTerm}
         records={records}
         users={users}
         displayRecordsCount={displayRecords.length}

@@ -819,6 +819,98 @@ export default function Calendario() {
             })}
           </div>
 
+          {/* Botón / Formulario Registrar Actividad dentro del div calendario, debajo del calendario y sobre preview actividades */}
+          <div
+            style={{
+              marginTop: '1rem',
+              paddingTop: isAddFormOpen ? '0.9rem' : '0.25rem',
+              borderTop: isAddFormOpen ? '1px solid #e2e8f0' : 'none',
+            }}
+          >
+            {!isAddFormOpen ? (
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  onClick={toggleAddForm}
+                  aria-label="Abrir formulario Registrar Actividad"
+                  title="Registrar Actividad"
+                  style={{
+                    width: '80%',
+                    height: '46px',
+                    borderRadius: '12px',
+                    backgroundColor: 'var(--primary)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '1.6rem',
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
+                    transition: 'transform 0.15s ease, background-color 0.2s ease',
+                  }}
+                >
+                  <Plus size={26} strokeWidth={2.75} />
+                </button>
+              </div>
+            ) : (
+              <div
+                className="form-container"
+                style={{
+                  padding: '0.25rem 0 0.5rem 0',
+                  margin: 0,
+                  boxShadow: 'none',
+                }}
+              >
+                <div
+                  onClick={toggleAddForm}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#000000', fontWeight: 'bold' }}>
+                    Registrar Actividad
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleAddForm();
+                    }}
+                    aria-label="Cerrar formulario"
+                    title="Cerrar formulario"
+                    style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--primary)',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
+                      transform: 'rotate(45deg)',
+                      transition: 'transform 0.22s ease, background-color 0.2s ease',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Plus size={22} />
+                  </button>
+                </div>
+
+                {renderEventFormFields(false)}
+              </div>
+            )}
+          </div>
+
           {/* Previsualización integrada de las actividades del día seleccionado dentro del mismo div del calendario */}
           {selectedDayEvents.length > 0 && (
             <div
@@ -840,62 +932,6 @@ export default function Calendario() {
             </div>
           )}
         </div>
-
-          {/* cambio de grafica del form: Registrar Actividad debajo del calendario */}
-          <div
-            className="form-container"
-            style={{
-              padding: isAddFormOpen ? '1.35rem' : '0.95rem 1.35rem',
-              marginTop: '3rem',
-              marginBottom: '3rem',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
-              transition: 'padding 0.2s ease',
-            }}
-          >
-            <div
-              onClick={toggleAddForm}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer',
-                marginBottom: isAddFormOpen ? '1.25rem' : 0,
-              }}
-            >
-              <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#000000', fontWeight: 'bold' }}>
-                Registrar Actividad
-              </h2>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleAddForm();
-                }}
-                aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Registrar Actividad'}
-                title={isAddFormOpen ? 'Cerrar formulario' : 'Registrar Actividad'}
-                style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--primary)',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: 'none',
-                  cursor: 'pointer',
-                  boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
-                  transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-                  transition: 'transform 0.22s ease, background-color 0.2s ease',
-                  flexShrink: 0,
-                }}
-              >
-                <Plus size={24} />
-              </button>
-            </div>
-
-            {isAddFormOpen && renderEventFormFields(false)}
-          </div>
         </>
       )}
 

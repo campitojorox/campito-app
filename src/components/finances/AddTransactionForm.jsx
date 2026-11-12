@@ -1,5 +1,5 @@
 // src/components/finances/AddTransactionForm.jsx
-import { Euro, AlignLeft, FileText, Plus } from 'lucide-react';
+import { Euro, AlignLeft, FileText, X } from 'lucide-react';
 
 export default function AddTransactionForm({
   isAddFormOpen,
@@ -20,61 +20,52 @@ export default function AddTransactionForm({
   loading,
   handleAdd,
 }) {
+  if (!isAddFormOpen) return null;
+
   return (
     <div
       className="form-container"
       style={{
-        padding: isAddFormOpen ? '1.35rem' : '0.95rem 1.35rem',
-        marginTop: '3rem',
-        marginBottom: '3rem',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
-        transition: 'padding 0.2s ease',
+        padding: '1.25rem',
+        marginTop: '0.65rem',
+        marginBottom: '1rem',
+        border: '1px solid #e7e0d8',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
       }}
     >
       <div
-        onClick={() => setIsAddFormOpen((prev) => !prev)}
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          cursor: 'pointer',
-          marginBottom: isAddFormOpen ? '1.25rem' : 0,
+          marginBottom: '1.15rem',
         }}
       >
-        <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#000000', fontWeight: 'bold' }}>
+        <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#000000', fontWeight: 'bold' }}>
           Agregar Movimiento
         </h2>
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsAddFormOpen((prev) => !prev);
-          }}
-          aria-label={isAddFormOpen ? 'Cerrar formulario' : 'Abrir formulario Agregar Movimiento'}
-          title={isAddFormOpen ? 'Cerrar formulario' : 'Agregar Movimiento'}
+          onClick={() => setIsAddFormOpen(false)}
+          aria-label="Cerrar formulario"
+          title="Cerrar formulario"
           style={{
-            width: '44px',
-            height: '44px',
-            borderRadius: '50%',
-            backgroundColor: 'var(--primary)',
-            color: '#ffffff',
+            background: 'none',
+            border: 'none',
+            color: '#64748b',
+            cursor: 'pointer',
+            padding: '4px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: 'none',
-            cursor: 'pointer',
-            boxShadow: '0 3px 10px rgba(0, 151, 157, 0.35)',
-            transform: isAddFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
-            transition: 'transform 0.22s ease, background-color 0.2s ease',
-            flexShrink: 0,
+            borderRadius: '6px',
           }}
         >
-          <Plus size={24} />
+          <X size={20} />
         </button>
       </div>
 
-      {isAddFormOpen && (
-        <div>
+      <div>
           {formErrors.general && (
             <div
               style={{
@@ -367,8 +358,7 @@ export default function AddTransactionForm({
               </button>
             </div>
           </form>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
