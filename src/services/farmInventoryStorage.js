@@ -4,6 +4,7 @@
 // funcionando inmediatamente en local mientras se sincroniza con Supabase en la nube.
 
 import { supabase } from '../supabaseClient';
+import { normalizeCoordinatesArray } from '../components/map/mapUtils';
 
 const INVENTORY_STORAGE_KEY = 'campito_farm_inventory_cache';
 const PATHS_STORAGE_KEY = 'campito_farm_paths_cache';
@@ -181,6 +182,157 @@ function setLocalPaths(paths) {
   }
 }
 
+export const DB_ALLOWED_CATEGORIES = new Set([
+  'arbol',
+  'planta',
+  'riego_linea',
+  'arqueta',
+  'acequia',
+  'piedra_linde',
+  'pozo_deposito',
+  'maquinaria',
+  'otro',
+]);
+
+export function toDbCategory(uiCategory) {
+  if (!uiCategory) return 'otro';
+  const norm = String(uiCategory).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (norm.includes('arbol') || norm.includes('frutal') || norm.includes('aguacate') || norm.includes('olivo') || norm.includes('citrico')) return 'arbol';
+  if (norm.includes('planta') || norm.includes('hierba') || norm.includes('huerta')) return 'planta';
+  if (norm.includes('arqueta')) return 'arqueta';
+  if (norm.includes('acequia')) return 'acequia';
+  if (norm.includes('riego') || norm.includes('tuberia') || norm.includes('manguera')) return 'riego_linea';
+  if (norm.includes('linde') || norm.includes('mojon') || norm.includes('cota') || norm.includes('hito')) return 'piedra_linde';
+  if (norm.includes('pozo') || norm.includes('deposito')) return 'pozo_deposito';
+  if (norm.includes('herramienta') || norm.includes('maquin') || norm.includes('tractor')) return 'maquinaria';
+  return 'otro';
+}
+
+export function sanitizeInventoryForDb(item) {
+  if (!item) return null;
+  const id = item.id && isValidUUID(item.id) ? item.id : generateUUID();
+  const lat = Number(item.latitude ?? item.lat ?? item.coordenadas?.lat);
+  const lng = Number(item.longitude ?? item.lng ?? item.coordenadas?.lng);
+
+  return {
+    id,
+    created_at: item.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    user_id: item.user_id || null,
+    user_name: item.user_name || null,
+    name: String(item.name || item.title || item.tipo || 'Punto registrado').trim(),
+    category: item.category || 'otro',
+    variety_type: item.variety_type || item.variedad || item.variety || null,
+    latitude: !isNaN(lat) ? lat : 36.72595,
+    longitude: !isNaN(lng) ? lng : -4.89462,
+    accuracy_meters: item.accuracy_meters !== undefined && item.accuracy_meters !== null ? Number(item.accuracy_meters) : null,
+    altitude_meters: item.altitude_meters !== undefined && item.altitude_meters !== null ? Number(item.altitude_meters) : null,
+    zone: item.zone || null,
+    audio_timestamp_s: item.audio_timestamp_s !== undefined && item.audio_timestamp_s !== null ? Number(item.audio_timestamp_s) : null,
+    gps_warning: Boolean(item.gps_warning),
+    status: item.status || item.estado || 'saludable',
+    image_url: item.image_url || item.photo_url || item.foto_url || null,
+    notes: item.notes || item.observaciones || item.notas || '',
+    is_active: item.is_active !== false,
+  };
+}
+
+export function sanitizePathForDb(path) {
+  if (!path) return null;
+  const id = path.id && isValidUUID(path.id) ? path.id : generateUUID();
+  const rawCoords = path.coordinates || path.coords || [];
+  const coords = normalizeCoordinatesArray(rawCoords);
+
+  let pathType = path.path_type || path.tipo || 'camino';
+  const norm = String(path.category || pathType).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (norm.includes('riego') || norm.includes('tuberia') || norm.includes('manguera')) pathType = 'linea_riego';
+  else if (norm.includes('acequia')) pathType = 'acequia';
+  else if (norm.includes('sendero')) pathType = 'sendero';
+  else if (norm.includes('linde')) pathType = 'linde';
+  else if (norm.includes('camino') || norm.includes('pista')) pathType = 'camino';
+
+  return {
+    id,
+    created_at: path.created_at || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    user_id: path.user_id || null,
+    user_name: path.user_name || null,
+    name: String(path.name || path.title || 'Recorrido registrado').trim(),
+    path_type: pathType,
+    coordinates: coords,
+    color: path.color || PATH_TYPE_COLORS[pathType] || '#f97316',
+    stroke_width: Number(path.stroke_width) || 4,
+    stroke_style: path.stroke_style || 'solid',
+    length_meters: path.length_meters !== undefined && path.length_meters !== null ? Number(path.length_meters) : null,
+    zone: path.zone || null,
+    notes: path.notes || '',
+    is_active: path.is_active !== false,
+  };
+}
+
+async function callFarmSyncProxy(action, body) {
+  try {
+    const res = await fetch('/api/farm-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...body }),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `HTTP ${res.status}`);
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn(`[InventoryStorage] Fallback proxy error (${action}):`, err.message);
+    return null;
+  }
+}
+
+let isSyncingPendingInv = false;
+async function syncPendingLocalsToRemote(pendingItems) {
+  if (isSyncingPendingInv || !Array.isArray(pendingItems) || pendingItems.length === 0) return;
+  isSyncingPendingInv = true;
+  try {
+    for (const item of pendingItems) {
+      if (item.id === '00000000-0000-4000-8000-000000000001') continue;
+      const dbPayload = sanitizeInventoryForDb(item);
+      let { error } = await supabase.from('farm_inventory').upsert([dbPayload]);
+      if (error && (error.code === '23514' || error.message?.includes('category_check'))) {
+        dbPayload.category = toDbCategory(item.category);
+        dbPayload.variety_type = `${item.category}${item.variety_type ? ` · ${item.variety_type}` : ''}`;
+        const retry = await supabase.from('farm_inventory').upsert([dbPayload]);
+        error = retry.error;
+      }
+      if (error) {
+        await callFarmSyncProxy('INSERT_INVENTORY', { payload: dbPayload });
+      }
+    }
+  } catch (e) {
+    console.warn('[InventoryStorage] Error sincronizando inventario local pendiente:', e);
+  } finally {
+    isSyncingPendingInv = false;
+  }
+}
+
+let isSyncingPendingPaths = false;
+async function syncPendingPathsToRemote(pendingPaths) {
+  if (isSyncingPendingPaths || !Array.isArray(pendingPaths) || pendingPaths.length === 0) return;
+  isSyncingPendingPaths = true;
+  try {
+    for (const path of pendingPaths) {
+      const dbPayload = sanitizePathForDb(path);
+      let { error } = await supabase.from('farm_paths').upsert([dbPayload]);
+      if (error) {
+        await callFarmSyncProxy('INSERT_PATH', { payload: dbPayload });
+      }
+    }
+  } catch (e) {
+    console.warn('[InventoryStorage] Error sincronizando caminos locales pendientes:', e);
+  } finally {
+    isSyncingPendingPaths = false;
+  }
+}
+
 /**
  * Carga el inventario: consulta Supabase y sincroniza con localStorage.
  * Si Supabase devuelve error o está offline, devuelve inmediatamente el inventario local.
@@ -209,6 +361,11 @@ export async function loadFarmInventory() {
       const pendingLocals = cleanLocal.filter((loc) => !remoteIds.has(String(loc.id)));
       let merged = [...cleanRemote, ...pendingLocals];
 
+      // Sincronizar en segundo plano los pendientes locales para que Safari / otros dispositivos los vean
+      if (pendingLocals.length > 0) {
+        syncPendingLocalsToRemote(pendingLocals);
+      }
+
       // Sembrar Casita Cueva únicamente la primera vez (nunca re-inyectar tras un borrado)
       const alreadySeeded = localStorage.getItem(DEFAULT_SEEDED_KEY) === '1';
       if (
@@ -235,16 +392,13 @@ export async function loadFarmInventory() {
 }
 
 /**
- * Guarda o inserta un nuevo item de inventario.
- * Asigna un UUID v4 válido garantizando compatibilidad con PostgreSQL y Supabase.
+ * Guarda o inserta un nuevo item de inventario con sincronización resiliente y proxy de rescate.
  */
 export async function insertFarmInventoryItem(newItem) {
   const localItems = getLocalInventory();
-  // Asignar UUID válido para la columna id UUID PRIMARY KEY de PostgreSQL
   const id = newItem.id && isValidUUID(newItem.id) ? newItem.id : generateUUID();
   const now = new Date().toISOString();
 
-  // Si este ID estaba marcado como borrado, desmarcarlo (ej: al deshacer/revertir)
   removeDeletedInventoryId(id);
 
   const itemToSave = {
@@ -259,21 +413,48 @@ export async function insertFarmInventoryItem(newItem) {
   const updatedLocal = [itemToSave, ...localItems.filter((i) => String(i.id) !== String(id))];
   setLocalInventory(updatedLocal);
 
-  // 2. Intentar guardar en Supabase
+  // 2. Preparar payload sanitizado para PostgreSQL
+  const dbPayload = sanitizeInventoryForDb(itemToSave);
+
+  // 3. Intentar guardar en Supabase directamente
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('farm_inventory')
-      .insert([itemToSave])
+      .insert([dbPayload])
       .select()
       .single();
 
+    if (error && (error.code === '23514' || error.message?.includes('category_check'))) {
+      console.warn('[InventoryStorage] Categoría rechazada por constraint, reintentando con fallback...');
+      dbPayload.category = toDbCategory(itemToSave.category);
+      dbPayload.variety_type = `${itemToSave.category}${itemToSave.variety_type ? ` · ${itemToSave.variety_type}` : ''}`;
+      const retry = await supabase.from('farm_inventory').insert([dbPayload]).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      console.warn('[InventoryStorage] Inserción directa falló (' + error.code + '), llamando proxy /api/farm-sync...', error.message);
+      const proxyRes = await callFarmSyncProxy('INSERT_INVENTORY', { payload: dbPayload });
+      if (proxyRes?.data) {
+        data = proxyRes.data;
+        error = null;
+      }
+    }
+
     if (!error && data) {
-      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? data : i));
+      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...data } : i));
       setLocalInventory(synced);
-      return data;
+      return { ...itemToSave, ...data };
     }
   } catch (err) {
-    console.warn('[InventoryStorage] Guardado solo en local (Supabase pendiente):', err.message);
+    console.warn('[InventoryStorage] Error en llamada Supabase, intentando proxy:', err.message);
+    const proxyRes = await callFarmSyncProxy('INSERT_INVENTORY', { payload: dbPayload });
+    if (proxyRes?.data) {
+      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...proxyRes.data } : i));
+      setLocalInventory(synced);
+      return { ...itemToSave, ...proxyRes.data };
+    }
   }
 
   return itemToSave;
@@ -295,16 +476,44 @@ export async function updateFarmInventoryItem(id, updatePayload) {
   });
   setLocalInventory(updatedLocal);
 
+  const cleanPayload = { ...updatePayload, updated_at: now };
+  if (cleanPayload.category && !DB_ALLOWED_CATEGORIES.has(cleanPayload.category)) {
+    // Si viene una categoría fuera del constraint, adaptar limpiamente
+    cleanPayload.category = toDbCategory(cleanPayload.category);
+  }
+  if (cleanPayload.photo_url && !cleanPayload.image_url) {
+    cleanPayload.image_url = cleanPayload.photo_url;
+    delete cleanPayload.photo_url;
+  }
+  delete cleanPayload.raw;
+  delete cleanPayload.tipo;
+  delete cleanPayload.title;
+
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('farm_inventory')
-      .update({ ...updatePayload, updated_at: now })
+      .update(cleanPayload)
       .eq('id', id)
       .select()
       .single();
-    if (!error && data) return data;
+
+    if (error && (error.code === '23514' || error.message?.includes('category_check'))) {
+      cleanPayload.category = 'otro';
+      const retry = await supabase.from('farm_inventory').update(cleanPayload).eq('id', id).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      const proxyRes = await callFarmSyncProxy('UPDATE_INVENTORY', { id, payload: cleanPayload });
+      if (proxyRes?.data) data = proxyRes.data;
+    }
+
+    if (data) return data;
   } catch (err) {
-    console.warn('[InventoryStorage] Actualizado en local (Supabase pendiente):', err.message);
+    console.warn('[InventoryStorage] Error actualizando en Supabase, usando proxy:', err.message);
+    const proxyRes = await callFarmSyncProxy('UPDATE_INVENTORY', { id, payload: cleanPayload });
+    if (proxyRes?.data) return proxyRes.data;
   }
 
   return updatedLocal.find((i) => String(i.id) === targetIdStr) || null;
@@ -341,7 +550,7 @@ export async function deleteFarmInventoryItem(id) {
   const filtered = localItems.filter((i) => String(i.id) !== targetIdStr);
   setLocalInventory(filtered);
 
-  // 3. Persistir en Supabase (soft-delete + hard-delete si la política lo permite)
+  // 3. Persistir en Supabase (soft-delete + hard-delete)
   if (isValidUUID(targetIdStr)) {
     try {
       const now = new Date().toISOString();
@@ -349,20 +558,18 @@ export async function deleteFarmInventoryItem(id) {
         .from('farm_inventory')
         .update({ is_active: false, updated_at: now })
         .eq('id', targetIdStr);
-      if (updErr) {
-        console.warn('[InventoryStorage] Error en soft-delete Supabase:', updErr.message);
-      }
 
       const { error: delErr } = await supabase
         .from('farm_inventory')
         .delete()
         .eq('id', targetIdStr);
-      if (delErr && !updErr) {
-        // Si falló DELETE por falta de política RLS, el soft-delete (is_active: false) ya lo ocultó
-        console.log('[InventoryStorage] Soft-delete aplicado en Supabase (DELETE bloqueado por RLS):', delErr.message);
+
+      if (delErr || updErr) {
+        await callFarmSyncProxy('DELETE_INVENTORY', { id: targetIdStr });
       }
     } catch (err) {
-      console.warn('[InventoryStorage] Eliminado en local (Supabase pendiente):', err.message);
+      console.warn('[InventoryStorage] Error borrando en Supabase, usando proxy:', err.message);
+      await callFarmSyncProxy('DELETE_INVENTORY', { id: targetIdStr });
     }
   }
 }
@@ -387,6 +594,11 @@ export async function loadFarmPaths() {
       const remoteIds = new Set(cleanRemote.map((d) => String(d.id)));
       const pendingLocals = cleanLocal.filter((loc) => !remoteIds.has(String(loc.id)));
       const merged = [...cleanRemote, ...pendingLocals];
+
+      if (pendingLocals.length > 0) {
+        syncPendingPathsToRemote(pendingLocals);
+      }
+
       setLocalPaths(merged);
       return merged;
     }
@@ -419,20 +631,37 @@ export async function insertFarmPath(newPath) {
   const updatedLocal = [pathToSave, ...localPaths.filter((p) => String(p.id) !== String(id))];
   setLocalPaths(updatedLocal);
 
+  const dbPayload = sanitizePathForDb(pathToSave);
+
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('farm_paths')
-      .insert([pathToSave])
+      .insert([dbPayload])
       .select()
       .single();
 
+    if (error) {
+      console.warn('[InventoryStorage] Inserción directa camino falló, llamando proxy /api/farm-sync...', error.message);
+      const proxyRes = await callFarmSyncProxy('INSERT_PATH', { payload: dbPayload });
+      if (proxyRes?.data) {
+        data = proxyRes.data;
+        error = null;
+      }
+    }
+
     if (!error && data) {
-      const synced = updatedLocal.map((p) => (String(p.id) === String(id) ? data : p));
+      const synced = updatedLocal.map((p) => (String(p.id) === String(id) ? { ...pathToSave, ...data } : p));
       setLocalPaths(synced);
-      return data;
+      return { ...pathToSave, ...data };
     }
   } catch (err) {
-    console.warn('[InventoryStorage] Camino guardado en local (Supabase pendiente):', err.message);
+    console.warn('[InventoryStorage] Error en insertFarmPath, intentando proxy:', err.message);
+    const proxyRes = await callFarmSyncProxy('INSERT_PATH', { payload: dbPayload });
+    if (proxyRes?.data) {
+      const synced = updatedLocal.map((p) => (String(p.id) === String(id) ? { ...pathToSave, ...proxyRes.data } : p));
+      setLocalPaths(synced);
+      return { ...pathToSave, ...proxyRes.data };
+    }
   }
 
   return pathToSave;
@@ -454,16 +683,38 @@ export async function updateFarmPath(id, updatePayload) {
   });
   setLocalPaths(updatedLocal);
 
+  const cleanPayload = { ...updatePayload, updated_at: now };
+  if (cleanPayload.category && !cleanPayload.path_type) {
+    let pt = 'camino';
+    const norm = String(cleanPayload.category).toLowerCase();
+    if (norm.includes('riego')) pt = 'linea_riego';
+    else if (norm.includes('acequia')) pt = 'acequia';
+    else if (norm.includes('sendero')) pt = 'sendero';
+    else if (norm.includes('linde')) pt = 'linde';
+    cleanPayload.path_type = pt;
+  }
+  delete cleanPayload.category;
+  delete cleanPayload.title;
+  delete cleanPayload.raw;
+
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('farm_paths')
-      .update({ ...updatePayload, updated_at: now })
+      .update(cleanPayload)
       .eq('id', id)
       .select()
       .single();
-    if (!error && data) return data;
+
+    if (error) {
+      const proxyRes = await callFarmSyncProxy('UPDATE_PATH', { id, payload: cleanPayload });
+      if (proxyRes?.data) data = proxyRes.data;
+    }
+
+    if (data) return data;
   } catch (err) {
-    console.warn('[InventoryStorage] Camino actualizado en local (Supabase pendiente):', err.message);
+    console.warn('[InventoryStorage] Error actualizando camino en Supabase, usando proxy:', err.message);
+    const proxyRes = await callFarmSyncProxy('UPDATE_PATH', { id, payload: cleanPayload });
+    if (proxyRes?.data) return proxyRes.data;
   }
 
   return updatedLocal.find((p) => String(p.id) === targetIdStr) || null;
@@ -484,17 +735,22 @@ export async function deleteFarmPath(id) {
 
   try {
     const now = new Date().toISOString();
-    await supabase
+    const { error: updErr } = await supabase
       .from('farm_paths')
       .update({ is_active: false, updated_at: now })
       .eq('id', id);
 
-    await supabase
+    const { error: delErr } = await supabase
       .from('farm_paths')
       .delete()
       .eq('id', id);
+
+    if (delErr || updErr) {
+      await callFarmSyncProxy('DELETE_PATH', { id });
+    }
   } catch (err) {
-    console.warn('[InventoryStorage] Camino eliminado en local (Supabase pendiente):', err.message);
+    console.warn('[InventoryStorage] Error eliminando camino en Supabase, usando proxy:', err.message);
+    await callFarmSyncProxy('DELETE_PATH', { id });
   }
 }
 
@@ -563,6 +819,16 @@ export const PATH_TYPE_COLORS = {
  */
 export function getItemCategory(item) {
   if (!item) return 'Otros';
+
+  if (item.variety_type) {
+    const vt = String(item.variety_type).split('·')[0].trim();
+    if (vt === 'Casas / Edificios' || vt === 'Edificios' || vt === 'Casas') {
+      return 'Casas';
+    }
+    if (BASE_CATEGORY_MAP[vt]) {
+      return vt;
+    }
+  }
 
   const rawCat = (item.category || '').trim();
   if (rawCat === 'Casas / Edificios' || rawCat === 'Edificios') {

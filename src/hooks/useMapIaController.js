@@ -834,6 +834,7 @@ export function useMapIaController({
             latitude: targetSnap.lat,
             longitude: targetSnap.lng,
             notes,
+            image_url: uploadedPhotoUrl || null,
             photo_url: uploadedPhotoUrl || null,
             is_active: true,
           };

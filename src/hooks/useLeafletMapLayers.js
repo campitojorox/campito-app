@@ -553,27 +553,7 @@ export function useLeafletMapLayers({
           weight: 1.5,
           fillColor: '#00979d',
           fillOpacity: 0.08,
-        });
-
-        poly.on('click', (e) => {
-          if (interceptLayerClickForDraw(e)) return;
-          if (e) {
-            L.DomEvent.stopPropagation(e);
-            if (e.originalEvent) e.originalEvent.stopPropagation();
-          }
-          lastLayerClickedTimeRef.current = Date.now();
-          const lat = Number(e.latlng.lat.toFixed(6));
-          const lng = Number(e.latlng.lng.toFixed(6));
-          setSelectedTarget({
-            type: 'catastro',
-            id: `parcel-${parcel.number}`,
-            title: parcel.name,
-            subtitle: `Linde Catastral Oficial (Parcela ${parcel.number})`,
-            lat,
-            lng,
-            notes: `Linde catastral con ${parcel.polygon.length} vértices`,
-            raw: parcel,
-          });
+          interactive: false,
         });
 
         poly.addTo(layer);

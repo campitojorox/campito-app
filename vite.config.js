@@ -10,6 +10,7 @@ const vercelApiMock = () => {
       const apiRoutes = {
         '/api/manage-users': './api/manage-users.js',
         '/api/chat-job': './api/chat-job.js',
+        '/api/farm-sync': './api/farm-sync.js',
       };
 
       for (const [routePath, modulePath] of Object.entries(apiRoutes)) {
