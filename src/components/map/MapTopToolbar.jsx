@@ -17,6 +17,8 @@ export default function MapTopToolbar({
   setShowNavControls,
   showElevationContours = true,
   setShowElevationContours,
+  showCatastro = true,
+  setShowCatastro,
   handleExportVisiblePDF,
   setIsInfoModalOpen,
 }) {
@@ -142,6 +144,18 @@ export default function MapTopToolbar({
                   style={{ accentColor: '#fbbf24', cursor: 'pointer' }}
                 />
                 <span style={styles.layerCheckboxLabel}>Cotas de altura (20m)</span>
+              </label>
+            )}
+
+            {typeof setShowCatastro === 'function' && (
+              <label style={styles.layerCheckboxItem}>
+                <input
+                  type="checkbox"
+                  checked={showCatastro}
+                  onChange={(e) => setShowCatastro(e.target.checked)}
+                  style={{ accentColor: '#00d1da', cursor: 'pointer' }}
+                />
+                <span style={styles.layerCheckboxLabel}>Lindes del Campito</span>
               </label>
             )}
           </div>

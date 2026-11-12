@@ -135,17 +135,17 @@ export function createFamilyPinIcon({ item, isSelected = false, hasWarning = fal
 }
 
 /**
- * Generador de Icono DivIcon para Cotas Catastrales Oficiales.
+ * Generador de Icono DivIcon para nodos de lindes / cotas del Campito.
  */
-export function createCotaPinIcon({ isSelected = false }) {
+export function createCotaPinIcon({ isSelected = false, color = '#00d1da' }) {
   const selectedClass = isSelected ? 'is-selected' : '';
   return L.divIcon({
     className: 'farm-pin-div-wrapper',
     html: `
       <div class="farm-pin-container ${selectedClass}">
         <div class="farm-pin farm-pin--family-hito farm-pin--cota">
-          <div class="farm-pin__halo"></div>
-          <div class="farm-pin__body"></div>
+          <div class="farm-pin__halo" style="background-color: ${color};"></div>
+          <div class="farm-pin__body" style="background-color: ${color};"></div>
         </div>
       </div>
     `,

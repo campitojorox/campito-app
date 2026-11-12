@@ -312,26 +312,23 @@ export function useLeafletMapLayers({
     if (!layer) return;
     layer.clearLayers();
 
-    if (!showPaths) return;
-
     filteredPaths.forEach((path) => {
       const coords = Array.isArray(path.coordinates) ? path.coordinates : [];
       if (coords.length < 2) return;
 
+      const isLinde = path.path_type === 'linde';
       const latlngs = coords.map((c) => [c.lat, c.lng]);
       const lineColor = path.color || PATH_TYPE_COLORS[path.path_type] || '#f97316';
       const poly = L.polyline(latlngs, {
         color: lineColor,
-        weight: Number(path.stroke_width) || 4,
-        opacity: 0.85,
+        weight: isLinde ? 1.5 : Number(path.stroke_width) || 4,
+        opacity: 0.9,
         dashArray:
           path.path_type === 'linea_riego'
             ? '8, 6'
             : path.path_type === 'acequia'
               ? '4, 4'
-              : path.path_type === 'linde'
-                ? '10, 5'
-                : null,
+              : null,
       });
 
       poly.on('click', (e) => {
@@ -393,21 +390,22 @@ export function useLeafletMapLayers({
     const pathColor = activePath.color || PATH_TYPE_COLORS[activePath.path_type] || '#f97316';
 
     coords.forEach((coord, idx) => {
+      const isLindePath = activePath.path_type === 'linde';
       const isSelected = selectedNodeIdx === idx;
-      const nodeSize = isSelected ? 20 : 14;
+      const nodeSize = isLindePath ? (isSelected ? 8 : 6) : (isSelected ? 20 : 14);
       const nodeIcon = L.divIcon({
         className: 'farm-path-node-marker farm-pin-div-wrapper',
         html: `
           <div class="farm-pin-container ${isSelected ? 'is-selected' : ''}" style="width: ${nodeSize}px; height: ${nodeSize}px;">
-            ${isSelected ? `<div class="farm-pin__halo" style="background-color: ${pathColor}; top: -4px; left: -4px; width: 28px; height: 28px;"></div>` : ''}
+            ${isSelected ? `<div class="farm-pin__halo" style="background-color: ${pathColor}; top: ${isLindePath ? -10 : -4}px; left: ${isLindePath ? -10 : -4}px; width: 28px; height: 28px;"></div>` : ''}
             <div style="
               position: relative;
               width: ${nodeSize}px;
               height: ${nodeSize}px;
               border-radius: 50%;
-              background-color: ${isSelected ? '#00979d' : '#ffffff'};
-              border: 2.5px solid ${pathColor};
-              box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+              background-color: ${isLindePath ? pathColor : isSelected ? '#00979d' : '#ffffff'};
+              border: ${isLindePath ? 'none' : `2.5px solid ${pathColor}`};
+              box-shadow: ${isLindePath ? 'none' : '0 1px 6px rgba(0,0,0,0.4)'};
               cursor: grab;
               display: flex;
               align-items: center;
@@ -416,7 +414,7 @@ export function useLeafletMapLayers({
               font-size: 8px;
               font-weight: 700;
               user-select: none;
-            ">${idx + 1}</div>
+            ">${isLindePath ? '' : idx + 1}</div>
           </div>
         `,
         iconSize: [nodeSize, nodeSize],
@@ -514,115 +512,133 @@ export function useLeafletMapLayers({
     setSelectedTarget,
   ]);
 
-  // 5b. Catastro Oficial Registrado (Parcelas 195 y 196)
+  // 5b. Capa Lindes del Campito (Parcelas 195 y 196 + nodos de linde) y Pistas catastrales
   useEffect(() => {
     const layer = catastroLayerRef.current;
     if (!layer) return;
     layer.clearLayers();
 
-    if (!showCatastro || !catastroJorox) return;
+    if (!catastroJorox) return;
 
-    (catastroJorox.parcels || []).forEach((parcel) => {
-      const latlngs = parcel.polygon.map((c) => [c.lat, c.lng]);
-      const is195 = parcel.number === '195';
+    const parcel196Set = new Set(
+      (catastroJorox.parcels?.find((p) => p.number === '196')?.polygon || []).map(
+        (c) => `${Number(c.lat).toFixed(4)},${Number(c.lng).toFixed(4)}`
+      )
+    );
+    const parcel195Set = new Set(
+      (catastroJorox.parcels?.find((p) => p.number === '195')?.polygon || []).map(
+        (c) => `${Number(c.lat).toFixed(4)},${Number(c.lng).toFixed(4)}`
+      )
+    );
 
-      const poly = L.polygon(latlngs, {
-        color: is195 ? '#00d1da' : '#38bdf8',
-        weight: 3,
-        dashArray: '6, 6',
-        fillColor: '#00979d',
-        fillOpacity: 0.12,
-      });
+    if (showCatastro) {
+      (catastroJorox.parcels || []).forEach((parcel) => {
+        const latlngs = parcel.polygon.map((c) => [c.lat, c.lng]);
+        const is195 = parcel.number === '195';
 
-      poly.on('click', (e) => {
-        if (interceptLayerClickForDraw(e)) return;
-        if (e) {
-          L.DomEvent.stopPropagation(e);
-          if (e.originalEvent) e.originalEvent.stopPropagation();
-        }
-        lastLayerClickedTimeRef.current = Date.now();
-        const lat = Number(e.latlng.lat.toFixed(6));
-        const lng = Number(e.latlng.lng.toFixed(6));
-        setSelectedTarget({
-          type: 'catastro',
-          id: `parcel-${parcel.number}`,
-          title: parcel.name,
-          subtitle: `Linde Catastral Oficial (Parcela ${parcel.number})`,
-          lat,
-          lng,
-          notes: `Linde catastral con ${parcel.polygon.length} vértices`,
-          raw: parcel,
+        const poly = L.polygon(latlngs, {
+          color: is195 ? '#00d1da' : '#38bdf8',
+          weight: 1.5,
+          fillColor: '#00979d',
+          fillOpacity: 0.08,
         });
-      });
 
-      poly.addTo(layer);
-    });
-
-    (catastroJorox.cotas || []).forEach((cota) => {
-      const isSelected = selectedTarget && String(selectedTarget.id) === `cota-${cota.name}`;
-      const onSelectCota = (e) => {
-        if (interceptLayerClickForDraw(e)) return;
-        if (e) {
-          L.DomEvent.stopPropagation(e);
-          if (e.originalEvent) e.originalEvent.stopPropagation();
-        }
-        lastLayerClickedTimeRef.current = Date.now();
-        setSelectedTarget({
-          type: 'catastro',
-          id: `cota-${cota.name}`,
-          title: `Cota Catastral ${cota.name}`,
-          subtitle: 'Mojón o punto de cota oficial',
-          lat: cota.lat,
-          lng: cota.lng,
-          notes: 'Vértice oficial registrado en Catastro',
-          raw: cota,
+        poly.on('click', (e) => {
+          if (interceptLayerClickForDraw(e)) return;
+          if (e) {
+            L.DomEvent.stopPropagation(e);
+            if (e.originalEvent) e.originalEvent.stopPropagation();
+          }
+          lastLayerClickedTimeRef.current = Date.now();
+          const lat = Number(e.latlng.lat.toFixed(6));
+          const lng = Number(e.latlng.lng.toFixed(6));
+          setSelectedTarget({
+            type: 'catastro',
+            id: `parcel-${parcel.number}`,
+            title: parcel.name,
+            subtitle: `Linde Catastral Oficial (Parcela ${parcel.number})`,
+            lat,
+            lng,
+            notes: `Linde catastral con ${parcel.polygon.length} vértices`,
+            raw: parcel,
+          });
         });
-      };
 
-      const cotaIcon = createCotaPinIcon({ isSelected });
-      const marker = L.marker([cota.lat, cota.lng], {
-        icon: cotaIcon,
-        pane: 'inventoryMarkersPane',
-        interactive: true,
-        zIndexOffset: isSelected ? 1000 : 80,
+        poly.addTo(layer);
       });
 
-      marker.on('click', onSelectCota);
-      marker.addTo(layer);
-    });
+      (catastroJorox.cotas || []).forEach((cota) => {
+        const isSelected = selectedTarget && String(selectedTarget.id) === `cota-${cota.name}`;
+        const key = `${Number(cota.lat).toFixed(4)},${Number(cota.lng).toFixed(4)}`;
+        const cotaColor = parcel195Set.has(key) ? '#00d1da' : parcel196Set.has(key) ? '#38bdf8' : '#00d1da';
 
-    (catastroJorox.tracks || []).forEach((track) => {
-      const latlngs = (track.coordinates || []).map((c) => [c.lat, c.lng]);
-      if (latlngs.length < 2) return;
+        const onSelectCota = (e) => {
+          if (interceptLayerClickForDraw(e)) return;
+          if (e) {
+            L.DomEvent.stopPropagation(e);
+            if (e.originalEvent) e.originalEvent.stopPropagation();
+          }
+          lastLayerClickedTimeRef.current = Date.now();
+          setSelectedTarget({
+            type: 'catastro',
+            id: `cota-${cota.name}`,
+            title: `Cota Catastral ${cota.name}`,
+            subtitle: 'Mojón o punto de cota oficial',
+            lat: cota.lat,
+            lng: cota.lng,
+            notes: 'Vértice oficial registrado en Catastro',
+            raw: cota,
+          });
+        };
 
-      const poly = L.polyline(latlngs, {
-        color: '#94a3b8',
-        weight: 3,
-        opacity: 0.8,
-        dashArray: '5, 5',
-      });
-
-      poly.on('click', (e) => {
-        if (interceptLayerClickForDraw(e)) return;
-        if (e) {
-          L.DomEvent.stopPropagation(e);
-          if (e.originalEvent) e.originalEvent.stopPropagation();
-        }
-        lastLayerClickedTimeRef.current = Date.now();
-        setSelectedTarget({
-          type: 'catastro_track',
-          id: `catastro-track-${track.name}`,
-          title: track.name,
-          subtitle: 'Trazado o pista catastral registrada',
-          notes: 'Trazado catastral oficial',
-          raw: track,
+        const cotaIcon = createCotaPinIcon({ isSelected, color: cotaColor });
+        const marker = L.marker([cota.lat, cota.lng], {
+          icon: cotaIcon,
+          pane: 'inventoryMarkersPane',
+          interactive: true,
+          zIndexOffset: isSelected ? 1000 : 80,
         });
-      });
 
-      poly.addTo(layer);
-    });
+        marker.on('click', onSelectCota);
+        marker.addTo(layer);
+      });
+    }
+
+    if (showPaths) {
+      (catastroJorox.tracks || []).forEach((track) => {
+        const latlngs = (track.coordinates || []).map((c) => [c.lat, c.lng]);
+        if (latlngs.length < 2) return;
+
+        const poly = L.polyline(latlngs, {
+          color: '#94a3b8',
+          weight: 3,
+          opacity: 0.8,
+          dashArray: '5, 5',
+        });
+
+        poly.on('click', (e) => {
+          if (interceptLayerClickForDraw(e)) return;
+          if (e) {
+            L.DomEvent.stopPropagation(e);
+            if (e.originalEvent) e.originalEvent.stopPropagation();
+          }
+          lastLayerClickedTimeRef.current = Date.now();
+          setSelectedTarget({
+            type: 'catastro_track',
+            id: `catastro-track-${track.name}`,
+            title: track.name,
+            subtitle: 'Trazado o pista catastral registrada',
+            notes: 'Trazado catastral oficial',
+            raw: track,
+          });
+        });
+
+        poly.addTo(layer);
+      });
+    }
   }, [
     showCatastro,
+    showPaths,
     selectedTarget,
     interceptLayerClickForDraw,
     catastroLayerRef,

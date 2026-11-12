@@ -313,9 +313,11 @@ export default function FarmSatelliteMap({
         const searchable = [path.name, path.path_type, path.notes].filter(Boolean).join(' ').toLowerCase();
         if (!searchable.includes(q)) return false;
       }
-      return visiblePathTypes.has(path.path_type || 'otro');
+      const pt = path.path_type || 'otro';
+      if (pt === 'linde') return showCatastro;
+      return showPaths && visiblePathTypes.has(pt);
     });
-  }, [localPaths, searchQuery, visiblePathTypes]);
+  }, [localPaths, searchQuery, showCatastro, showPaths, visiblePathTypes]);
 
   useEffect(() => {
     const q = (searchQuery || '').trim();
@@ -504,9 +506,7 @@ export default function FarmSatelliteMap({
   const selectAllFilters = () => {
     setVisibleCategories(new Set(allCategories));
     setVisibleSubcats(null);
-    setVisiblePathTypes(new Set(PATH_TYPES));
-    setShowCatastro(true);
-    setShowElevationContours(true);
+    setVisiblePathTypes(new Set(PATH_TYPES.filter((pt) => pt !== 'linde')));
     setShowPaths(true);
   };
 
@@ -514,8 +514,6 @@ export default function FarmSatelliteMap({
     setVisibleCategories(new Set());
     setVisibleSubcats(null);
     setVisiblePathTypes(new Set());
-    setShowCatastro(false);
-    setShowElevationContours(false);
     setShowPaths(false);
   };
 
@@ -772,6 +770,8 @@ export default function FarmSatelliteMap({
         setShowNavControls={setShowNavControls}
         showElevationContours={showElevationContours}
         setShowElevationContours={setShowElevationContours}
+        showCatastro={showCatastro}
+        setShowCatastro={setShowCatastro}
         handleExportVisiblePDF={handleExportVisiblePDF}
         setIsInfoModalOpen={setIsInfoModalOpen}
       />
@@ -792,6 +792,10 @@ export default function FarmSatelliteMap({
           selectedTarget={selectedTarget}
           allCategories={allCategories}
           localInventory={localInventory}
+          localPaths={localPaths}
+          showPaths={showPaths}
+          showCatastro={showCatastro}
+          showElevationContours={showElevationContours}
           showNavControls={showNavControls}
           mapInstanceRef={mapInstanceRef}
           handleCenterOnUserLocation={handleCenterOnUserLocation}
@@ -822,10 +826,6 @@ export default function FarmSatelliteMap({
           visiblePathTypes={visiblePathTypes}
           setVisiblePathTypes={setVisiblePathTypes}
           togglePathType={togglePathType}
-          showCatastro={showCatastro}
-          setShowCatastro={setShowCatastro}
-          showElevationContours={showElevationContours}
-          setShowElevationContours={setShowElevationContours}
         />
 
         <MapIaBottomBar

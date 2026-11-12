@@ -7,9 +7,9 @@ import {
   getItemCategory,
   getSubcategoriesForParent,
 } from '../../services/farmInventoryStorage';
-import catastroJorox from '../../data/catastroJorox.json';
-import joroxElevationContours from '../../data/joroxElevationContours.json';
 import { PATH_TYPES, PATH_TYPE_LABELS } from './mapUtils';
+
+const FILTERABLE_PATH_TYPES = PATH_TYPES.filter((pt) => pt !== 'linde');
 
 export default function MapFilterDrawer({
   isOpen,
@@ -30,10 +30,6 @@ export default function MapFilterDrawer({
   visiblePathTypes,
   setVisiblePathTypes,
   togglePathType,
-  showCatastro,
-  setShowCatastro,
-  showElevationContours = true,
-  setShowElevationContours,
 }) {
   const nonEmptyCategories = allCategories
     .map((parent) => {
@@ -51,17 +47,14 @@ export default function MapFilterDrawer({
     })
     .filter(Boolean);
 
-  const nonEmptyPathTypes = PATH_TYPES
+  const nonLindePaths = localPaths.filter((p) => (p.path_type || 'otro') !== 'linde');
+
+  const nonEmptyPathTypes = FILTERABLE_PATH_TYPES
     .map((pt) => ({
       pt,
-      count: localPaths.filter((p) => (p.path_type || 'otro') === pt).length,
+      count: nonLindePaths.filter((p) => (p.path_type || 'otro') === pt).length,
     }))
     .filter((item) => item.count > 0);
-
-  const parcelsCount = catastroJorox.parcels?.length || 0;
-  const cotasCount = catastroJorox.cotas?.length || 0;
-  const tracksCount = catastroJorox.tracks?.length || 0;
-  const catastroTotalCount = parcelsCount + cotasCount + tracksCount;
 
   const visibleInventoryCount = localInventory.filter((item) => {
     const parent = getItemCategory(item);
@@ -74,13 +67,10 @@ export default function MapFilterDrawer({
   }).length;
 
   const visiblePathsCount = showPaths
-    ? localPaths.filter((p) => visiblePathTypes.has(p.path_type || 'otro')).length
+    ? nonLindePaths.filter((p) => visiblePathTypes.has(p.path_type || 'otro')).length
     : 0;
 
-  const contoursCount = joroxElevationContours?.contours?.length || 0;
-  const visibleCatastroCount = showCatastro ? catastroTotalCount : 0;
-  const visibleContoursCount = showElevationContours ? contoursCount : 0;
-  const totalVisibleElements = visibleInventoryCount + visiblePathsCount + visibleCatastroCount + visibleContoursCount;
+  const totalVisibleElements = visibleInventoryCount + visiblePathsCount;
 
   return (
     <FilterDrawerShell
@@ -185,7 +175,7 @@ export default function MapFilterDrawer({
         </div>
       )}
 
-      {localPaths.length > 0 && (
+      {nonLindePaths.length > 0 && (
         <div id="map-filter-section-paths">
           <span className="filter-drawer-section-label">Caminos y trazados</span>
           <div className="filter-drawer-list">
@@ -197,14 +187,14 @@ export default function MapFilterDrawer({
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setShowPaths(checked);
-                    setVisiblePathTypes(checked ? new Set(PATH_TYPES) : new Set());
+                    setVisiblePathTypes(checked ? new Set(FILTERABLE_PATH_TYPES) : new Set());
                   }}
                   style={{ accentColor: '#f97316' }}
                 />
                 <span style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: '#f97316', flexShrink: 0 }} />
                 <span>Todos los caminos</span>
               </span>
-              <span className="filter-drawer-badge">{localPaths.length}</span>
+              <span className="filter-drawer-badge">{nonLindePaths.length}</span>
             </label>
 
             {nonEmptyPathTypes.length > 0 && (
@@ -232,80 +222,6 @@ export default function MapFilterDrawer({
                 })}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {catastroTotalCount > 0 && (
-        <div id="map-filter-section-catastro">
-          <span className="filter-drawer-section-label">Catastro oficial</span>
-          <div className="filter-drawer-list">
-            <label className={`filter-drawer-option ${showCatastro ? 'is-active' : ''}`}>
-              <span className="filter-drawer-option-label">
-                <input
-                  type="checkbox"
-                  checked={showCatastro}
-                  onChange={(e) => setShowCatastro(e.target.checked)}
-                  style={{ accentColor: '#00979d' }}
-                />
-                <span style={{ width: 14, height: 14, borderRadius: 3, border: '1.5px dashed #00d1da', backgroundColor: 'rgba(0,151,157,0.18)', flexShrink: 0 }} />
-                <span>Catastro (Parcelas 195 y 196)</span>
-              </span>
-              <span className="filter-drawer-badge">{catastroTotalCount}</span>
-            </label>
-
-            {showCatastro && (
-              <div className="filter-drawer-sublist">
-                {parcelsCount > 0 && (
-                  <div className="filter-drawer-suboption is-active" style={{ cursor: 'default' }}>
-                    <span className="filter-drawer-option-label">
-                      <span style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: '#00d1da', flexShrink: 0 }} />
-                      <span>Parcelas 195 y 196</span>
-                    </span>
-                    <span className="filter-drawer-badge">{parcelsCount}</span>
-                  </div>
-                )}
-                {cotasCount > 0 && (
-                  <div className="filter-drawer-suboption is-active" style={{ cursor: 'default' }}>
-                    <span className="filter-drawer-option-label">
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#ffffff', border: '1.5px solid #00979d', flexShrink: 0 }} />
-                      <span>Cotas catastrales</span>
-                    </span>
-                    <span className="filter-drawer-badge">{cotasCount}</span>
-                  </div>
-                )}
-                {tracksCount > 0 && (
-                  <div className="filter-drawer-suboption is-active" style={{ cursor: 'default' }}>
-                    <span className="filter-drawer-option-label">
-                      <span style={{ width: 12, height: 2, borderTop: '2px dashed #94a3b8', flexShrink: 0 }} />
-                      <span>Pistas catastrales</span>
-                    </span>
-                    <span className="filter-drawer-badge">{tracksCount}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {contoursCount > 0 && typeof setShowElevationContours === 'function' && (
-        <div id="map-filter-section-elevation">
-          <span className="filter-drawer-section-label">Relieve satelital</span>
-          <div className="filter-drawer-list">
-            <label className={`filter-drawer-option ${showElevationContours ? 'is-active' : ''}`}>
-              <span className="filter-drawer-option-label">
-                <input
-                  type="checkbox"
-                  checked={showElevationContours}
-                  onChange={(e) => setShowElevationContours(e.target.checked)}
-                  style={{ accentColor: '#fbbf24' }}
-                />
-                <span style={{ width: 14, height: 3, borderRadius: 2, backgroundColor: '#fbbf24', flexShrink: 0 }} />
-                <span>Cotas de altura (20 m)</span>
-              </span>
-              <span className="filter-drawer-badge">{contoursCount}</span>
-            </label>
           </div>
         </div>
       )}

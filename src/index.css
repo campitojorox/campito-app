@@ -418,14 +418,17 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   background-color: #64748b; /* Otros elementos */
 }
 
-/* Modificador específico para cotas oficiales de Catastro */
+/* Modificador específico para cotas / nodos de lindes del Campito */
 .farm-pin--cota .farm-pin__halo {
-  background-color: #7c3aed;
+  background-color: #00d1da;
 }
 
 .farm-pin--cota .farm-pin__body {
-  background-color: #7c3aed;
-  border-color: #ffffff;
+  width: 6px;
+  height: 6px;
+  background-color: #00d1da;
+  border: none;
+  box-shadow: none;
 }
 
 /* ─── SUBESTADOS FITOSANITARIOS (SOBREESCRIBEN COLOR POR CSS) ─────────────── */

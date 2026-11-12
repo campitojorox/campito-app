@@ -1,6 +1,9 @@
 // src/components/map/MapOverlays.jsx
 import { Undo2, Check, ZoomIn, ZoomOut, Crosshair, Compass } from 'lucide-react';
 import { getCategoryColor, PATH_TYPE_COLORS, getItemCategory } from '../../services/farmInventoryStorage';
+import catastroJorox from '../../data/catastroJorox.json';
+import joroxElevationContours from '../../data/joroxElevationContours.json';
+import { PATH_TYPE_LABELS } from './mapUtils';
 import { styles } from './mapStyles';
 
 export default function MapOverlays({
@@ -16,6 +19,10 @@ export default function MapOverlays({
   selectedTarget,
   allCategories,
   localInventory,
+  localPaths = [],
+  showPaths = true,
+  showCatastro = true,
+  showElevationContours = true,
   showNavControls,
   mapInstanceRef,
   handleCenterOnUserLocation,
@@ -24,6 +31,40 @@ export default function MapOverlays({
   liveUserGps,
   fitAllElements,
 }) {
+  const activePointCategories = (allCategories || []).filter((cat) =>
+    (localInventory || []).some((i) => getItemCategory(i) === cat)
+  );
+  const hasAlertStatus = (localInventory || []).some((i) =>
+    ['enfermo', 'seco', 'muerto', 'poda_requerida', 'poda', 'plaga'].includes(
+      (i.status || i.estado || '').toLowerCase()
+    )
+  );
+  const hasClorosisStatus = (localInventory || []).some(
+    (i) => (i.status || i.estado || '').toLowerCase() === 'clorosis'
+  );
+  const activePathTypes = showPaths
+    ? Array.from(
+        new Set(
+          (localPaths || [])
+            .map((p) => p.path_type || 'otro')
+            .filter((pt) => pt !== 'linde')
+        )
+      )
+    : [];
+  const hasCatastroTracks = showPaths && (catastroJorox?.tracks?.length || 0) > 0;
+  const hasLindes =
+    showCatastro &&
+    ((catastroJorox?.parcels?.length || 0) > 0 ||
+      (localPaths || []).some((p) => (p.path_type || 'otro') === 'linde'));
+  const hasElevation = showElevationContours && (joroxElevationContours?.contours?.length || 0) > 0;
+  const hasAnyLegendItems =
+    activePointCategories.length > 0 ||
+    hasAlertStatus ||
+    hasClorosisStatus ||
+    activePathTypes.length > 0 ||
+    hasCatastroTracks ||
+    hasLindes ||
+    hasElevation;
   return (
     <>
       {isDrawing && (
@@ -113,50 +154,62 @@ export default function MapOverlays({
         </div>
       )}
 
-      {showLegend && (
+      {showLegend && hasAnyLegendItems && (
         <div style={{ ...styles.legendBox, bottom: selectedTarget ? 270 : 75 }}>
-          <span style={styles.legendTitle}>Referencias (Puntos y Líneas)</span>
+          <span style={styles.legendTitle}>REFERENCIAS</span>
           <div style={styles.legendGrid}>
-            {allCategories
-              .filter((cat) => cat !== 'Otros' || localInventory.some((i) => getItemCategory(i) === 'Otros'))
-              .map((cat) => (
-                <div key={cat} style={styles.legendItem}>
-                  <span style={{ ...styles.colorCircle, backgroundColor: getCategoryColor(cat) }} />
-                  <span>{cat}</span>
+            {activePointCategories.map((cat) => (
+              <div key={cat} style={styles.legendItem}>
+                <span style={{ ...styles.colorCircle, backgroundColor: getCategoryColor(cat) }} />
+                <span>{cat}</span>
+              </div>
+            ))}
+            {hasAlertStatus && (
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorCircle, backgroundColor: '#ef4444' }} />
+                <span>Poda/Seco</span>
+              </div>
+            )}
+            {hasClorosisStatus && (
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorCircle, backgroundColor: '#f59e0b' }} />
+                <span>Clorosis</span>
+              </div>
+            )}
+            {activePathTypes.map((pt) => {
+              const color = PATH_TYPE_COLORS[pt] || '#64748b';
+              const isDashed = pt === 'linea_riego' || pt === 'acequia';
+              return (
+                <div key={pt} style={styles.legendItem}>
+                  <span
+                    style={
+                      isDashed
+                        ? { ...styles.colorLine, borderTop: `2px dashed ${color}`, height: 0, backgroundColor: 'transparent' }
+                        : { ...styles.colorLine, backgroundColor: color }
+                    }
+                  />
+                  <span>{PATH_TYPE_LABELS[pt] || pt}</span>
                 </div>
-              ))}
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorCircle, backgroundColor: '#ef4444' }} />
-              <span>Poda/Seco</span>
-            </div>
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorLine, backgroundColor: '#92400e' }} />
-              <span>Camino</span>
-            </div>
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorLine, backgroundColor: '#a16207' }} />
-              <span>Carril</span>
-            </div>
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorLine, backgroundColor: '#b45309' }} />
-              <span>Sendero</span>
-            </div>
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorLine, backgroundColor: '#1d4ed8' }} />
-              <span>Acequia</span>
-            </div>
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorLine, backgroundColor: '#38bdf8', borderTop: '2px dashed #38bdf8', height: 0 }} />
-              <span>Riego</span>
-            </div>
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorLine, borderTop: '2px dashed #00d1da', height: 0 }} />
-              <span>Parcela 195/196</span>
-            </div>
-            <div style={styles.legendItem}>
-              <span style={{ ...styles.colorLine, backgroundColor: '#fbbf24' }} />
-              <span>Cotas altura (20m)</span>
-            </div>
+              );
+            })}
+            {hasCatastroTracks && (
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorLine, borderTop: '2px dashed #94a3b8', height: 0, backgroundColor: 'transparent' }} />
+                <span>Pistas</span>
+              </div>
+            )}
+            {hasLindes && (
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorLine, borderTop: '1.5px solid #00d1da', height: 0, backgroundColor: 'transparent' }} />
+                <span>Lindes Campito</span>
+              </div>
+            )}
+            {hasElevation && (
+              <div style={styles.legendItem}>
+                <span style={{ ...styles.colorLine, backgroundColor: '#fbbf24' }} />
+                <span>Cotas altura (20m)</span>
+              </div>
+            )}
           </div>
         </div>
       )}
