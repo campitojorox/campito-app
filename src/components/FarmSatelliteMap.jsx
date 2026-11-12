@@ -183,7 +183,7 @@ export default function FarmSatelliteMap({
 
   // ─── Descubrimiento dinámico de categorías ─────────────────────────────────
   const allCategories = useMemo(() => {
-    const baseOrder = ['Árboles', 'Plantas', 'Riego / Agua', 'Casas / Edificios', 'Herramientas', 'Hitos'];
+    const baseOrder = ['Árboles', 'Plantas', 'Riego / Agua', 'Casas', 'Herramientas', 'Hitos'];
     const found = new Set(baseOrder);
     (localInventory || []).forEach((item) => {
       const cat = getItemCategory(item);
@@ -228,8 +228,11 @@ export default function FarmSatelliteMap({
     const base = new Set(Object.keys(BASE_CATEGORY_MAP));
     if (initialMapSettings?.visibleCategories && Array.isArray(initialMapSettings.visibleCategories)) {
       const saved = new Set(initialMapSettings.visibleCategories);
-      if (saved.has('Edificios')) saved.add('Casas / Edificios');
-      saved.add('Casas / Edificios');
+      if (saved.has('Edificios') || saved.has('Casas / Edificios')) {
+        saved.delete('Edificios');
+        saved.delete('Casas / Edificios');
+        saved.add('Casas');
+      }
       allCategories.forEach((cat) => {
         if (!Object.prototype.hasOwnProperty.call(BASE_CATEGORY_MAP, cat) && cat !== 'Otros') {
           saved.add(cat);

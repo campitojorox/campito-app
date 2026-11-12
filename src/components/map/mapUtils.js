@@ -141,6 +141,7 @@ export function calculatePathMeters(coordinates) {
 export function getPinFamilySlug(item) {
   const parent = getItemCategory(item);
   switch (parent) {
+    case 'Casas':
     case 'Casas / Edificios':
     case 'Edificios':
       return 'edificio';

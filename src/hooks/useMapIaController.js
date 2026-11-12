@@ -200,6 +200,134 @@ export function useMapIaController({
       return;
     }
 
+    const lowerOrder = textOrder.toLowerCase();
+
+    // ── 1. DETECCIÓN DIRECTA DE RENOMBRADO DE CATEGORÍAS ──
+    const isCategoryRename =
+      (lowerOrder.includes('cambiar') || lowerOrder.includes('renombrar') || lowerOrder.includes('actualizar') || lowerOrder.includes('modificar')) &&
+      (lowerOrder.includes('categor') || lowerOrder.includes('casas'));
+
+    if (isCategoryRename) {
+      let oldCat = null;
+      let newCat = null;
+
+      const matchQuotes = textOrder.match(/["'«“]([^"'»”]+)["'»”][\s\S]*?(?:por|a|como)\s+["'«“]([^"'»”]+)["'»”]/i);
+      if (matchQuotes) {
+        oldCat = matchQuotes[1].trim();
+        newCat = matchQuotes[2].trim();
+      } else if (lowerOrder.includes('casas') && (lowerOrder.includes('edificio') || lowerOrder.includes('casas / edificios'))) {
+        oldCat = 'Casas / Edificios';
+        newCat = 'Casas';
+      }
+
+      if (oldCat && newCat) {
+        setMapIaInput('');
+        syncTextareaHeight(mapIaTextareaRef.current, '');
+        setPendingVoiceAudio(null);
+        setPendingAttachments([]);
+        setIsProcessingIa(true);
+        setIaFeedback({ type: 'info', text: `🔄 Renombrando categoría "${oldCat}" a "${newCat}"...` });
+
+        try {
+          const oldNorm = oldCat.toLowerCase().trim();
+          const targetItems = (localInventory || []).filter((i) => {
+            const c = (i.category || '').toLowerCase().trim();
+            const root = getItemCategory(i).toLowerCase().trim();
+            return c === oldNorm || root === oldNorm || (oldNorm.includes('edificio') && (c.includes('edificio') || c.includes('casa')));
+          });
+
+          for (const item of targetItems) {
+            await updateFarmInventoryItem(item.id, { category: newCat });
+          }
+
+          setLocalInventory((prev) =>
+            prev.map((i) => (targetItems.some((t) => String(t.id) === String(i.id)) ? { ...i, category: newCat } : i))
+          );
+          if (setVisibleCategories) {
+            setVisibleCategories((prev) => {
+              const next = new Set(prev);
+              next.delete(oldCat);
+              next.delete('Edificios');
+              next.delete('Casas / Edificios');
+              next.add(newCat);
+              return next;
+            });
+          }
+
+          setIaFeedback({
+            type: 'success',
+            text: `✨ Categoría renombrada: "${oldCat}" ahora es "${newCat}" (${targetItems.length} elementos actualizados en el mapa).`,
+          });
+          if (onReloadInventory) await onReloadInventory();
+        } catch (err) {
+          setIaFeedback({ type: 'error', text: `Error renombrando categoría: ${err.message}` });
+        } finally {
+          setIsProcessingIa(false);
+        }
+        return;
+      }
+    }
+
+    // ── 2. DETECCIÓN DIRECTA DE BORRADO DE CAMINOS Y PISTAS ──
+    const isDeleteWord = lowerOrder.includes('eliminar') || lowerOrder.includes('borrar') || lowerOrder.includes('quitar') || lowerOrder.includes('suprimir');
+    const mentionsPaths = lowerOrder.includes('camino') || lowerOrder.includes('pista') || lowerOrder.includes('sendero') || lowerOrder.includes('trazado') || lowerOrder.includes('recorrido') || lowerOrder.includes('polilinea');
+    const mentionsAll = lowerOrder.includes('todo') || lowerOrder.includes('toda') || lowerOrder.includes('todos') || lowerOrder.includes('todas');
+
+    if (isDeleteWord && mentionsPaths) {
+      const pathsToDelete = mentionsAll
+        ? [...localPaths]
+        : localPaths.filter((p) => {
+            const pName = (p.name || '').toLowerCase();
+            const pType = (p.path_type || '').toLowerCase();
+            return (
+              lowerOrder.includes(pName) ||
+              (lowerOrder.includes('pista') && (pName.includes('pista') || pType.includes('pista') || pType === 'camino')) ||
+              (lowerOrder.includes('sendero') && pType === 'sendero') ||
+              (lowerOrder.includes('camino') && (pType === 'camino' || pType === 'sendero' || pType === 'carril'))
+            );
+          });
+
+      if (pathsToDelete.length > 0) {
+        setMapIaInput('');
+        syncTextareaHeight(mapIaTextareaRef.current, '');
+        setPendingVoiceAudio(null);
+        setPendingAttachments([]);
+        setIsProcessingIa(true);
+        setIaFeedback({ type: 'info', text: `🗑️ Eliminando ${pathsToDelete.length} camino(s) y pista(s)...` });
+
+        try {
+          const deletedIds = [];
+          for (const p of pathsToDelete) {
+            await deleteFarmPath(p.id);
+            deletedIds.push(p.id);
+          }
+          const delSet = new Set(deletedIds.map(String));
+          setLocalPaths((prev) => prev.filter((p) => !delSet.has(String(p.id))));
+          if (selectedTarget && selectedTarget.type === 'path' && delSet.has(String(selectedTarget.id))) {
+            setSelectedTarget(null);
+          }
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Eliminados ${pathsToDelete.length} camino(s)`,
+              reverts: pathsToDelete.map((p) => ({ type: 'ADD_PATH', pathData: p })),
+              timestamp: Date.now(),
+            },
+          ]);
+          setIaFeedback({
+            type: 'success',
+            text: `✨ Se han eliminado ${pathsToDelete.length} camino(s) y pista(s) del mapa.`,
+          });
+          if (onReloadPaths) await onReloadPaths();
+        } catch (err) {
+          setIaFeedback({ type: 'error', text: `Error al eliminar caminos: ${err.message}` });
+        } finally {
+          setIsProcessingIa(false);
+        }
+        return;
+      }
+    }
+
     // ─── IMPORTACIÓN DIRECTA DE ARCHIVOS KML / KMZ / GEOJSON / GPX CON AUTO-INDEXACIÓN RAG ───
     const geoAtt = attsOrder.find(
       (a) =>

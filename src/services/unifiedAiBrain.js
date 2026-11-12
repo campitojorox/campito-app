@@ -512,10 +512,21 @@ export async function executeUnifiedActions({
 
   // 4. CAMINOS: BORRAR
   for (const del of parsedCommands.pathDeletions || []) {
+    if (del.target === 'all' || del.target === 'todos' || del.all) {
+      for (const path of [...currentPaths]) {
+        await deleteFarmPath(path.id);
+        result.deletedPaths.push(path.id);
+        result.reverts.push({ type: 'RESTORE_PATH', pathData: path });
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id: path.id, deleted: true } }));
+        }
+      }
+      continue;
+    }
     const rawId = del.target_id || del.id || selectedTarget?.id;
     let targetId = rawId;
-    if (!targetId && del.query) {
-      const q = String(del.query).toLowerCase().trim();
+    if (!targetId && (del.query || del.name)) {
+      const q = String(del.query || del.name).toLowerCase().trim();
       const match = currentPaths.find((p) => p.name && p.name.toLowerCase().includes(q));
       if (match) targetId = match.id;
     }

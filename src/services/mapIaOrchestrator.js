@@ -316,6 +316,24 @@ function normalizeParsedMapObject(parsed, audio = null) {
     actions.push(...pathContainers.map((pth) => ({ type: 'ADD_PATH', data: pth })));
   }
 
+  // Caso 2b: Claves de borrado alternativas (deletions, deleted_paths, borrados, etc.)
+  const deleteContainers =
+    parsed.deletions ||
+    parsed.deleted_paths ||
+    parsed.deleted_items ||
+    parsed.borrados ||
+    parsed.eliminados ||
+    parsed.caminos_a_eliminar;
+  if (Array.isArray(deleteContainers)) {
+    deleteContainers.forEach((d) => {
+      if (typeof d === 'string') {
+        actions.push({ type: 'DELETE_PATH', query: d });
+      } else if (d && typeof d === 'object') {
+        actions.push(d.type ? d : { type: 'DELETE_PATH', target_id: d.id || d.target_id, query: d.name || d.query });
+      }
+    });
+  }
+
   // Caso 3: Etiquetas [[REGISTRAR_PUNTOS]] embebidas dentro de description/summary tras JSON.parse
   if (actions.length === 0) {
     const textFields = [parsed.description, parsed.summary, parsed.message, parsed.respuesta]
@@ -326,6 +344,29 @@ function normalizeParsedMapObject(parsed, audio = null) {
       const embeddedActions = structuredCommandsToActions(embeddedCmds);
       if (embeddedActions.length > 0) {
         actions = embeddedActions;
+      }
+    }
+  }
+
+  // Caso 3b: Si Gemini describió la eliminación pero dejó "actions" vacío
+  if (actions.length === 0 && (parsed.description || parsed.summary)) {
+    const descLower = (parsed.description || parsed.summary || '').toLowerCase();
+    if (
+      (descLower.includes('eliminad') || descLower.includes('borrad') || descLower.includes('quitad')) &&
+      (descLower.includes('camino') || descLower.includes('pista') || descLower.includes('sendero') || descLower.includes('trazado'))
+    ) {
+      if (descLower.includes('todos los caminos') || descLower.includes('todas las pistas') || descLower.includes('todos los senderos')) {
+        actions.push({ type: 'DELETE_PATH', target: 'all' });
+      } else {
+        const quotedMatches = (parsed.description || parsed.summary).match(/['"«“]([^'"»”]+)['"»”]/g);
+        if (quotedMatches && quotedMatches.length > 0) {
+          quotedMatches.forEach((q) => {
+            const cleanName = q.replace(/['"«“»”]/g, '').trim();
+            if (cleanName) actions.push({ type: 'DELETE_PATH', query: cleanName });
+          });
+        } else {
+          actions.push({ type: 'DELETE_PATH', target: 'all' });
+        }
       }
     }
   }
@@ -621,16 +662,42 @@ export async function executeInventoryActions({
 
     // ── BORRAR CAMINO ─────────────────────────────────────────────────────────
     else if (DELETE_PATH_TYPES.has(actType)) {
-      const targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-      if (targetId) {
-        const path = currentPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
-        await deleteFarmPath(targetId);
-        result.deletedPaths.push(targetId);
-        if (path) {
+      if (act.target === 'all' || act.target === 'todos' || actData.target === 'all' || actData.target === 'todos') {
+        for (const path of [...currentPaths]) {
+          await deleteFarmPath(path.id);
+          result.deletedPaths.push(path.id);
           result.reverts.push({ type: 'RESTORE_PATH', pathData: path });
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id: path.id, deleted: true } }));
+          }
         }
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id: targetId, deleted: true } }));
+      } else {
+        let targetId = act.target_id || act.id || actData.id || actData.target_id;
+        const searchQ = (act.query || actData.query || act.name || actData.name || (!targetId && act.target ? String(act.target) : '')).toLowerCase().trim();
+
+        if (!targetId && searchQ) {
+          const matched = currentPaths.find(
+            (p) =>
+              (p.name && p.name.toLowerCase().includes(searchQ)) ||
+              (p.path_type && p.path_type.toLowerCase().includes(searchQ))
+          );
+          if (matched) targetId = matched.id;
+        }
+
+        if (!targetId && selectedTarget?.type === 'path' && selectedTarget.id) {
+          targetId = selectedTarget.id;
+        }
+
+        if (targetId) {
+          const path = currentPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
+          await deleteFarmPath(targetId);
+          result.deletedPaths.push(targetId);
+          if (path) {
+            result.reverts.push({ type: 'RESTORE_PATH', pathData: path });
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id: targetId, deleted: true } }));
+          }
         }
       }
     }

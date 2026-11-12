@@ -503,6 +503,7 @@ export const BASE_CATEGORY_MAP = {
   'Árboles': ['aguacate', 'olivo', 'limonero', 'naranjo', 'citrico', 'arbol', 'frutales', 'algarrobo', 'granado', 'mango', 'higuera', 'frutal'],
   'Plantas': ['planta', 'hierba', 'arbusto', 'herbaceo', 'vegetal', 'palmera', 'bambu', 'huerta'],
   'Riego / Agua': ['riego', 'llave', 'gotero', 'filtro', 'valvula', 'contador', 'arqueta', 'pozo', 'deposito', 'cisterna', 'grifo', 'tuberia', 'manguera', 'aspersor', 'bomba', 'caudal', 'acequia'],
+  'Casas': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
   'Casas / Edificios': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
   'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario', 'apero'],
   'Hitos': ['mojon', 'linde', 'piedra', 'marca', 'señal', 'cota', 'limite'],
@@ -513,7 +514,8 @@ const BASE_CATEGORY_COLORS = {
   'Árboles': '#16a34a',           // Verde oscuro
   'Plantas': '#4ade80',           // Verde claro
   'Riego / Agua': '#0284c7',      // Azul
-  'Casas / Edificios': '#eab308', // Amarillo
+  'Casas': '#eab308',             // Amarillo
+  'Casas / Edificios': '#eab308', // Amarillo (retrocompatibilidad)
   'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
   'Herramientas': '#f97316',      // Naranja
   'Hitos': '#8b5cf6',             // Púrpura
@@ -562,19 +564,25 @@ export const PATH_TYPE_COLORS = {
 export function getItemCategory(item) {
   if (!item) return 'Otros';
 
-  if (item.category && BASE_CATEGORY_MAP[item.category]) {
-    return item.category;
+  const rawCat = (item.category || '').trim();
+  if (rawCat === 'Casas / Edificios' || rawCat === 'Edificios') {
+    return 'Casas';
+  }
+  if (rawCat && BASE_CATEGORY_MAP[rawCat]) {
+    return rawCat;
   }
 
-  const rawCat = (item.category || '').trim();
   const normCat = rawCat
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
   if (normCat) {
+    if (normCat.includes('casa') || normCat.includes('cueva') || normCat.includes('edificio')) {
+      return 'Casas';
+    }
     for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
-      if (parent === 'Otros') continue;
+      if (parent === 'Otros' || parent === 'Casas / Edificios') continue;
       if (keywords.some((k) => normCat.includes(k))) return parent;
     }
     if (normCat !== 'otros' && normCat !== 'otro' && normCat !== 'inventario') {
@@ -589,8 +597,12 @@ export function getItemCategory(item) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
+  if (text.includes('casa') || text.includes('cueva') || text.includes('edificio')) {
+    return 'Casas';
+  }
+
   for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
-    if (parent === 'Otros') continue;
+    if (parent === 'Otros' || parent === 'Casas / Edificios') continue;
     if (keywords.some((k) => text.includes(k))) return parent;
   }
 
