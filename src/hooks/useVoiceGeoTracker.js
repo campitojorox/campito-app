@@ -84,6 +84,44 @@ export function stopMediaStream(stream) {
   }
 }
 
+export async function acquireScreenWakeLock(wakeLockRef, onRelease = null) {
+  if (typeof navigator === 'undefined' || !('wakeLock' in navigator) || !navigator.wakeLock?.request) {
+    return false;
+  }
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+    return false;
+  }
+  try {
+    if (wakeLockRef.current && !wakeLockRef.current.released) {
+      return true;
+    }
+    const sentinel = await navigator.wakeLock.request('screen');
+    wakeLockRef.current = sentinel;
+    sentinel.addEventListener('release', () => {
+      if (wakeLockRef.current === sentinel) {
+        wakeLockRef.current = null;
+        if (onRelease) onRelease();
+      }
+    });
+    return true;
+  } catch (wakeErr) {
+    console.warn('[VoiceGeoTracker] Wake Lock no disponible:', wakeErr?.message || wakeErr);
+    return false;
+  }
+}
+
+export async function releaseScreenWakeLock(wakeLockRef) {
+  const sentinel = wakeLockRef.current;
+  wakeLockRef.current = null;
+  if (sentinel) {
+    try {
+      await sentinel.release();
+    } catch {
+      // Ignorar si ya fue liberado por el sistema
+    }
+  }
+}
+
 // Caché global del último punto GPS conocido para respuesta inmediata en frío
 let moduleLastKnownGps = null;
 
@@ -266,45 +304,14 @@ export function useVoiceGeoTracker({
   const isRecordingRef = useRef(false);
 
   const releaseWakeLock = useCallback(async () => {
-    const sentinel = wakeLockRef.current;
-    wakeLockRef.current = null;
     setWakeLockActive(false);
-    if (sentinel) {
-      try {
-        await sentinel.release();
-      } catch {
-        // Ignorar si ya fue liberado por el sistema
-      }
-    }
+    await releaseScreenWakeLock(wakeLockRef);
   }, []);
 
   const acquireWakeLock = useCallback(async () => {
-    if (typeof navigator === 'undefined' || !('wakeLock' in navigator) || !navigator.wakeLock?.request) {
-      return false;
-    }
-    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-      return false;
-    }
-    try {
-      if (wakeLockRef.current && !wakeLockRef.current.released) {
-        setWakeLockActive(true);
-        return true;
-      }
-      const sentinel = await navigator.wakeLock.request('screen');
-      wakeLockRef.current = sentinel;
-      setWakeLockActive(true);
-      sentinel.addEventListener('release', () => {
-        if (wakeLockRef.current === sentinel) {
-          wakeLockRef.current = null;
-          setWakeLockActive(false);
-        }
-      });
-      return true;
-    } catch (wakeErr) {
-      console.warn('[VoiceGeoTracker] Wake Lock no disponible:', wakeErr?.message || wakeErr);
-      setWakeLockActive(false);
-      return false;
-    }
+    const ok = await acquireScreenWakeLock(wakeLockRef, () => setWakeLockActive(false));
+    setWakeLockActive(ok);
+    return ok;
   }, []);
 
   // Re-adquirir Wake Lock automáticamente si el usuario vuelve a la app mientras sigue grabando

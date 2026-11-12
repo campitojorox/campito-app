@@ -37,7 +37,8 @@ export default function GastoIngreso() {
   const records = useMemo(() => {
     return (transactions || []).map(tx => ({
       TransactionID: tx.id,
-      Date: tx.date.split('T')[0] + " 00:00:00",
+      Date: tx.date ? tx.date.split('T')[0] + " 00:00:00" : '',
+      Timestamp: tx.date ? new Date(tx.date).getTime() : 0,
       User: tx.profiles ? tx.profiles.name : 'Desconocido',
       Category: tx.type,
       Value: Math.abs(tx.amount),
@@ -87,8 +88,12 @@ export default function GastoIngreso() {
       list = records.filter(r => r.status === 'ACTIVE');
     }
 
-    // Ordenar por fecha descendente
-    list = [...list].sort((a, b) => new Date(b.Date) - new Date(a.Date));
+    // Ordenar por fecha y hora descendente
+    list = [...list].sort((a, b) => {
+      const dayDiff = new Date(b.Date) - new Date(a.Date);
+      if (dayDiff !== 0) return dayDiff;
+      return (b.Timestamp || 0) - (a.Timestamp || 0);
+    });
 
     // 2. Buscador global de la barra superior si está activo
     if (isSearchOpen && searchQuery.trim() !== '') {

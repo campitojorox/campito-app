@@ -475,7 +475,9 @@ async function executeServerFinanceActions(supabaseAdmin, actions = [], attachme
       }
       const finalAmt = normalizedType === 'Retiro' ? -rawAmt : rawAmt;
       const matchedUser = resolveUserObj(d.user);
-      const txDate = d.date ? `${d.date.split('T')[0]}T12:00:00Z` : new Date().toISOString();
+      const todayIso = new Date().toISOString().split('T')[0];
+      const datePart = d.date ? d.date.toString().split('T')[0] : null;
+      const txDate = !datePart || datePart === todayIso ? new Date().toISOString() : `${datePart}T12:00:00Z`;
 
       const { data: created, error } = await supabaseAdmin
         .from('transactions')
@@ -634,9 +636,16 @@ async function processAiJob(jobId, body) {
 
       const actions = Array.isArray(parsed.actions) ? parsed.actions : [];
       const exec = await executeServerCalendarActions(supabaseAdmin, actions, userMeta?.userName || 'Ariel');
+      const serverAppliedCal =
+        actions.length === 0 ||
+        Boolean(
+          supabaseAdmin &&
+            ((exec.addedEvents?.length || 0) + (exec.updatedEvents?.length || 0) + (exec.deletedIds?.length || 0) > 0 ||
+              (exec.errors?.length || 0) > 0)
+        );
 
       job.status = 'completed';
-      job.actionsApplied = true;
+      job.actionsApplied = serverAppliedCal;
       job.result = { ...parsed, exec, modelUsed };
       saveJob(job, supabaseAdmin);
       return;
@@ -659,9 +668,20 @@ async function processAiJob(jobId, body) {
         attachment,
         userMeta?.userName || 'Ariel'
       );
+      const serverAppliedFin =
+        actions.length === 0 ||
+        Boolean(
+          supabaseAdmin &&
+            ((exec.addedTransactions?.length || 0) +
+              (exec.updatedTransactions?.length || 0) +
+              (exec.deletedIds?.length || 0) +
+              (exec.restoredIds?.length || 0) >
+              0 ||
+              (exec.errors?.length || 0) > 0)
+        );
 
       job.status = 'completed';
-      job.actionsApplied = true;
+      job.actionsApplied = serverAppliedFin;
       job.result = { ...parsed, exec, modelUsed };
       saveJob(job, supabaseAdmin);
       return;
@@ -672,6 +692,7 @@ async function processAiJob(jobId, body) {
       let learnedMemory = null;
       let eventsChanged = false;
       let txChanged = false;
+      let hasPendingClientActions = false;
       const exportFiles = [];
 
       // 1. Memoria
@@ -696,56 +717,75 @@ async function processAiJob(jobId, body) {
         }
       }
 
-      // 2. Crear evento
-      const evMatch = rawText.match(/\[\[CREAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/i);
-      if (evMatch && supabaseAdmin) {
-        try {
-          const evData = JSON.parse(evMatch[1]);
-          displayedContent = displayedContent.replace(evMatch[0], '').trim();
-          await executeServerCalendarActions(supabaseAdmin, [{ type: 'CREATE_EVENT', data: evData }], userMeta?.userName);
-          eventsChanged = true;
-        } catch {
-          // ignore
-        }
-      }
-
-      // 3. Borrar evento
-      const delMatches = [...rawText.matchAll(/\[\[(?:BORRAR_EVENTO|ELIMINAR_EVENTO):\s*(\{[\s\S]*?\})\s*\]\]/gi)];
-      if (delMatches.length > 0 && supabaseAdmin) {
-        for (const dm of delMatches) {
+      // 2. Crear evento(s)
+      const evMatches = [...rawText.matchAll(/\[\[CREAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi)];
+      if (evMatches.length > 0) {
+        for (const evMatch of evMatches) {
           try {
-            const delData = JSON.parse(dm[1]);
-            displayedContent = displayedContent.replace(dm[0], '').trim();
-            await executeServerCalendarActions(supabaseAdmin, [
-              {
-                type: 'DELETE_EVENT',
-                event_id: delData.event_id || delData.id,
-                date: delData.date,
-                query: delData.query || delData.info || delData.category || delData.description,
-              },
-            ]);
-            eventsChanged = true;
+            const evData = JSON.parse(evMatch[1]);
+            displayedContent = displayedContent.replace(evMatch[0], '').trim();
+            if (supabaseAdmin) {
+              const evExec = await executeServerCalendarActions(supabaseAdmin, [{ type: 'CREATE_EVENT', data: evData }], userMeta?.userName);
+              if ((evExec.addedEvents?.length || 0) > 0) eventsChanged = true;
+              else hasPendingClientActions = true;
+            } else {
+              hasPendingClientActions = true;
+            }
           } catch {
             // ignore
           }
         }
       }
 
-      // 4. Crear transacción
-      const txMatch = rawText.match(/\[\[CREAR_TRANSACCION:\s*(\{[\s\S]*?\})\s*\]\]/i);
-      if (txMatch && supabaseAdmin) {
-        try {
-          const txData = JSON.parse(txMatch[1]);
-          displayedContent = displayedContent.replace(txMatch[0], '').trim();
-          await executeServerFinanceActions(
-            supabaseAdmin,
-            [{ type: 'CREATE_TRANSACTION', data: txData }],
-            null,
-            userMeta?.userName
-          );
-          txChanged = true;
-        } catch {
-          // ignore
+      // 3. Borrar evento(s)
+      const delMatches = [...rawText.matchAll(/\[\[(?:BORRAR_EVENTO|ELIMINAR_EVENTO):\s*(\{[\s\S]*?\})\s*\]\]/gi)];
+      if (delMatches.length > 0) {
+        for (const dm of delMatches) {
+          try {
+            const delData = JSON.parse(dm[1]);
+            displayedContent = displayedContent.replace(dm[0], '').trim();
+            if (supabaseAdmin) {
+              const delExec = await executeServerCalendarActions(supabaseAdmin, [
+                {
+                  type: 'DELETE_EVENT',
+                  event_id: delData.event_id || delData.id,
+                  date: delData.date,
+                  query: delData.query || delData.info || delData.category || delData.description,
+                },
+              ]);
+              if ((delExec.deletedIds?.length || 0) > 0) eventsChanged = true;
+              else hasPendingClientActions = true;
+            } else {
+              hasPendingClientActions = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      // 4. Crear transacción(es)
+      const txMatches = [...rawText.matchAll(/\[\[CREAR_TRANSACCION:\s*(\{[\s\S]*?\})\s*\]\]/gi)];
+      if (txMatches.length > 0) {
+        for (const txMatch of txMatches) {
+          try {
+            const txData = JSON.parse(txMatch[1]);
+            displayedContent = displayedContent.replace(txMatch[0], '').trim();
+            if (supabaseAdmin) {
+              const txExec = await executeServerFinanceActions(
+                supabaseAdmin,
+                [{ type: 'CREATE_TRANSACTION', data: txData }],
+                null,
+                userMeta?.userName
+              );
+              if ((txExec.addedTransactions?.length || 0) > 0) txChanged = true;
+              else hasPendingClientActions = true;
+            } else {
+              hasPendingClientActions = true;
+            }
+          } catch {
+            // ignore
+          }
         }
       }
 
@@ -821,7 +861,7 @@ async function processAiJob(jobId, body) {
       }
 
       job.status = 'completed';
-      job.actionsApplied = true;
+      job.actionsApplied = !hasPendingClientActions;
       job.persistedToDb = persistedToDb;
       job.result = {
         rawText,

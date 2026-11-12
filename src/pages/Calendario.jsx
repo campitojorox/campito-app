@@ -13,6 +13,8 @@ const categoryColors = {
   'OTRO': '#8884d8' // Morado
 };
 
+const RIEGO_ZONES = ['La Nana', 'El Moro'];
+
 const formatDateToDDMMYY = (dateStr) => {
   if (!dateStr) return '';
   const datePart = dateStr.split(' ')[0]; // "YYYY-MM-DD"
@@ -23,12 +25,24 @@ const formatDateToDDMMYY = (dateStr) => {
   return datePart;
 };
 
+const parseLocalYMD = (dateStr) => {
+  if (!dateStr) return null;
+  const clean = dateStr.split(' ')[0].split('T')[0];
+  const parts = clean.split('-').map(Number);
+  if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  const d = new Date(dateStr);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
 export default function Calendario() {
   const context = useOutletContext();
   const location = useLocation();
   const isSearchOpen = context?.isSearchOpen || false;
   const searchQuery = context?.searchQuery || '';
-  const users = context?.users || [];
+  const users = useMemo(() => context?.users || [], [context?.users]);
   const rawEvents = context?.events || [];
   const refetchEvents = context?.refetchEvents || (() => {});
   const currentUser = context?.currentUser || 'Usuario Login';
@@ -56,13 +70,17 @@ export default function Calendario() {
   const [newEndTime, setNewEndTime] = useState('09:00');
   const [newCategory, setNewCategory] = useState('');
   const [newSubcategory, setNewSubcategory] = useState('');
+  const [newRiegoZones, setNewRiegoZones] = useState([]);
   const [newResponsibles, setNewResponsibles] = useState([]);
-  const [newInfo, setNewInfo] = useState('');
 
-  // Keep End Date synced with Start Date if user hasn't manually changed it
-  useEffect(() => {
-    setNewEndDate(newDate);
-  }, [newDate]);
+  const toggleRiegoZone = (zone) => {
+    setNewRiegoZones((prev) => {
+      const exists = prev.includes(zone);
+      const next = exists ? prev.filter((z) => z !== zone) : [...prev, zone];
+      return RIEGO_ZONES.filter((z) => next.includes(z));
+    });
+  };
+  const [newInfo, setNewInfo] = useState('');
 
   const events = useMemo(() => {
     return rawEvents.map(ev => ({
@@ -73,10 +91,10 @@ export default function Calendario() {
       "End Time": ev.end_time ? ev.end_time.substring(0,5) + ':00' : null,
       Category: ev.category,
       Info: ev.info,
-      Responsible: ev.responsibles && ev.responsibles.length > 0 ? (context?.users && ev.responsibles.length === context.users.length ? 'Todos' : ev.responsibles.join(', ')) : 'Sin Asignar',
+      Responsible: ev.responsibles && ev.responsibles.length > 0 ? (users.length > 0 && ev.responsibles.length === users.length ? 'Todos' : ev.responsibles.join(', ')) : 'Sin Asignar',
       responsibles: ev.responsibles || []
     }));
-  }, [rawEvents]);
+  }, [rawEvents, users]);
 
   const handleAddEvent = async (e) => {
     e.preventDefault();
@@ -91,17 +109,17 @@ export default function Calendario() {
       return;
     }
 
-    if (newCategory === 'RIEGO' && !newSubcategory) {
-      alert("Por favor, selecciona una subcategoría para Riego (La Nana o El Moro).");
-      return;
-    }
-    
     if (newCategory === 'MANTENIMIENTO' && !newSubcategory) {
       alert("Por favor, selecciona una subcategoría para Mantenimiento (Poda, Limpieza, Fertilizado, Fitosanitarios).");
       return;
     }
 
-    const finalCategory = (newCategory === 'RIEGO' || newCategory === 'MANTENIMIENTO') ? `${newCategory} - ${newSubcategory}` : newCategory;
+    let finalCategory = newCategory;
+    if (newCategory === 'RIEGO') {
+      finalCategory = newRiegoZones.length > 0 ? `RIEGO - ${newRiegoZones.join(' y ')}` : 'RIEGO';
+    } else if (newCategory === 'MANTENIMIENTO') {
+      finalCategory = `MANTENIMIENTO - ${newSubcategory}`;
+    }
 
     const payload = {
       date: newDate + "T00:00:00Z",
@@ -138,6 +156,7 @@ export default function Calendario() {
         setNewEndTime('09:00');
         setNewCategory('');
         setNewSubcategory('');
+        setNewRiegoZones([]);
         setNewResponsibles([]);
         setNewInfo('');
       }
@@ -156,14 +175,18 @@ export default function Calendario() {
     const cat = ev.Category || '';
     if (cat.startsWith('RIEGO')) {
       setNewCategory('RIEGO');
-      setNewSubcategory(cat.includes(' - ') ? cat.split(' - ')[1] : '');
+      setNewSubcategory('');
+      const lowerCat = cat.toLowerCase();
+      setNewRiegoZones(RIEGO_ZONES.filter((z) => lowerCat.includes(z.toLowerCase())));
     } else if (cat.startsWith('MANTENIMIENTO')) {
       setNewCategory('MANTENIMIENTO');
+      setNewRiegoZones([]);
       const rawSub = cat.includes(' - ') ? cat.split(' - ')[1] : '';
       setNewSubcategory(rawSub === 'Desbroza' ? 'Limpieza' : rawSub);
     } else {
       setNewCategory(cat);
       setNewSubcategory('');
+      setNewRiegoZones([]);
     }
 
     setNewResponsibles(ev.responsibles || []);
@@ -193,16 +216,13 @@ export default function Calendario() {
   const days = useMemo(() => eachDayOfInterval({ start: startDate, end: endDate }), [startDate, endDate]);
 
   const selectedDayEvents = useMemo(() => {
+    const currentDay = new Date(selectedDate);
+    currentDay.setHours(0, 0, 0, 0);
     return events.filter(ev => {
-      if(!ev.Date) return false;
-      const startDate = new Date(ev.Date.split(' ')[0]);
-      startDate.setHours(0,0,0,0);
-      const endDateStr = ev["End Date"] || ev.Date;
-      const endDate = new Date(endDateStr.split(' ')[0]);
-      endDate.setHours(0,0,0,0);
-      const currentDay = new Date(selectedDate);
-      currentDay.setHours(0,0,0,0);
-      return currentDay >= startDate && currentDay <= endDate;
+      if (!ev.Date) return false;
+      const startDate = parseLocalYMD(ev.Date);
+      const endDate = parseLocalYMD(ev['End Date'] || ev.Date);
+      return startDate && endDate && currentDay >= startDate && currentDay <= endDate;
     });
   }, [events, selectedDate]);
 
@@ -276,7 +296,13 @@ export default function Calendario() {
             style={{ textAlign: 'right', paddingRight: '10px', fontSize: '0.92rem', paddingLeft: '2.35rem', height: '46px', borderRadius: '10px' }}
             required
             value={newDate}
-            onChange={(e) => setNewDate(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setNewDate(val);
+              if (!editingEvent || !newEndDate || val > newEndDate) {
+                setNewEndDate(val);
+              }
+            }}
           />
         </div>
         <div className="input-with-icon" style={{ flex: '0.85 1 0', marginBottom: 0, position: 'relative' }}>
@@ -402,51 +428,40 @@ export default function Calendario() {
       </div>
 
       {newCategory === 'RIEGO' && (
-        <div className="form-group" style={{ padding: 0, marginTop: '0.65rem', marginBottom: '0.4rem', display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
-          <button
-            type="button"
-            onClick={() => setNewSubcategory('La Nana')}
-            style={{
-              flex: 1,
-              minHeight: '42px',
-              padding: '0.5rem 0.4rem',
-              borderRadius: '10px',
-              border: newSubcategory === 'La Nana' ? `2px solid #74c474` : `2px solid transparent`,
-              backgroundColor: newSubcategory === 'La Nana' ? '#9edb9e' : categoryColors['RIEGO'],
-              color: newSubcategory === 'La Nana' ? '#1a1a1a' : 'white',
-              fontWeight: '600',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative'
-            }}
-          >
-            La Nana
-          </button>
-          <button
-            type="button"
-            onClick={() => setNewSubcategory('El Moro')}
-            style={{
-              flex: 1,
-              minHeight: '42px',
-              padding: '0.5rem 0.4rem',
-              borderRadius: '10px',
-              border: newSubcategory === 'El Moro' ? `2px solid #74c474` : `2px solid transparent`,
-              backgroundColor: newSubcategory === 'El Moro' ? '#9edb9e' : categoryColors['RIEGO'],
-              color: newSubcategory === 'El Moro' ? '#1a1a1a' : 'white',
-              fontWeight: '600',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative'
-            }}
-          >
-            El Moro
-          </button>
+        <div style={{ marginTop: '0.65rem', marginBottom: '0.4rem' }}>
+          <div className="form-group" style={{ padding: 0, margin: 0, display: 'flex', flexDirection: 'row', gap: '0.5rem' }}>
+            {RIEGO_ZONES.map((zone) => {
+              const isSelected = newRiegoZones.includes(zone);
+              return (
+                <button
+                  key={zone}
+                  type="button"
+                  onClick={() => toggleRiegoZone(zone)}
+                  style={{
+                    flex: 1,
+                    minHeight: '42px',
+                    padding: '0.5rem 0.4rem',
+                    borderRadius: '10px',
+                    border: isSelected ? `2px solid #74c474` : `2px solid transparent`,
+                    backgroundColor: isSelected ? '#9edb9e' : categoryColors['RIEGO'],
+                    color: isSelected ? '#1a1a1a' : 'white',
+                    fontWeight: '600',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative'
+                  }}
+                >
+                  {zone}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.3rem', textAlign: 'center' }}>
+            Opcional: selecciona uno, ambos o ninguno
+          </div>
         </div>
       )}
 
@@ -746,16 +761,13 @@ export default function Calendario() {
               const isWeekend = day.getDay() === 0 || day.getDay() === 6;
               
               // Comprobar si hay evento en este día
+              const currentDay = new Date(day);
+              currentDay.setHours(0, 0, 0, 0);
               const eventsThisDay = events.filter(ev => {
                 if (!ev.Date) return false;
-                const startDate = new Date(ev.Date.split(' ')[0]);
-                startDate.setHours(0, 0, 0, 0);
-                const endDateStr = ev["End Date"] || ev.Date;
-                const endDate = new Date(endDateStr.split(' ')[0]);
-                endDate.setHours(0, 0, 0, 0);
-                const currentDay = new Date(day);
-                currentDay.setHours(0, 0, 0, 0);
-                return currentDay >= startDate && currentDay <= endDate;
+                const startDate = parseLocalYMD(ev.Date);
+                const endDate = parseLocalYMD(ev['End Date'] || ev.Date);
+                return startDate && endDate && currentDay >= startDate && currentDay <= endDate;
               });
               const hasEvent = eventsThisDay.length > 0;
               const isToday = isSameDay(day, new Date());

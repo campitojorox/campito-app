@@ -1721,9 +1721,9 @@ export default function ChatIA() {
         if (job.result?.eventsChanged && refetchEvents) refetchEvents();
         if (job.result?.txChanged && refetchTransactions) refetchTransactions();
       } else {
-        // 3. Crear evento
-        const evMatch = successResult.match(/\[\[CREAR_EVENTO:\s*(\{.*?\})\s*\]\]/s);
-        if (evMatch) {
+        // 3. Crear evento(s)
+        const evMatches = [...successResult.matchAll(/\[\[CREAR_EVENTO:\s*(\{[\s\S]*?\})\s*\]\]/gi)];
+        for (const evMatch of evMatches) {
           try {
             const evData = JSON.parse(evMatch[1]);
             displayedContent = displayedContent.replace(evMatch[0], '').trim();
@@ -1786,40 +1786,55 @@ export default function ChatIA() {
           }
         }
 
-        // 4. Crear transacción
-        const txMatch = successResult.match(/\[\[CREAR_TRANSACCION:\s*(\{.*?\})\s*\]\]/s);
-        if (txMatch) {
-          try {
-            const txData = JSON.parse(txMatch[1]);
-            displayedContent = displayedContent.replace(txMatch[0], '').trim();
+        // 4. Crear transacción(es)
+        const txMatches = [...successResult.matchAll(/\[\[CREAR_TRANSACCION:\s*(\{[\s\S]*?\})\s*\]\]/gi)];
+        if (txMatches.length > 0) {
+          const { data: authData } = await supabase.auth.getUser();
+          const currUser = authData?.user;
+          const activeUsers = fincaUsers.length > 0 ? fincaUsers : outletUsers;
 
-            const rawType = txData.type || 'Gasto';
-            const rawAmt = Math.abs(parseFloat(txData.amount || 0));
-            const isRetiro = ['retiro', 'venta', 'ingreso'].includes(rawType.toLowerCase());
-            const finalAmount = isRetiro ? -rawAmt : rawAmt;
+          for (const txMatch of txMatches) {
+            try {
+              const txData = JSON.parse(txMatch[1]);
+              displayedContent = displayedContent.replace(txMatch[0], '').trim();
 
-            const { data: authData } = await supabase.auth.getUser();
-            const currUser = authData?.user;
+              const rawType = txData.type || 'Gasto';
+              const rawAmt = Math.abs(parseFloat(txData.amount || 0));
+              if (!rawAmt || isNaN(rawAmt)) continue;
+              const isRetiro = ['retiro', 'venta', 'ingreso', 'cobro'].includes(rawType.toLowerCase());
+              const finalAmount = isRetiro ? -rawAmt : rawAmt;
 
-            const { data: newTxRow, error: txInsErr } = await supabase
-              .from('transactions')
-              .insert({
-                date: new Date().toISOString(),
-                user_id: currUser?.id || null,
-                type: rawType,
-                amount: finalAmount,
-                description: txData.description || 'Registrado desde Chat IA',
-                status: 'ACTIVE',
-              })
-              .select()
-              .single();
+              let targetUserId = currUser?.id || null;
+              if (txData.user && Array.isArray(activeUsers) && activeUsers.length > 0) {
+                const targetName = String(txData.user).toLowerCase().trim();
+                const matchedProfile =
+                  activeUsers.find((u) => (u.name || '').toLowerCase().trim() === targetName) ||
+                  activeUsers.find((u) => (u.name || '').toLowerCase().includes(targetName));
+                if (matchedProfile?.id) {
+                  targetUserId = matchedProfile.id;
+                }
+              }
 
-            if (!txInsErr && newTxRow) {
-              setFincaTransactions((prev) => [newTxRow, ...prev]);
-              if (refetchTransactions) refetchTransactions();
+              const { data: newTxRow, error: txInsErr } = await supabase
+                .from('transactions')
+                .insert({
+                  date: new Date().toISOString(),
+                  user_id: targetUserId,
+                  type: isRetiro ? 'Retiro' : 'Gasto',
+                  amount: finalAmount,
+                  description: txData.description || 'Registrado desde Chat IA',
+                  status: 'ACTIVE',
+                })
+                .select('*, profiles(name)')
+                .single();
+
+              if (!txInsErr && newTxRow) {
+                setFincaTransactions((prev) => [newTxRow, ...prev]);
+                if (refetchTransactions) await refetchTransactions();
+              }
+            } catch (e) {
+              console.warn('Error al procesar bloque CREAR_TRANSACCION:', e);
             }
-          } catch (e) {
-            console.warn('Error al procesar bloque CREAR_TRANSACCION:', e);
           }
         }
         markJobActionsApplied(job.jobId);
@@ -2056,7 +2071,7 @@ export default function ChatIA() {
         })();
       }
     },
-    [currentUserId, fincaEvents, outletEvents, refetchEvents, refetchTransactions, selectedServerIndex]
+    [currentUserId, fincaEvents, fincaUsers, outletEvents, outletUsers, refetchEvents, refetchTransactions, selectedServerIndex]
   );
 
   const processCompletedChatJobRef = useRef(processCompletedChatJob);

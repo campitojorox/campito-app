@@ -251,9 +251,9 @@ export async function callSectionGemini({
       });
     }
     if (attachment.dataUrl) {
-      const match = attachment.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+      const match = attachment.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
       if (match) {
-        const cleanMime = match[1].toLowerCase().split(';')[0].trim();
+        const cleanMime = match[1].toLowerCase().trim();
         if (cleanMime.startsWith('image/') || cleanMime === 'application/pdf') {
           userParts.push({ inlineData: { mimeType: cleanMime, data: match[2] } });
         }
@@ -270,9 +270,9 @@ export async function callSectionGemini({
   }
 
   if (audio && audio.dataUrl) {
-    const match = audio.dataUrl.match(/^data:([a-zA-Z0-9.+/-]+);base64,(.+)$/);
+    const match = audio.dataUrl.match(/^data:([^;,]+)(?:;[^,]*)?;base64,(.+)$/);
     if (match) {
-      userParts.push({ inlineData: { mimeType: match[1].split(';')[0].trim(), data: match[2] } });
+      userParts.push({ inlineData: { mimeType: match[1].toLowerCase().trim(), data: match[2] } });
     } else {
       const cleanMime = (audio.mimeType || 'audio/webm').split(';')[0].trim();
       const cleanBase64 = audio.dataUrl.replace(/^data:.*?;base64,/, '');
@@ -305,7 +305,7 @@ export async function callSectionGemini({
   for (const modelId of GEMINI_MODELS_CASCADE) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), audio || attachment ? 35000 : 22000);
+      const timeoutId = setTimeout(() => controller.abort(), audio || attachment ? 45000 : 22000);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
 
       const res = await fetch(url, {
@@ -530,7 +530,9 @@ export async function executeFinanceIaActions({
 
       const finalAmount = normalizedType === 'Retiro' ? -rawAmount : rawAmount;
       const matchedUser = resolveUser(d.user || currentUser, users) || users[0] || null;
-      const txDate = d.date ? `${d.date.split('T')[0]}T12:00:00Z` : new Date().toISOString();
+      const todayIso = new Date().toISOString().split('T')[0];
+      const datePart = d.date ? d.date.toString().split('T')[0] : null;
+      const txDate = !datePart || datePart === todayIso ? new Date().toISOString() : `${datePart}T12:00:00Z`;
 
       const { data: newRow, error: insErr } = await supabase
         .from('transactions')

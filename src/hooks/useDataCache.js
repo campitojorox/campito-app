@@ -12,12 +12,18 @@ export function useDataCache() {
   }, []);
 
   const fetchEvents = useCallback(async () => {
-    const { data } = await supabase.from('events').select('*, profiles(name)');
+    const { data } = await supabase
+      .from('events')
+      .select('*, profiles(name)')
+      .order('date', { ascending: true });
     if (data) setEvents(data);
   }, []);
 
   const fetchTransactions = useCallback(async () => {
-    const { data } = await supabase.from('transactions').select('*, profiles(name)');
+    const { data } = await supabase
+      .from('transactions')
+      .select('*, profiles(name)')
+      .order('date', { ascending: false });
     if (data) setTransactions(data);
   }, []);
 

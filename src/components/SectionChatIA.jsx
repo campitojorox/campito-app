@@ -19,7 +19,11 @@ import {
   FileText,
   Undo2,
 } from 'lucide-react';
-import { stopMediaStream } from '../hooks/useVoiceGeoTracker';
+import {
+  stopMediaStream,
+  acquireScreenWakeLock,
+  releaseScreenWakeLock,
+} from '../hooks/useVoiceGeoTracker';
 import { formatCurrency, syncTextareaHeight } from '../utils/helpers';
 import {
   buildSectionSystemInstruction,
@@ -111,6 +115,8 @@ export default function SectionChatIA({
   const recordStartRef = useRef(0);
   const previewAudioRef = useRef(null);
   const textareaRef = useRef(null);
+  const wakeLockRef = useRef(null);
+  const isRecordingRef = useRef(false);
 
   const contextDataRef = useRef(contextData);
   const onRefreshRef = useRef(onRefresh);
@@ -128,9 +134,22 @@ export default function SectionChatIA({
     onHighlightDateRef.current = onHighlightDate;
   }, [contextData, onRefresh, onHighlightDate]);
 
-  // Limpiar temporizadores y streams al desmontar
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && isRecordingRef.current) {
+        acquireScreenWakeLock(wakeLockRef);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  // Limpiar temporizadores, wake lock y streams al desmontar
   useEffect(() => {
     return () => {
+      isRecordingRef.current = false;
+      releaseScreenWakeLock(wakeLockRef);
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       if (streamRef.current) stopMediaStream(streamRef.current);
     };
@@ -157,8 +176,12 @@ export default function SectionChatIA({
 
     if (section === 'calendario') {
       let exec = aiResult.exec || { addedEvents: [], updatedEvents: [], deletedIds: [], reverts: [], errors: [] };
+      const serverMutatedCal =
+        job.actionsApplied &&
+        ((exec.addedEvents?.length || 0) + (exec.updatedEvents?.length || 0) + (exec.deletedIds?.length || 0) > 0 ||
+          (exec.errors?.length || 0) > 0);
 
-      if (!job.actionsApplied && actions.length > 0) {
+      if (!serverMutatedCal && actions.length > 0) {
         exec = await executeCalendarIaActions({
           actions,
           rawEvents: ctx.events || [],
@@ -250,7 +273,16 @@ export default function SectionChatIA({
         errors: [],
       };
 
-      if (!job.actionsApplied && actions.length > 0) {
+      const serverMutatedFin =
+        job.actionsApplied &&
+        ((exec.addedTransactions?.length || 0) +
+          (exec.updatedTransactions?.length || 0) +
+          (exec.deletedIds?.length || 0) +
+          (exec.restoredIds?.length || 0) >
+          0 ||
+          (exec.errors?.length || 0) > 0);
+
+      if (!serverMutatedFin && actions.length > 0) {
         exec = await executeFinanceIaActions({
           actions,
           records: ctx.records || [],
@@ -276,7 +308,7 @@ export default function SectionChatIA({
           exec.updatedTransactions?.length > 0 ||
           exec.deletedIds?.length > 0 ||
           exec.restoredIds?.length > 0 ||
-          job.actionsApplied) &&
+          serverMutatedFin) &&
         onRefreshRef.current
       ) {
         await onRefreshRef.current();
@@ -286,17 +318,20 @@ export default function SectionChatIA({
       const matchedIds = new Set((aiResult.matched_transaction_ids || []).map((id) => String(id)));
       const deletedSet = new Set((exec.deletedIds || []).map((id) => String(id)));
 
-      const mapDbRowToRecord = (tx) => ({
-        TransactionID: tx.id,
-        Date: tx.date ? `${tx.date.split('T')[0]} 00:00:00` : '',
-        User: tx.profiles?.name || ctx.currentUser || 'Socio',
-        Category: tx.type,
-        Value: Math.abs(parseFloat(tx.amount || 0)),
-        Amount: tx.amount,
-        Description: tx.description,
-        Imagen: tx.image_url,
-        status: tx.status || 'ACTIVE',
-      });
+      const mapDbRowToRecord = (tx) => {
+        const matchedProfile = (ctx.users || []).find((u) => String(u.id) === String(tx.user_id));
+        return {
+          TransactionID: tx.id,
+          Date: tx.date ? `${tx.date.split('T')[0]} 00:00:00` : '',
+          User: tx.profiles?.name || matchedProfile?.name || ctx.currentUser || 'Socio',
+          Category: tx.type,
+          Value: Math.abs(parseFloat(tx.amount || 0)),
+          Amount: tx.amount,
+          Description: tx.description,
+          Imagen: tx.image_url,
+          status: tx.status || 'ACTIVE',
+        };
+      };
 
       const matchedFromDb = allRecords.filter(
         (r) => matchedIds.has(String(r.TransactionID)) && !deletedSet.has(String(r.TransactionID))
@@ -380,6 +415,9 @@ export default function SectionChatIA({
         return;
       }
 
+      isRecordingRef.current = true;
+      acquireScreenWakeLock(wakeLockRef);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -415,12 +453,17 @@ export default function SectionChatIA({
         setVoiceRecordingSeconds(Math.floor((Date.now() - recordStartRef.current) / 1000));
       }, 400);
     } catch (err) {
+      isRecordingRef.current = false;
+      releaseScreenWakeLock(wakeLockRef);
       console.error('[SectionChatIA] Error iniciando micrófono:', err);
       setIaFeedback({ type: 'error', text: 'Permiso de micrófono requerido para grabar voz.' });
     }
   };
 
   const stopRecordingInternal = () => {
+    isRecordingRef.current = false;
+    releaseScreenWakeLock(wakeLockRef);
+
     return new Promise((resolve) => {
       if (recordTimerRef.current) {
         clearInterval(recordTimerRef.current);
@@ -440,7 +483,11 @@ export default function SectionChatIA({
         return;
       }
 
-      recorder.onstop = () => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(safetyTimer);
         const finalMime = recorder.mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: finalMime });
         if (streamRef.current) {
@@ -462,7 +509,17 @@ export default function SectionChatIA({
         reader.readAsDataURL(blob);
       };
 
-      recorder.stop();
+      const safetyTimer = setTimeout(finish, 1500);
+      recorder.onstop = finish;
+
+      try {
+        if (typeof recorder.requestData === 'function' && recorder.state === 'recording') {
+          recorder.requestData();
+        }
+        recorder.stop();
+      } catch {
+        finish();
+      }
     });
   };
 
@@ -475,6 +532,8 @@ export default function SectionChatIA({
   };
 
   const handleCancelVoiceRecording = async () => {
+    isRecordingRef.current = false;
+    releaseScreenWakeLock(wakeLockRef);
     if (recordTimerRef.current) {
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
