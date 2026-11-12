@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useDataCache } from '../hooks/useDataCache';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { subscribeGlobalJobs, getGlobalJobsSummary } from '../services/aiBackgroundJobManager';
+import { useChat } from '../context/useChat';
 import { version as appVersion } from '../../package.json';
 
 export default function Layout({ session }) {
@@ -33,6 +34,13 @@ export default function Layout({ session }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [bgJobsSummary, setBgJobsSummary] = useState(() => getGlobalJobsSummary());
+  const { isLoading: isChatProcessing, hasUnreadReply, setHasUnreadReply } = useChat();
+
+  useEffect(() => {
+    if (location.pathname === '/chat-ia') {
+      setHasUnreadReply(false);
+    }
+  }, [location.pathname, setHasUnreadReply]);
 
   useEffect(() => {
     const unsubscribe = subscribeGlobalJobs((summary) => {
@@ -42,6 +50,30 @@ export default function Layout({ session }) {
   }, []);
 
   const renderSectionJobIndicator = (sectionKey, routePath) => {
+    if (sectionKey === 'chat-ia') {
+      const isProcessing = isChatProcessing;
+      const hasUnread = location.pathname !== routePath && hasUnreadReply;
+      if (!isProcessing && !hasUnread) return null;
+
+      return (
+        <span
+          title={isProcessing ? 'IA procesando en segundo plano...' : 'Respuesta IA lista'}
+          style={{
+            position: 'absolute',
+            top: '3px',
+            right: '2px',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: isProcessing ? '#00b4bb' : '#10b981',
+            border: '1.5px solid #181818',
+            animation: isProcessing ? 'pulse-color 1.4s ease-in-out infinite' : 'none',
+            pointerEvents: 'none',
+          }}
+        />
+      );
+    }
+
     const isProcessing = (bgJobsSummary.processingBySection?.[sectionKey] || 0) > 0;
     const hasUnackedElsewhere =
       location.pathname !== routePath &&
