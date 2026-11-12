@@ -451,22 +451,46 @@ export async function executeInventoryActions({
 
     // ── BORRAR PUNTO ──────────────────────────────────────────────────────────
     if (actType === 'DELETE_POINT' || actType === 'REMOVE_POINT') {
-      let targetId = act.target_id || act.id || actData.id || selectedTarget?.id;
-      if (!targetId && (act.query || act.target === 'ultimo' || actData.query || actData.target === 'ultimo')) {
+      const rawIdCandidate = act.target_id || act.id || actData.id;
+      let targetId = null;
+
+      // Validar si el ID proporcionado existe exactamente en el inventario o en selectedTarget
+      if (rawIdCandidate) {
+        const exact = currentInventory.find((i) => String(i.id) === String(rawIdCandidate));
+        if (exact) {
+          targetId = exact.id;
+        } else if (selectedTarget && String(selectedTarget.id) === String(rawIdCandidate)) {
+          targetId = selectedTarget.id;
+        }
+      }
+
+      // Si Gemini escribió el nombre en lugar del UUID o usó query/target
+      const searchQ = (
+        act.query ||
+        actData.query ||
+        (!targetId && rawIdCandidate ? String(rawIdCandidate) : '')
+      )
+        .toLowerCase()
+        .trim();
+
+      if (!targetId) {
         const isLast = act.target === 'ultimo' || actData.target === 'ultimo';
-        const q = (act.query || actData.query || '').toLowerCase().trim();
         let matched = null;
         if (isLast) {
           matched = currentInventory[0];
-        } else if (q) {
+        } else if (searchQ) {
           matched = currentInventory.find(
             (i) =>
-              (i.name && i.name.toLowerCase().includes(q)) ||
-              (i.variety_type && i.variety_type.toLowerCase().includes(q)) ||
-              (i.category && i.category.toLowerCase().includes(q))
+              (i.name && i.name.toLowerCase().includes(searchQ)) ||
+              (i.variety_type && i.variety_type.toLowerCase().includes(searchQ)) ||
+              (i.category && i.category.toLowerCase().includes(searchQ))
           );
         }
-        if (matched) targetId = matched.id;
+        if (matched) {
+          targetId = matched.id;
+        } else if (selectedTarget?.type === 'point' && selectedTarget.id) {
+          targetId = selectedTarget.id;
+        }
       }
 
       if (targetId) {

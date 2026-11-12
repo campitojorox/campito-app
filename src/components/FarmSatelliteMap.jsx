@@ -203,16 +203,14 @@ function createFamilyPinIcon({ item, isSelected = false, hasWarning = false }) {
       <div class="farm-pin-container ${selectedClass} ${warningClass}">
         <div class="farm-pin farm-pin--family-${familySlug} farm-pin--status-${statusSlug}">
           <div class="farm-pin__halo" style="background-color: ${catColor};"></div>
-          <div class="farm-pin__body" style="background-color: ${catColor};">
-            <div class="farm-pin__core"></div>
-          </div>
+          <div class="farm-pin__body" style="background-color: ${catColor};"></div>
         </div>
       </div>
     `,
-    iconSize: [38, 38],
-    iconAnchor: [19, 19],
-    popupAnchor: [0, -18],
-    tooltipAnchor: [0, -16],
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -12],
+    tooltipAnchor: [0, -10],
   });
 }
 
@@ -228,16 +226,14 @@ function createCotaPinIcon({ isSelected = false }) {
       <div class="farm-pin-container ${selectedClass}">
         <div class="farm-pin farm-pin--family-hito farm-pin--cota">
           <div class="farm-pin__halo"></div>
-          <div class="farm-pin__body">
-            <div class="farm-pin__core"></div>
-          </div>
+          <div class="farm-pin__body"></div>
         </div>
       </div>
     `,
-    iconSize: [38, 38],
-    iconAnchor: [19, 19],
-    popupAnchor: [0, -18],
-    tooltipAnchor: [0, -16],
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -12],
+    tooltipAnchor: [0, -10],
   });
 }
 
@@ -287,20 +283,20 @@ export default function FarmSatelliteMap({
   });
 
   useEffect(() => {
-    if (Array.isArray(inventory) && inventory.length > 0) {
+    if (Array.isArray(inventory) && (inventory.length > 0 || onReloadInventory || isPageMode)) {
       setLocalInventory(inventory);
     } else {
       setLocalInventory(getLocalInventory());
     }
-  }, [inventory]);
+  }, [inventory, isPageMode, onReloadInventory]);
 
   useEffect(() => {
-    if (Array.isArray(paths) && paths.length > 0) {
+    if (Array.isArray(paths) && (paths.length > 0 || onReloadPaths || isPageMode)) {
       setLocalPaths(paths);
     } else {
       setLocalPaths(getLocalPaths());
     }
-  }, [paths]);
+  }, [paths, isPageMode, onReloadPaths]);
 
   // Escucha activa de sincronización de inventario emitida por Chat IA o herramientas de voz
   useEffect(() => {
@@ -478,6 +474,30 @@ export default function FarmSatelliteMap({
     isDrawingRef.current = isDrawing;
   }, [isDrawing]);
 
+  const appendDrawPoint = useCallback((latlng) => {
+    if (!latlng) return;
+    setDrawPoints((prev) => [
+      ...prev,
+      { lat: Number(latlng.lat.toFixed(7)), lng: Number(latlng.lng.toFixed(7)) },
+    ]);
+  }, []);
+
+  const interceptLayerClickForDraw = useCallback(
+    (e) => {
+      if (!isDrawingRef.current) return false;
+      if (e) {
+        L.DomEvent.stopPropagation(e);
+        if (e.originalEvent) e.originalEvent.stopPropagation();
+      }
+      lastLayerClickedTimeRef.current = Date.now();
+      if (e?.latlng) {
+        appendDrawPoint(e.latlng);
+      }
+      return true;
+    },
+    [appendDrawPoint]
+  );
+
   // Distancia calculada en vivo del camino en dibujo
   const liveDrawDistance = useMemo(() => calculatePathMeters(drawPoints), [drawPoints]);
 
@@ -593,29 +613,34 @@ export default function FarmSatelliteMap({
     userLocationLayerRef.current = L.featureGroup().addTo(map);
     highlightLayerRef.current = L.featureGroup().addTo(map);
 
-    // Click sobre el satélite: si no se está dibujando camino, seleccionar la coordenada o linde
+    // Click sobre el satélite: añadir vértice si se dibuja o seleccionar coordenada
     map.on('click', (e) => {
       setIsLayersMenuOpen(false);
       setIsFilterOpen(false);
+
+      if (isDrawingRef.current) {
+        if (Date.now() - lastLayerClickedTimeRef.current >= 50) {
+          appendDrawPoint(e.latlng);
+        }
+        return;
+      }
 
       // Si el click provino de un pin, cota, camino o polígono, ignorar el evento en el mapa
       if (Date.now() - lastLayerClickedTimeRef.current < 350) {
         return;
       }
 
-      if (!isDrawingRef.current) {
-        const lat = Number(e.latlng.lat.toFixed(6));
-        const lng = Number(e.latlng.lng.toFixed(6));
-        setSelectedTarget({
-          type: 'coord',
-          id: `coord-${lat}-${lng}`,
-          title: 'Coordenada satelital / linde',
-          subtitle: `Punto satelital en (${lat}, ${lng})`,
-          lat,
-          lng,
-          notes: '',
-        });
-      }
+      const lat = Number(e.latlng.lat.toFixed(6));
+      const lng = Number(e.latlng.lng.toFixed(6));
+      setSelectedTarget({
+        type: 'coord',
+        id: `coord-${lat}-${lng}`,
+        title: 'Coordenada satelital / linde',
+        subtitle: `Punto satelital en (${lat}, ${lng})`,
+        lat,
+        lng,
+        notes: '',
+      });
     });
 
     mapInstanceRef.current = map;
@@ -629,7 +654,7 @@ export default function FarmSatelliteMap({
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, []);
+  }, [appendDrawPoint]);
 
   // Manejo de cambio de tamaño de mapa
   useEffect(() => {
@@ -682,27 +707,16 @@ export default function FarmSatelliteMap({
     }
   }, [selectedTarget]);
 
-  // ─── 2. Manejo de clicks durante el modo de dibujo de caminos ────────────────
+  // ─── 2. Cursor durante el modo de dibujo de caminos ─────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    function handleMapClick(e) {
-      if (!isDrawing) return;
-      const { lat, lng } = e.latlng;
-      setDrawPoints((prev) => [...prev, { lat: Number(lat.toFixed(7)), lng: Number(lng.toFixed(7)) }]);
-    }
-
-    if (isDrawing) {
-      map.on('click', handleMapClick);
-      map.getContainer().style.cursor = 'crosshair';
-    } else {
-      map.off('click', handleMapClick);
-      map.getContainer().style.cursor = '';
-    }
-
+    map.getContainer().style.cursor = isDrawing ? 'crosshair' : '';
     return () => {
-      map.off('click', handleMapClick);
+      if (map.getContainer()) {
+        map.getContainer().style.cursor = '';
+      }
     };
   }, [isDrawing]);
 
@@ -714,14 +728,14 @@ export default function FarmSatelliteMap({
 
     if (drawPoints.length === 0) return;
 
-    // Dibujar vértices como pequeños puntos blancos con borde naranja
+    // Dibujar vértices como pequeños puntos sólidos con borde blanco
     drawPoints.forEach((pt, idx) => {
       L.circleMarker([pt.lat, pt.lng], {
-        radius: idx === drawPoints.length - 1 ? 6 : 4,
-        fillColor: idx === 0 ? '#10b981' : idx === drawPoints.length - 1 ? '#ef4444' : '#ffffff',
+        radius: idx === drawPoints.length - 1 ? 5 : 4,
+        fillColor: idx === 0 ? '#10b981' : idx === drawPoints.length - 1 ? '#ef4444' : '#f97316',
         fillOpacity: 1,
-        color: '#f97316',
-        weight: 2,
+        color: '#ffffff',
+        weight: 1.5,
       }).addTo(layer);
     });
 
@@ -756,6 +770,7 @@ export default function FarmSatelliteMap({
       const statusSlug = getPinStatusSlug(item);
 
       const onSelect = (e) => {
+        if (interceptLayerClickForDraw(e)) return;
         if (e) {
           L.DomEvent.stopPropagation(e);
           if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -803,13 +818,13 @@ export default function FarmSatelliteMap({
       `;
       marker.bindTooltip(tooltipHtml, {
         direction: 'top',
-        offset: [0, -14],
+        offset: [0, -10],
         className: 'campito-map-tooltip',
       });
 
       marker.addTo(layer);
     });
-  }, [filteredInventory, showPoints, selectedTarget]);
+  }, [filteredInventory, showPoints, selectedTarget, interceptLayerClickForDraw]);
 
   // ─── 5. Renderizado de Caminos y Senderos (LÍNEAS DE COLOR) ───────────────────
   useEffect(() => {
@@ -834,6 +849,7 @@ export default function FarmSatelliteMap({
       });
 
       poly.on('click', (e) => {
+        if (interceptLayerClickForDraw(e)) return;
         if (e) {
           L.DomEvent.stopPropagation(e);
           if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -863,7 +879,7 @@ export default function FarmSatelliteMap({
 
       poly.addTo(layer);
     });
-  }, [filteredPaths, showPaths]);
+  }, [filteredPaths, showPaths, interceptLayerClickForDraw]);
 
   // ─── 5a. Nodos Interactivos y Editables del Recorrido Seleccionado ────────────
   useEffect(() => {
@@ -921,6 +937,7 @@ export default function FarmSatelliteMap({
       });
 
       marker.on('click', (e) => {
+        if (interceptLayerClickForDraw(e)) return;
         L.DomEvent.stopPropagation(e);
         if (e.originalEvent) e.originalEvent.stopPropagation();
         lastLayerClickedTimeRef.current = Date.now();
@@ -989,7 +1006,7 @@ export default function FarmSatelliteMap({
 
       marker.addTo(layer);
     });
-  }, [selectedTarget, localPaths, onReloadPaths]);
+  }, [selectedTarget, localPaths, onReloadPaths, interceptLayerClickForDraw]);
 
   // ─── 5b. Renderizado del Catastro Oficial Registrado (Parcelas 195 y 196) ───
   useEffect(() => {
@@ -1018,6 +1035,7 @@ export default function FarmSatelliteMap({
       );
 
       poly.on('click', (e) => {
+        if (interceptLayerClickForDraw(e)) return;
         if (e) {
           L.DomEvent.stopPropagation(e);
           if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -1044,6 +1062,7 @@ export default function FarmSatelliteMap({
     (catastroJorox.cotas || []).forEach((cota) => {
       const isSelected = selectedTarget && String(selectedTarget.id) === `cota-${cota.name}`;
       const onSelectCota = (e) => {
+        if (interceptLayerClickForDraw(e)) return;
         if (e) {
           L.DomEvent.stopPropagation(e);
           if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -1077,7 +1096,7 @@ export default function FarmSatelliteMap({
         </div>`,
         {
           direction: 'top',
-          offset: [0, -14],
+          offset: [0, -10],
           className: 'campito-map-tooltip',
         }
       );
@@ -1104,6 +1123,7 @@ export default function FarmSatelliteMap({
       });
 
       poly.on('click', (e) => {
+        if (interceptLayerClickForDraw(e)) return;
         if (e) {
           L.DomEvent.stopPropagation(e);
           if (e.originalEvent) e.originalEvent.stopPropagation();
@@ -1121,7 +1141,7 @@ export default function FarmSatelliteMap({
 
       poly.addTo(layer);
     });
-  }, [showCatastro, selectedTarget]);
+  }, [showCatastro, selectedTarget, interceptLayerClickForDraw]);
 
   // ─── 6. Auto-ajuste de vista a todos los elementos al cargar ────────────────
   const fitAllElements = () => {
@@ -1174,7 +1194,7 @@ export default function FarmSatelliteMap({
       return;
     }
 
-    const pathName = newPathData.name.trim() || `Sendero ${paths.length + 1}`;
+    const pathName = newPathData.name.trim() || `Sendero ${localPaths.length + 1}`;
     const lengthMeters = calculatePathMeters(drawPoints);
 
     try {
@@ -1204,6 +1224,8 @@ export default function FarmSatelliteMap({
       setNewPathData({ name: '', path_type: 'sendero', color: '#f97316', stroke_width: 4, notes: '' });
 
       if (data) {
+        setShowPaths(true);
+        setLocalPaths((prev) => [data, ...prev.filter((p) => String(p.id) !== String(data.id))]);
         setSelectedTarget({
           type: 'path',
           id: data.id,
@@ -1502,13 +1524,21 @@ export default function FarmSatelliteMap({
 
   // ─── Control de Trazado de Polilíneas ─────────────────────────────────────────
   const handleToggleDraw = () => {
+    setIsLayersMenuOpen(false);
+    setIsFilterOpen(false);
     if (isDrawing) {
       setIsDrawing(false);
       setDrawPoints([]);
+      setIaFeedback(null);
     } else {
+      setShowPaths(true);
       setIsDrawing(true);
       setDrawPoints([]);
       setSelectedTarget(null);
+      setIaFeedback({
+        type: 'info',
+        text: '✏️ Toca puntos sobre el mapa para trazar la polilínea.',
+      });
     }
   };
 
@@ -1828,6 +1858,7 @@ export default function FarmSatelliteMap({
     // ─── 0. Detección directa de orden de borrado sobre el elemento seleccionado ─
     if (selectedTarget && (isDeleteIntent(textOrder) || (audioOrder && isDeleteIntent(audioOrder.transcription)))) {
       setMapIaInput('');
+      syncTextareaHeight(mapIaTextareaRef.current, '');
       setPendingVoiceAudio(null);
       setPendingAttachment(null);
       await handleDeleteTarget();
@@ -1891,8 +1922,9 @@ export default function FarmSatelliteMap({
         }
 
         if (execResult.deletedItems.length > 0) {
-          setLocalInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
-          if (selectedTarget && execResult.deletedItems.includes(selectedTarget.id)) {
+          const deletedSet = new Set(execResult.deletedItems.map((id) => String(id)));
+          setLocalInventory((prev) => prev.filter((i) => !deletedSet.has(String(i.id))));
+          if (selectedTarget && deletedSet.has(String(selectedTarget.id))) {
             setSelectedTarget(null);
           }
         }
@@ -2182,14 +2214,16 @@ export default function FarmSatelliteMap({
       markJobActionsApplied(job.jobId);
 
       if (execResult.deletedItems.length > 0) {
-        setLocalInventory((prev) => prev.filter((i) => !execResult.deletedItems.includes(i.id)));
-        if (selectedTarget && execResult.deletedItems.includes(selectedTarget.id)) {
+        const deletedSet = new Set(execResult.deletedItems.map((id) => String(id)));
+        setLocalInventory((prev) => prev.filter((i) => !deletedSet.has(String(i.id))));
+        if (selectedTarget && deletedSet.has(String(selectedTarget.id))) {
           setSelectedTarget(null);
         }
       }
       if (execResult.deletedPaths.length > 0) {
-        setLocalPaths((prev) => prev.filter((p) => !execResult.deletedPaths.includes(p.id)));
-        if (selectedTarget && execResult.deletedPaths.includes(selectedTarget.id)) {
+        const deletedPathSet = new Set(execResult.deletedPaths.map((id) => String(id)));
+        setLocalPaths((prev) => prev.filter((p) => !deletedPathSet.has(String(p.id))));
+        if (selectedTarget && deletedPathSet.has(String(selectedTarget.id))) {
           setSelectedTarget(null);
         }
       }
@@ -4568,6 +4602,7 @@ const styles = {
     backgroundColor: '#ffffff',
     borderTop: '1px solid #e8e8e8',
     width: '100%',
+    maxWidth: '100%',
     boxSizing: 'border-box',
     boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.05)',
   },
@@ -4591,18 +4626,21 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
     minHeight: 42,
     maxHeight: 100,
     backgroundColor: '#fafafa',
     borderRadius: 22,
     border: '1.5px solid #e0e0e0',
-    padding: '0 6px 0 14px',
+    padding: '0 6px 0 12px',
     boxSizing: 'border-box',
     transition: 'border-color 0.2s',
   },
   chatIaTextInput: {
     flex: 1,
     minWidth: 0,
+    width: '100%',
     height: 38,
     minHeight: 38,
     maxHeight: 100,

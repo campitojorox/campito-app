@@ -79,13 +79,13 @@ export default defineConfig({
       devOptions: {
         enabled: false
       },
-      includeAssets: ['icon-192x192.png', 'icon-512x512.png'],
+      includeAssets: ['apple-touch-icon.png', 'logo192.png', 'icon-192x192.png', 'icon-512x512.png'],
       manifest: {
         name: 'Campito Jorox',
         short_name: 'Campito',
         description: 'Gestión de calendario y contabilidad para Campito Jorox',
-        theme_color: '#2a9d8f',
-        background_color: '#f8f9fa',
+        theme_color: '#01989e',
+        background_color: '#01989e',
         display: 'standalone',
         start_url: '/',
         icons: [
@@ -93,13 +93,19 @@ export default defineConfig({
             src: 'icon-192x192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
           },
           {
             src: 'icon-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
+          },
+          {
+            src: 'icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ]
       }

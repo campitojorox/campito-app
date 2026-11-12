@@ -9,6 +9,7 @@ const INVENTORY_STORAGE_KEY = 'campito_farm_inventory_cache';
 const PATHS_STORAGE_KEY = 'campito_farm_paths_cache';
 const DELETED_INVENTORY_KEY = 'campito_deleted_inventory_ids';
 const DELETED_PATHS_KEY = 'campito_deleted_paths_ids';
+const DEFAULT_SEEDED_KEY = 'campito_default_cueva_seeded';
 
 /**
  * Validador de formato UUID v4
@@ -129,15 +130,21 @@ export function getLocalInventory() {
     // Filtrar cualquier elemento que esté en la lista de eliminados
     const activeItems = parsed.filter((i) => !deletedIds.has(String(i.id)));
 
-    // Asegurar que Casita Cueva esté presente sólo si no fue borrada expresamente
+    // Sembrar Casita Cueva inicial únicamente la primera vez que arranca el almacenamiento
+    const alreadySeeded = localStorage.getItem(DEFAULT_SEEDED_KEY) === '1';
     if (
+      !alreadySeeded &&
       !deletedIds.has('00000000-0000-4000-8000-000000000001') &&
       !deletedIds.has('casita_cueva_principal') &&
       !activeItems.some((i) => (i.name || '').toLowerCase().includes('cueva'))
     ) {
+      localStorage.setItem(DEFAULT_SEEDED_KEY, '1');
       const updated = [DEFAULT_INITIAL_INVENTORY[0], ...activeItems];
       setLocalInventory(updated);
       return updated;
+    }
+    if (activeItems.some((i) => (i.name || '').toLowerCase().includes('cueva'))) {
+      localStorage.setItem(DEFAULT_SEEDED_KEY, '1');
     }
     return activeItems;
   } catch (e) {
@@ -202,13 +209,18 @@ export async function loadFarmInventory() {
       const pendingLocals = cleanLocal.filter((loc) => !remoteIds.has(String(loc.id)));
       let merged = [...cleanRemote, ...pendingLocals];
 
-      // Asegurar que Casita Cueva de referencia esté presente si no fue borrada expresamente
+      // Sembrar Casita Cueva únicamente la primera vez (nunca re-inyectar tras un borrado)
+      const alreadySeeded = localStorage.getItem(DEFAULT_SEEDED_KEY) === '1';
       if (
+        !alreadySeeded &&
         !deletedIds.has('00000000-0000-4000-8000-000000000001') &&
         !deletedIds.has('casita_cueva_principal') &&
         !merged.some((i) => (i.name || '').toLowerCase().includes('cueva'))
       ) {
+        localStorage.setItem(DEFAULT_SEEDED_KEY, '1');
         merged = [DEFAULT_INITIAL_INVENTORY[0], ...merged];
+      } else if (merged.some((i) => (i.name || '').toLowerCase().includes('cueva'))) {
+        localStorage.setItem(DEFAULT_SEEDED_KEY, '1');
       }
 
       setLocalInventory(merged);
@@ -306,31 +318,52 @@ export async function updateFarmInventoryItem(id, updatePayload) {
 export async function deleteFarmInventoryItem(id) {
   if (!id) return;
   const targetIdStr = String(id);
+  const localItems = getLocalInventory();
+  const targetItem = localItems.find((i) => String(i.id) === targetIdStr);
+  const isCuevaDefault =
+    targetIdStr === '00000000-0000-4000-8000-000000000001' ||
+    targetIdStr === 'casita_cueva_principal' ||
+    (targetItem?.name || '').toLowerCase().includes('cueva');
 
   // 1. Registrar en lista negra de eliminados para que loadFarmInventory no lo restaure
   addDeletedInventoryId(targetIdStr);
+  if (isCuevaDefault) {
+    addDeletedInventoryId('00000000-0000-4000-8000-000000000001');
+    addDeletedInventoryId('casita_cueva_principal');
+    try {
+      localStorage.setItem(DEFAULT_SEEDED_KEY, '1');
+    } catch {
+      // ignore
+    }
+  }
 
   // 2. Eliminar del almacenamiento local
-  const localItems = getLocalInventory();
   const filtered = localItems.filter((i) => String(i.id) !== targetIdStr);
   setLocalInventory(filtered);
 
-  // 3. Persistir en Supabase (ambos métodos: soft-delete y hard-delete)
-  try {
-    const now = new Date().toISOString();
-    // Soft delete: respeta políticas RLS de UPDATE
-    await supabase
-      .from('farm_inventory')
-      .update({ is_active: false, updated_at: now })
-      .eq('id', id);
+  // 3. Persistir en Supabase (soft-delete + hard-delete si la política lo permite)
+  if (isValidUUID(targetIdStr)) {
+    try {
+      const now = new Date().toISOString();
+      const { error: updErr } = await supabase
+        .from('farm_inventory')
+        .update({ is_active: false, updated_at: now })
+        .eq('id', targetIdStr);
+      if (updErr) {
+        console.warn('[InventoryStorage] Error en soft-delete Supabase:', updErr.message);
+      }
 
-    // Hard delete: si las políticas lo permiten, elimina la fila
-    await supabase
-      .from('farm_inventory')
-      .delete()
-      .eq('id', id);
-  } catch (err) {
-    console.warn('[InventoryStorage] Eliminado en local (Supabase pendiente):', err.message);
+      const { error: delErr } = await supabase
+        .from('farm_inventory')
+        .delete()
+        .eq('id', targetIdStr);
+      if (delErr && !updErr) {
+        // Si falló DELETE por falta de política RLS, el soft-delete (is_active: false) ya lo ocultó
+        console.log('[InventoryStorage] Soft-delete aplicado en Supabase (DELETE bloqueado por RLS):', delErr.message);
+      }
+    } catch (err) {
+      console.warn('[InventoryStorage] Eliminado en local (Supabase pendiente):', err.message);
+    }
   }
 }
 

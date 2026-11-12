@@ -309,11 +309,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   border: none !important;
 }
 
-/* Área táctil e interactiva (38px x 38px) idéntica para todos los pines */
+/* Área táctil e interactiva (28px x 28px) idéntica para todos los pines */
 .farm-pin-container {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -322,11 +322,11 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   user-select: none;
 }
 
-/* Estructura familiar del Pin (22px x 22px) con transición elástica */
+/* Estructura familiar del Pin (14px x 14px) con transición elástica */
 .farm-pin {
   position: relative;
-  width: 22px;
-  height: 22px;
+  width: 14px;
+  height: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -338,13 +338,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   z-index: 999;
 }
 
-/* Cuerpo físico del Pin (20px visible, borde blanco de 2.5px y sombra de relieve) */
+/* Cuerpo físico del Pin: punto sólido compacto (12px) con borde blanco fino */
 .farm-pin__body {
-  width: 20px;
-  height: 20px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 2.5px solid #ffffff;
-  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -352,26 +352,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   box-sizing: border-box;
 }
 
-/* Núcleo central blanco reflectante */
-.farm-pin__core {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  pointer-events: none;
-}
-
 /* Halo exterior pulsante de selección */
 .farm-pin__halo {
   display: none;
   position: absolute;
-  top: -7px;
-  left: -7px;
-  width: 36px;
-  height: 36px;
+  top: -6px;
+  left: -6px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  border: 2.5px solid #00d1da;
+  border: 2px solid #00d1da;
   box-sizing: border-box;
   pointer-events: none;
 }

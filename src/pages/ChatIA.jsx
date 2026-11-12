@@ -734,6 +734,9 @@ const styles = {
     backgroundColor: '#ffffff',
     borderTop: '1px solid #e8e8e8',
     flexShrink: 0,
+    width: '100%',
+    maxWidth: '100%',
+    boxSizing: 'border-box',
   },
   iconBtn: (active) => ({
     width: 40,
@@ -752,12 +755,14 @@ const styles = {
   }),
   inputCapsule: {
     flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',
     backgroundColor: '#fafafa',
     border: '1.5px solid #e0e0e0',
     borderRadius: 22,
-    padding: '0 6px 0 14px',
+    padding: '0 6px 0 12px',
     minHeight: 42,
     maxHeight: 100,
     boxSizing: 'border-box',
@@ -765,6 +770,7 @@ const styles = {
   },
   textInput: {
     flex: 1,
+    width: '100%',
     minWidth: 0,
     height: 38,
     minHeight: 38,
@@ -977,7 +983,7 @@ function TypingIndicator({ currentServer }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <span style={styles.statusDot(currentServer?.badgeColor || '#00979d')} />
           <span style={{ fontSize: '0.72rem', color: '#666', fontWeight: 600 }}>
-            {currentServer?.name} ({currentServer?.level}) procesando en segundo plano...
+            {currentServer?.name} ({currentServer?.level}) procesando...
           </span>
         </div>
         <div style={styles.typingDots}>
@@ -994,9 +1000,6 @@ function TypingIndicator({ currentServer }) {
               }}
             />
           ))}
-        </div>
-        <div style={{ fontSize: '0.67rem', color: '#888', marginTop: 4 }}>
-          Puedes cambiar de vista o recargar sin interrumpir la consulta
         </div>
       </div>
     </div>
