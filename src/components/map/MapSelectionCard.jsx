@@ -24,10 +24,34 @@ export default function MapSelectionCard({
   if (!selectedTarget) return null;
 
   const isPoint = selectedTarget.type === 'point';
-  const isEditable = isPoint || selectedTarget.type === 'path';
-  const currentCategory = String(selectedTarget.category ?? '');
-  const resolvedRootCategory = isPoint ? getItemCategory(selectedTarget) : '';
-  const categoryDotColor = getCategoryColor(resolvedRootCategory || currentCategory);
+  const isPath = selectedTarget.type === 'path';
+  const isNode = selectedTarget.type === 'node';
+  const isCatastro = selectedTarget.type === 'catastro';
+  const isCoord = selectedTarget.type === 'coord';
+  const isEditable = isPoint || isPath;
+
+  const defaultCategory = isPoint
+    ? ''
+    : isPath
+      ? (selectedTarget.category || PATH_TYPE_LABELS[selectedTarget.path_type] || 'Caminos y Trazados')
+      : isNode
+        ? `Vértice · ${selectedTarget.pathName || 'Recorrido'}`
+        : isCatastro
+          ? 'Catastro Oficial'
+          : 'Punto Satelital';
+
+  const currentCategory = String(selectedTarget.category ?? defaultCategory);
+  const resolvedRootCategory = isPoint ? getItemCategory(selectedTarget) : isPath ? (selectedTarget.category || 'Caminos') : '';
+  const categoryDotColor = isPath
+    ? (selectedTarget.color || getCategoryColor(resolvedRootCategory || currentCategory || 'Caminos'))
+    : isNode
+      ? (selectedTarget.color || '#00979d')
+      : isCatastro
+        ? '#3b82f6'
+        : isCoord
+          ? '#f59e0b'
+          : getCategoryColor(resolvedRootCategory || currentCategory);
+
   const showBotanicalStatus =
     isPoint && (resolvedRootCategory === 'Árboles' || resolvedRootCategory === 'Plantas');
 
@@ -40,7 +64,7 @@ export default function MapSelectionCard({
 
   return (
     <div style={styles.cleanTargetCard}>
-      {isPoint ? (
+      {isEditable ? (
         <div style={styles.cardHeaderRow}>
           <div style={{ position: 'relative', flex: 1, minWidth: 140 }}>
             <div
@@ -68,12 +92,12 @@ export default function MapSelectionCard({
                 type="text"
                 value={currentCategory}
                 onFocus={() => setIsCatMenuOpen(true)}
-                onBlur={() => setTimeout(() => setIsCatMenuOpen(false), 120)}
+                onBlur={() => setTimeout(() => setIsCatMenuOpen(false), 150)}
                 onChange={(e) => {
                   handleDirectFieldUpdate('category', e.target.value);
                   setIsCatMenuOpen(true);
                 }}
-                placeholder="Categoría (ej: Árboles, Plantas...)"
+                placeholder={isPoint ? 'Categoría (ej: Árboles, Plantas...)' : 'Categoría (ej: Caminos, Riego...)'}
                 style={{
                   border: 'none',
                   outline: 'none',
@@ -164,40 +188,51 @@ export default function MapSelectionCard({
         </div>
       ) : (
         <div style={styles.cardHeaderRow}>
-          <input
-            type="text"
-            value={selectedTarget.name ?? selectedTarget.title ?? ''}
-            readOnly={!isEditable}
-            onChange={(e) => {
-              if (isEditable) handleDirectFieldUpdate('name', e.target.value);
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '5px 10px',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              backgroundColor: '#ffffff',
+              boxSizing: 'border-box',
+              flex: 1,
+              minWidth: 140,
             }}
-            placeholder="Título..."
-            style={
-              isEditable
-                ? styles.cardTitleInput
-                : { ...styles.cardTitleInput, border: 'none', backgroundColor: 'transparent', padding: 0 }
-            }
-          />
-
-          <div style={styles.cardHeaderRight}>
-            <span style={styles.cardCategoryGray}>
-              {selectedTarget.type === 'path'
-                ? PATH_TYPE_LABELS[selectedTarget.path_type] || selectedTarget.path_type || 'Recorrido'
-                : selectedTarget.type === 'node'
-                  ? `Vértice · ${PATH_TYPE_LABELS[selectedTarget.pathType] || 'Recorrido'}`
-                  : selectedTarget.type === 'catastro'
-                    ? 'Catastro Oficial'
-                    : 'Punto Satelital'}
-            </span>
-            <button
-              type="button"
-              onClick={() => setSelectedTarget(null)}
-              style={styles.cardCloseBtn}
-              title="Cerrar ficha"
+          >
+            <span
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                backgroundColor: categoryDotColor,
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                color: '#1e293b',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
             >
-              <X size={16} />
-            </button>
+              {defaultCategory}
+            </span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setSelectedTarget(null)}
+            style={styles.cardCloseBtn}
+            title="Cerrar ficha"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
 
@@ -288,10 +323,18 @@ export default function MapSelectionCard({
       {selectedTarget.type === 'path' && (
         <div style={styles.cardBodyColumn}>
           <div style={styles.cardFieldsRow}>
+            <input
+              type="text"
+              value={selectedTarget.name ?? selectedTarget.title ?? ''}
+              onChange={(e) => handleDirectFieldUpdate('name', e.target.value)}
+              placeholder="Título o nombre del trazado..."
+              style={styles.cardTitleInput}
+            />
+
             <select
               value={selectedTarget.path_type || 'sendero'}
               onChange={(e) => handleDirectFieldUpdate('path_type', e.target.value)}
-              style={{ ...styles.cleanFieldSelect, flex: 1 }}
+              style={{ ...styles.cleanFieldSelect, flex: 1, minWidth: 120 }}
             >
               <option value="sendero">Sendero peatonal</option>
               <option value="carril">Carril agrícola</option>
@@ -302,9 +345,6 @@ export default function MapSelectionCard({
               <option value="linde">Linde</option>
               <option value="otro">Otro trazado</option>
             </select>
-            <span style={styles.cardLengthBadge}>
-              📏 {Math.round(selectedTarget.length_meters || 0)} m
-            </span>
           </div>
 
           <textarea
@@ -317,7 +357,7 @@ export default function MapSelectionCard({
 
           <div style={styles.cardMetaRow}>
             <span style={styles.cardMetaText}>
-              📍 {selectedTarget.coordinates?.length || 0} nodos interactivos (arrástralos en el satélite)
+              📍 {Math.round(selectedTarget.length_meters || 0)} m · {selectedTarget.coordinates?.length || 0} nodos interactivos
             </span>
             <button
               type="button"
@@ -333,21 +373,13 @@ export default function MapSelectionCard({
 
       {selectedTarget.type === 'node' && (
         <div style={styles.cardBodyColumn}>
-          <div style={styles.cardMetaRow}>
-            <span style={styles.cardMetaText}>
-              Recorrido: <b>{selectedTarget.pathName || 'Sendero'}</b> (Nodo {Number(selectedTarget.nodeIndex ?? 0) + 1} de{' '}
-              {selectedTarget.totalNodes || '?'})
-            </span>
-          </div>
-          <div style={styles.cardMetaRow}>
-            <span style={styles.cardMetaText}>
-              📍 Posición: {Number(selectedTarget.lat || 0).toFixed(5)}, {Number(selectedTarget.lng || 0).toFixed(5)}
-            </span>
-            <span style={{ fontSize: '0.72rem', color: '#00979d', fontStyle: 'italic' }}>
-              Arrastra el nodo en el satélite para ajustar el trazado
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+          <div style={styles.cardFieldsRow}>
+            <input
+              type="text"
+              readOnly
+              value={`Nodo ${(Number(selectedTarget.nodeIndex) || 0) + 1} de ${selectedTarget.totalNodes || '?'}`}
+              style={{ ...styles.cardTitleInput, backgroundColor: '#f8fafc', color: '#334155' }}
+            />
             <button
               type="button"
               onClick={() => {
@@ -357,6 +389,7 @@ export default function MapSelectionCard({
                     type: 'path',
                     id: path.id,
                     title: path.name,
+                    category: path.category || PATH_TYPE_LABELS[path.path_type] || 'Caminos y Trazados',
                     path_type: path.path_type,
                     color: path.color,
                     length_meters: path.length_meters,
@@ -366,10 +399,32 @@ export default function MapSelectionCard({
                   });
                 }
               }}
-              style={styles.cleanLinkBtn}
+              style={{
+                ...styles.cleanFieldSelect,
+                flex: 1,
+                minWidth: 130,
+                textAlign: 'center',
+                backgroundColor: '#f1f5f9',
+                cursor: 'pointer',
+                fontWeight: 600,
+                color: '#00979d',
+              }}
             >
-              ⬅️ Ver recorrido completo
+              ⬅️ Ver recorrido
             </button>
+          </div>
+
+          <textarea
+            rows={2}
+            readOnly
+            value={`Vértice interactivo de ${selectedTarget.pathName || 'recorrido'}. Puedes arrastrarlo en el mapa satelital para calibrar la trayectoria.`}
+            style={{ ...styles.cleanFieldTextarea, backgroundColor: '#f8fafc', color: '#64748b', cursor: 'default' }}
+          />
+
+          <div style={styles.cardMetaRow}>
+            <span style={styles.cardMetaText}>
+              📍 {Number(selectedTarget.lat || 0).toFixed(5)}, {Number(selectedTarget.lng || 0).toFixed(5)}
+            </span>
             {selectedTarget.totalNodes > 2 && (
               <button
                 type="button"
@@ -378,7 +433,6 @@ export default function MapSelectionCard({
                 title="Eliminar este vértice"
               >
                 <Trash2 size={13} color="#ef4444" />
-                <span style={{ fontSize: '0.72rem', color: '#ef4444', marginLeft: 4 }}>Quitar nodo</span>
               </button>
             )}
           </div>

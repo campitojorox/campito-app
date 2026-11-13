@@ -424,14 +424,29 @@ export function useMapIaController({
     }
 
     const directParsed = parseStructuredCommands(textOrder);
-    if (directParsed.points.length > 0 || directParsed.deletions.length > 0) {
+    const hasDirectStructured =
+      directParsed.points.length > 0 ||
+      directParsed.deletions.length > 0 ||
+      (directParsed.categories && directParsed.categories.length > 0) ||
+      (directParsed.categoryDeletions && directParsed.categoryDeletions.length > 0) ||
+      (directParsed.subcategories && directParsed.subcategories.length > 0) ||
+      (directParsed.subcategoryDeletions && directParsed.subcategoryDeletions.length > 0) ||
+      (directParsed.paths && directParsed.paths.length > 0) ||
+      (directParsed.updates && directParsed.updates.length > 0);
+
+    if (hasDirectStructured) {
       setMapIaInput('');
       setPendingVoiceAudio(null);
       setPendingAttachments([]);
       setIsProcessingIa(true);
+      const totalCount =
+        directParsed.points.length +
+        directParsed.deletions.length +
+        (directParsed.categories?.length || 0) +
+        (directParsed.paths?.length || 0);
       setIaFeedback({
         type: 'info',
-        text: `📍 Procesando comando estructurado (${directParsed.points.length} punto(s))...`,
+        text: `📍 Procesando comando estructurado (${totalCount} elemento(s))...`,
       });
 
       try {
@@ -443,6 +458,12 @@ export function useMapIaController({
         const actions = [
           ...directParsed.points.map((p) => ({ type: 'ADD_POINT', data: p })),
           ...directParsed.deletions.map((d) => ({ type: 'DELETE_POINT', data: d })),
+          ...(directParsed.paths || []).map((p) => ({ type: 'ADD_PATH', data: p })),
+          ...(directParsed.updates || []).map((u) => ({ type: 'UPDATE_POINT', data: u })),
+          ...(directParsed.categories || []).map((c) => ({ type: 'CREATE_CATEGORY', data: c })),
+          ...(directParsed.categoryDeletions || []).map((c) => ({ type: 'DELETE_CATEGORY', data: c })),
+          ...(directParsed.subcategories || []).map((s) => ({ type: 'CREATE_SUBCATEGORY', data: s })),
+          ...(directParsed.subcategoryDeletions || []).map((s) => ({ type: 'DELETE_SUBCATEGORY', data: s })),
         ];
 
         const execResult = await executeInventoryActions({
@@ -453,6 +474,17 @@ export function useMapIaController({
           currentInventory: localInventory,
           currentPaths: localPaths,
         });
+
+        if (execResult.addedCategories?.length > 0 || execResult.newCategoriesCreated?.length > 0) {
+          const createdNames = [
+            ...(execResult.addedCategories || []).map((c) => c.name || c),
+            ...(execResult.newCategoriesCreated || []),
+          ];
+          setVisibleCategories((prev) => new Set([...prev, ...createdNames]));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('farm-categories-updated'));
+          }
+        }
 
         if (execResult.addedItems.length > 0) {
           setLocalInventory((prev) => [
@@ -706,6 +738,32 @@ export function useMapIaController({
 
       if (job.result?.rawText) {
         const uCmds = job.result.unifiedCommands || parseAllStructuredCommands(job.result.rawText);
+
+        // Si uCmds trajo categorías o subcategorías, integrarlas en result.actions si no estaban ya
+        if (
+          (uCmds.categories && uCmds.categories.length > 0) ||
+          (uCmds.subcategories && uCmds.subcategories.length > 0) ||
+          (uCmds.categoryDeletions && uCmds.categoryDeletions.length > 0) ||
+          (uCmds.subcategoryDeletions && uCmds.subcategoryDeletions.length > 0)
+        ) {
+          result = result || { actions: [] };
+          result.actions = result.actions || [];
+          (uCmds.categories || []).forEach((cat) => {
+            if (!result.actions.some((a) => (a.type === 'CREATE_CATEGORY' || a.type === 'CREAR_CATEGORIA') && (a.data?.name === cat.name || a.name === cat.name))) {
+              result.actions.push({ type: 'CREATE_CATEGORY', data: cat });
+            }
+          });
+          (uCmds.subcategories || []).forEach((sub) => {
+            result.actions.push({ type: 'CREATE_SUBCATEGORY', data: sub });
+          });
+          (uCmds.categoryDeletions || []).forEach((del) => {
+            result.actions.push({ type: 'DELETE_CATEGORY', data: del });
+          });
+          (uCmds.subcategoryDeletions || []).forEach((del) => {
+            result.actions.push({ type: 'DELETE_SUBCATEGORY', data: del });
+          });
+        }
+
         if (
           (uCmds.memories && uCmds.memories.length > 0) ||
           (uCmds.customTools && uCmds.customTools.length > 0) ||
@@ -720,7 +778,11 @@ export function useMapIaController({
         }
       }
 
-      if (!result.actions || result.actions.length === 0) {
+      const isCreateOrAddIntent =
+        textOrder &&
+        /(?:crea|crear|agrega|agregar|añade|añadir|nueva\s+categor|nuevo\s+punto|publica|publicar|registra|registrar)/i.test(textOrder);
+
+      if ((!result.actions || result.actions.length === 0) && !isCreateOrAddIntent) {
         if (targetSnap?.type === 'point' && (uploadedPhotoUrl || textOrder || audioOrder)) {
           const prevItem = localInventory.find((i) => String(i.id) === String(targetSnap.id));
           const updatePayload = { updated_at: new Date().toISOString() };
@@ -977,6 +1039,17 @@ export function useMapIaController({
         });
       }
 
+      if (execResult.addedCategories?.length > 0 || execResult.newCategoriesCreated?.length > 0) {
+        const createdNames = [
+          ...(execResult.addedCategories || []).map((c) => c.name || c),
+          ...(execResult.newCategoriesCreated || []),
+        ];
+        setVisibleCategories((prev) => new Set([...prev, ...createdNames]));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('farm-categories-updated'));
+        }
+      }
+
       if (execResult.reverts.length > 0) {
         setUndoStack((prev) => [
           ...prev,
@@ -989,6 +1062,11 @@ export function useMapIaController({
         setIaFeedback({
           type: 'success',
           text: `✨ ${result.description || 'Cambios aplicados en el mapa'} (Pulsa ↩️ para revertir)`,
+        });
+      } else if (execResult.addedCategories?.length > 0) {
+        setIaFeedback({
+          type: 'success',
+          text: `✨ Categoría(s) creada(s): ${execResult.addedCategories.map((c) => c.name || c).join(', ')}`,
         });
       } else {
         setIaFeedback({ type: 'info', text: result.description || 'No se realizaron modificaciones.' });

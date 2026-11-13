@@ -272,8 +272,11 @@ FORMATOS ADMITIDOS (RESPONDE SIEMPRE EN JSON VÁLIDO):
     }
   ]
 }
-Tipos de acción soportados en "actions": "ADD_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH" (incluye "target_id" para UPDATE/DELETE).
-*REGLA CRÍTICA DE AUDIO Y REGISTRO*:
+Tipos de acción soportados en "actions": "ADD_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH" | "CREATE_CATEGORY" | "DELETE_CATEGORY" (incluye "target_id" para UPDATE/DELETE).
+Para crear categorías: {"type": "CREATE_CATEGORY", "data": {"name": "NombreCategoria", "subcategories": [], "color": "#10b981"}}
+O con etiquetas estructuradas [[CREAR_CATEGORIA: {"name": "..."}]] y [[REGISTRAR_PUNTOS: [...] ]].
+*REGLA CRÍTICA DE CATEGORÍAS Y REGISTRO*:
+- Si el usuario pide crear una nueva categoría y publicar/agregar un elemento dentro de ella (ej: "crea categoría Cabañas y publica Cabaña 1"), DEBES generar AMBAS acciones: la creación de la categoría ("CREATE_CATEGORY" o [[CREAR_CATEGORIA]]) y el registro del punto ("ADD_POINT" o [[REGISTRAR_PUNTOS]]) con dicha categoría.
 - Si el usuario menciona, describe, dicta o pide registrar cualquier árbol, planta, arqueta, llave de riego, tubería, herramienta, edificio o camino, DEBES incluir una entrada en "actions" para cada elemento. NUNCA devuelvas "actions": [] si el audio describe elementos para el inventario.
 - Si el usuario habla mientras camina, deja latitude: null y longitude: null y asigna "timestamp_audio_s" con el segundo del audio donde mencionó cada elemento para interpolación GPS satelital.`;
 }
@@ -355,6 +358,18 @@ function normalizeParsedMapObject(parsed, audio = null) {
   const pathContainers = parsed.paths || parsed.caminos || parsed.trazados;
   if (actions.length === 0 && Array.isArray(pathContainers)) {
     actions.push(...pathContainers.map((pth) => ({ type: 'ADD_PATH', data: pth })));
+  }
+
+  // Caso 2c: Categorías creadas explícitamente en el objeto JSON
+  const catContainers = parsed.categories || parsed.categorias || parsed.nuevas_categorias;
+  if (Array.isArray(catContainers)) {
+    actions.push(
+      ...catContainers.map((c) =>
+        typeof c === 'string'
+          ? { type: 'CREATE_CATEGORY', data: { name: c } }
+          : { type: 'CREATE_CATEGORY', data: c }
+      )
+    );
   }
 
   // Caso 2b: Claves de borrado alternativas (deletions, deleted_paths, borrados, etc.)
@@ -461,7 +476,10 @@ export function parseMapGeminiRawText(rawText, audio = null) {
   const cmdActions = structuredCommandsToActions(parsedCmds);
   if (cmdActions.length > 0) {
     const cleanDescription = rawText
-      .replace(/\[\[(?:REGISTRAR_PUNTOS|REGISTRAR_PUNTO|BORRAR_PUNTO|ELIMINAR_PUNTO|REGISTRAR_CAMINO|CREAR_CAMINO|EDITAR_PUNTO|ACTUALIZAR_PUNTO):[\s\S]*?\]\]/gi, '')
+      .replace(
+        /\[\[(?:REGISTRAR_PUNTOS|REGISTRAR_PUNTO|BORRAR_PUNTO|ELIMINAR_PUNTO|REGISTRAR_CAMINO|CREAR_CAMINO|EDITAR_PUNTO|ACTUALIZAR_PUNTO|CREAR_CATEGORIA|REGISTRAR_CATEGORIA|BORRAR_CATEGORIA|ELIMINAR_CATEGORIA|CREAR_SUBCATEGORIA|BORRAR_SUBCATEGORIA):[\s\S]*?\]\]/gi,
+        ''
+      )
       .trim();
 
     return {

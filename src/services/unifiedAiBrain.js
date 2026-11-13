@@ -12,6 +12,11 @@ import {
   insertFarmPath,
   updateFarmPath,
   deleteFarmPath,
+  createFarmCategory,
+  deleteFarmCategory,
+  createFarmSubcategory,
+  deleteFarmSubcategory,
+  ensureCategoryExistsForElement,
 } from './farmInventoryStorage';
 import {
   interpolateGpsAtAudioTime,
@@ -247,7 +252,13 @@ ${transactionsSummary.join('\n') || 'Sin transacciones'}
 6. Creador Dinámico de Nuevas Herramientas (Meta-Tool):
    - Si el usuario te pide crear/inventar una nueva herramienta para el equipo:
      [[REGISTRAR_HERRAMIENTA: {"name": "calculo_abono_ce", "display_name": "Calculadora de Abono por CE", "description": "Calcula abono según conductividad", "category": "agronomia", "parameters": [{"name": "ce_actual", "type": "number"}], "execution_recipe": "Fórmula matemática...", "output_format": "markdown|table|card"}]]
-7. Salidas Visuales Especiales:
+7. Categorías y Subcategorías del Inventario:
+   - Crear Categoría: [[CREAR_CATEGORIA: {"name": "NombreCategoria", "subcategories": ["sub1", "sub2"], "color": "#10b981"}]]
+   - Borrar Categoría: [[BORRAR_CATEGORIA: {"name": "NombreCategoria", "reassign_to": "Otros"}]]
+   - Crear Subcategoría: [[CREAR_SUBCATEGORIA: {"category": "CategoriaPadre", "name": "NuevaSubcat"}]]
+   - Borrar Subcategoría: [[BORRAR_SUBCATEGORIA: {"category": "CategoriaPadre", "name": "SubcatABorrar"}]]
+   - *REGLA CRÍTICA DE TAXONOMÍA*: Si el usuario pide crear una categoría y agregar/publicar un elemento dentro de ella (ej: "crea categoría Cabañas y publica Cabaña 1"), DEBES emitir [[CREAR_CATEGORIA: {"name": "..."}]] Y SIMULTÁNEAMENTE [[REGISTRAR_PUNTOS: [ {"name": "...", "category": "..."} ] ]]. Si el elemento pertenece a una categoría no existente, créala de forma automática.
+8. Salidas Visuales Especiales:
    - Diagramas Mermaid: Inserta bloques \`\`\`mermaid ... \`\`\`
    - Dibujos Técnicos y Croquis Acotados: Inserta bloques \`\`\`svg ... \`\`\` con medidas acotadas en metros (|← 4.0m →|), escalas y leyendas claras.
    - Exportables: [[EXPORTAR_ARCHIVO: {"type": "pdf|excel|txt|xml|kml", "filename": "archivo.ext", "title": "Título", "content": "..."}]]
@@ -500,9 +511,22 @@ export async function executeUnifiedActions({
       lng = center[1];
     }
 
+    const rawName = p.name || p.nombre || 'Punto de Inventario';
+    const formattedName = String(rawName).charAt(0).toUpperCase() + String(rawName).slice(1);
+    const { category: resolvedCat, created: catCreated } = ensureCategoryExistsForElement({
+      name: formattedName,
+      category: p.category || p.categoria,
+      variety_type: p.variety_type || p.variedad || p.variety || p.tipo,
+      tipo: p.tipo,
+    });
+    if (catCreated) {
+      result.newCategoriesCreated = result.newCategoriesCreated || [];
+      result.newCategoriesCreated.push(resolvedCat);
+    }
+
     const newItem = {
-      name: p.name || 'Punto de Inventario',
-      category: p.category || 'arbol',
+      name: formattedName,
+      category: resolvedCat,
       variety_type: p.variety_type || p.variedad || null,
       status: p.status || p.estado || 'saludable',
       latitude: lat,
@@ -740,6 +764,56 @@ export async function executeUnifiedActions({
       onToolAdded?.(savedTool);
     } catch (e) {
       console.warn('[unifiedAiBrain] Error guardando herramienta personalizada:', e.message);
+    }
+  }
+
+  // 11. CATEGORÍAS: CREAR Y BORRAR
+  for (const cat of parsedCommands.categories || []) {
+    const created = createFarmCategory({
+      name: cat.name || cat.category || cat.categoria,
+      subcategories: cat.subcategories || cat.subcategorias || (cat.subcategory ? [cat.subcategory] : []),
+      color: cat.color || null,
+      icon: cat.icon || null,
+    });
+    if (created) {
+      result.addedCategories = result.addedCategories || [];
+      result.addedCategories.push(created);
+    }
+  }
+
+  for (const del of parsedCommands.categoryDeletions || []) {
+    const res = await deleteFarmCategory({
+      name: del.name || del.category || del.categoria || del.query,
+      deleteItems: del.delete_items !== false,
+      reassignTo: del.reassign_to || 'Otros',
+    });
+    if (res?.success) {
+      result.deletedCategories = result.deletedCategories || [];
+      result.deletedCategories.push(res);
+    }
+  }
+
+  // 12. SUBCATEGORÍAS: CREAR Y BORRAR
+  for (const sub of parsedCommands.subcategories || []) {
+    const created = createFarmSubcategory({
+      parentCategory: sub.category || sub.categoria || sub.parent || sub.parentCategory,
+      name: sub.name || sub.subcategory || sub.subcategoria,
+    });
+    if (created) {
+      result.addedSubcategories = result.addedSubcategories || [];
+      result.addedSubcategories.push(created);
+    }
+  }
+
+  for (const del of parsedCommands.subcategoryDeletions || []) {
+    const res = await deleteFarmSubcategory({
+      parentCategory: del.category || del.categoria || del.parent || del.parentCategory,
+      name: del.name || del.subcategory || del.subcategoria || del.query,
+      deleteItems: Boolean(del.delete_items),
+    });
+    if (res?.success) {
+      result.deletedSubcategories = result.deletedSubcategories || [];
+      result.deletedSubcategories.push(res);
     }
   }
 

@@ -722,6 +722,7 @@ export default function FarmSatelliteMap({
       const targetId = selectedTarget.id;
       const updateObj = {};
       if (field === 'title' || field === 'name') updateObj.name = value;
+      else if (field === 'category') updateObj.category = value;
       else if (field === 'path_type') {
         updateObj.path_type = value;
         updateObj.color = PATH_TYPE_COLORS[value] || selectedTarget.color;
