@@ -287,10 +287,10 @@ export default function Layout({ session }) {
           backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 3000
         }} onClick={() => setIsMenuOpen(false)}>
           <div style={{
-            position: 'absolute', top: 0, left: 0, width: '250px', height: '100%',
+            position: 'absolute', top: 0, left: 0, width: '270px', maxWidth: '85vw', height: '100%',
             backgroundColor: 'var(--bg-color)', borderRight: '1px solid var(--border)',
             padding: '2rem 1rem', display: 'flex', flexDirection: 'column',
-            boxShadow: '2px 0 8px rgba(0,0,0,0.5)'
+            boxShadow: '2px 0 8px rgba(0,0,0,0.5)', overflowY: 'auto'
           }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -356,6 +356,28 @@ export default function Layout({ session }) {
                 <span style={{ textAlign: 'center', fontSize: '0.78rem', color: '#b0b0b0' }}>
                   Versión {appVersion}
                 </span>
+                <div style={{
+                  fontSize: '0.70rem',
+                  color: '#b0b0b0',
+                  lineHeight: '1.38',
+                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '6px',
+                  padding: '7px 9px',
+                  marginTop: '2px',
+                  textAlign: 'left'
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: '4px', textAlign: 'center', color: '#b0b0b0' }}>
+                    Mejoras v{appVersion}:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '14px', display: 'flex', flexDirection: 'column', gap: '3px', color: '#b0b0b0' }}>
+                    <li>Fichas unificadas en mapas (puntos, nodos y polilíneas).</li>
+                    <li>Categorías y subcategorías armónicas en gama de color.</li>
+                    <li>Icono de borrado unificado con confirmación previa.</li>
+                    <li>Trazado rápido de polilíneas con métricas y guardado directo.</li>
+                    <li>Filtros dinámicos de caminos (Caminos, Ríos, Riego, etc.).</li>
+                  </ul>
+                </div>
               </div>
             </div>
             
