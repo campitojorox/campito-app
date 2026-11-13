@@ -1,6 +1,12 @@
 // src/components/map/MapOverlays.jsx
-import { Undo2, Check, ZoomIn, ZoomOut, Crosshair, Compass } from 'lucide-react';
-import { getCategoryColor, PATH_TYPE_COLORS, getItemCategory } from '../../services/farmInventoryStorage';
+import { Undo2, Check, X, Trash2, ZoomIn, ZoomOut, Crosshair, Compass } from 'lucide-react';
+import {
+  getCategoryColor,
+  getSubcategoryColor,
+  getSubcategoriesForParent,
+  PATH_TYPE_COLORS,
+  getItemCategory,
+} from '../../services/farmInventoryStorage';
 import catastroJorox from '../../data/catastroJorox.json';
 import joroxElevationContours from '../../data/joroxElevationContours.json';
 import { PATH_TYPE_LABELS } from './mapUtils';
@@ -15,6 +21,7 @@ export default function MapOverlays({
   setNewPathData,
   setIsDrawing,
   setShowSaveModal,
+  onSaveDrawnPath,
   showLegend,
   selectedTarget,
   allCategories,
@@ -34,6 +41,9 @@ export default function MapOverlays({
   const activePointCategories = (allCategories || []).filter((cat) =>
     (localInventory || []).some((i) => getItemCategory(i) === cat)
   );
+
+  const activeDrawCategory = newPathData?.category || 'Caminos y Trazados';
+  const drawSubcategories = getSubcategoriesForParent(localInventory, activeDrawCategory);
   const hasAlertStatus = (localInventory || []).some((i) =>
     ['enfermo', 'seco', 'muerto', 'poda_requerida', 'poda', 'plaga'].includes(
       (i.status || i.estado || '').toLowerCase()
@@ -68,87 +78,318 @@ export default function MapOverlays({
   return (
     <>
       {isDrawing && (
-        <div style={styles.drawingBanner}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <div style={styles.pulseDot} />
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1e293b' }}>
-                Modo Trazado Activo: Haz clic en el satélite para colocar nodos
-              </span>
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                Nodos: <b>{drawPoints.length}</b> | Longitud: <b>{liveDrawDistance.toFixed(1)} m</b>
-              </span>
+        <div style={{ ...styles.drawingBanner, flexDirection: 'column', alignItems: 'stretch', gap: 6, padding: '8px 10px' }}>
+          {/* ──────────────────────────────────────────────────────────────────────────
+              LÍNEA 1: CATEGORÍA (Izq) | SUBCATEGORÍA (Der) | [X]
+              ────────────────────────────────────────────────────────────────────────── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+            {/* Categoría a la izquierda (con círculo de color) */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 8px',
+                borderRadius: 8,
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                boxSizing: 'border-box',
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  backgroundColor: getCategoryColor(newPathData.category || 'Caminos y Trazados'),
+                  flexShrink: 0,
+                }}
+              />
+              <select
+                value={activeDrawCategory}
+                onChange={(e) => {
+                  const cat = e.target.value;
+                  const validSubs = getSubcategoriesForParent(localInventory, cat);
+                  const stillValid = validSubs.some(
+                    (s) => s.toLowerCase() === (newPathData.path_type || '').trim().toLowerCase()
+                  );
+                  const nextSub = stillValid ? newPathData.path_type : '';
+                  setNewPathData((prev) => ({
+                    ...prev,
+                    category: cat,
+                    path_type: nextSub,
+                    color: nextSub ? getSubcategoryColor(cat, nextSub) : getCategoryColor(cat),
+                  }));
+                }}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  backgroundColor: 'transparent',
+                  color: '#1e293b',
+                  fontSize: '0.80rem',
+                  fontWeight: 600,
+                  width: '100%',
+                  minWidth: 0,
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontFamily: 'inherit',
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <option value="Caminos y Trazados">Caminos y Trazados</option>
+                <option value="Líneas de Riego">Líneas de Riego</option>
+                <option value="Lindes y Límites">Lindes y Límites</option>
+                {(allCategories || [])
+                  .filter((c) => !['Caminos y Trazados', 'Líneas de Riego', 'Lindes y Límites'].includes(c))
+                  .map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+              </select>
             </div>
 
-            <select
-              value={newPathData.path_type}
-              onChange={(e) => {
-                const pt = e.target.value;
-                setNewPathData((prev) => ({
-                  ...prev,
-                  path_type: pt,
-                  color: PATH_TYPE_COLORS[pt] || '#f97316',
-                }));
+            {/* Sub-categoría (con círculo de color en tono más claro dentro de la gama de la raíz) */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 8px',
+                borderRadius: 8,
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                boxSizing: 'border-box',
+                flex: 1,
+                minWidth: 0,
               }}
-              style={styles.drawTypeSelect}
             >
-              <option value="sendero">Sendero</option>
-              <option value="carril">Carril</option>
-              <option value="camino">Camino</option>
-              <option value="vereda">Vereda</option>
-              <option value="acequia">Acequia</option>
-              <option value="linea_riego">Línea de Riego</option>
-              <option value="linde">Linde</option>
-              <option value="otro">Otro</option>
-            </select>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  backgroundColor: getSubcategoryColor(
+                    activeDrawCategory,
+                    newPathData.path_type || ''
+                  ),
+                  flexShrink: 0,
+                  boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.08)',
+                }}
+              />
+              <select
+                value={newPathData.path_type || ''}
+                onChange={(e) => {
+                  const pt = e.target.value;
+                  const subColor = pt ? getSubcategoryColor(activeDrawCategory, pt) : getCategoryColor(activeDrawCategory);
+                  setNewPathData((prev) => ({
+                    ...prev,
+                    path_type: pt,
+                    color: subColor,
+                  }));
+                }}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  backgroundColor: 'transparent',
+                  color: '#1e293b',
+                  fontSize: '0.80rem',
+                  fontWeight: 600,
+                  width: '100%',
+                  minWidth: 0,
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontFamily: 'inherit',
+                  textOverflow: 'ellipsis',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <option value="">(Sin subcategoría)</option>
+                {drawSubcategories.map((sub) => (
+                  <option key={sub} value={sub}>
+                    {sub}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Grupo de Acciones: Descartar (a la izquierda de cerrar) + Espacio + Cerrar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 2 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (drawPoints.length > 0) {
+                    if (window.confirm('¿Deseas descartar los nodos dibujados y cancelar el trazado?')) {
+                      setIsDrawing(false);
+                      setDrawPoints([]);
+                    }
+                  } else {
+                    setIsDrawing(false);
+                    setDrawPoints([]);
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '3px 4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#94a3b8',
+                  borderRadius: 6,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                title="Descartar trazado en curso"
+              >
+                <Trash2 size={16} />
+              </button>
+
+              {/* Botón cerrar arriba a la derecha */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDrawing(false);
+                  setDrawPoints([]);
+                }}
+                style={{
+                  ...styles.cardCloseBtn,
+                  padding: '3px 4px',
+                  borderRadius: 6,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#1e293b')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                title="Cerrar trazado"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* ──────────────────────────────────────────────────────────────────────────
+              LÍNEA 2: TÍTULO EDITABLE DENTRO DE INPUT IGUAL QUE EN NODOS | LONGITUD DE LÍNEA
+              ────────────────────────────────────────────────────────────────────────── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+            <input
+              type="text"
+              value={newPathData.name || ''}
+              onChange={(e) => setNewPathData((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="Título del trazado..."
+              style={{
+                ...styles.cardTitleInput,
+                flex: 1,
+                minWidth: 100,
+              }}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '6px 10px',
+                borderRadius: 8,
+                backgroundColor: '#f1f5f9',
+                border: '1px solid #e2e8f0',
+                color: '#475569',
+                fontSize: '0.74rem',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                boxSizing: 'border-box',
+              }}
+            >
+              📏 {liveDrawDistance.toFixed(1)} m · {drawPoints.length} nodos
+            </div>
+          </div>
+
+          {/* ──────────────────────────────────────────────────────────────────────────
+              LÍNEA 3: DESCRIPCIÓN | DESHACER | GUARDAR
+              ────────────────────────────────────────────────────────────────────────── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+            <input
+              type="text"
+              value={newPathData.notes || ''}
+              onChange={(e) => setNewPathData((prev) => ({ ...prev, notes: e.target.value }))}
+              placeholder="Descripción o notas del trazado..."
+              style={{
+                flex: 1,
+                minWidth: 80,
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#1e293b',
+                fontSize: '0.78rem',
+                fontFamily: 'inherit',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+
             <button
               type="button"
               onClick={() => setDrawPoints((prev) => prev.slice(0, -1))}
               disabled={drawPoints.length === 0}
               style={{
-                ...styles.drawActionBtn,
-                opacity: drawPoints.length === 0 ? 0.5 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1px solid #cbd5e1',
                 backgroundColor: '#ffffff',
-                color: '#475569',
+                color: drawPoints.length === 0 ? '#94a3b8' : '#334155',
+                fontSize: '0.76rem',
+                fontWeight: 600,
+                cursor: drawPoints.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: drawPoints.length === 0 ? 0.6 : 1,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
               title="Deshacer último nodo"
             >
               <Undo2 size={13} />
-              Deshacer nodo
+              <span>Deshacer</span>
             </button>
 
             <button
               type="button"
               onClick={() => {
-                setIsDrawing(false);
-                setDrawPoints([]);
+                if (onSaveDrawnPath) {
+                  onSaveDrawnPath();
+                } else {
+                  setShowSaveModal(true);
+                }
               }}
-              style={{
-                ...styles.drawActionBtn,
-                backgroundColor: '#f1f5f9',
-                color: '#64748b',
-              }}
-            >
-              Cancelar
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowSaveModal(true)}
               disabled={drawPoints.length < 2}
               style={{
-                ...styles.drawActionBtn,
-                opacity: drawPoints.length < 2 ? 0.5 : 1,
-                backgroundColor: '#059669',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 12px',
+                borderRadius: 8,
+                border: 'none',
+                backgroundColor: drawPoints.length < 2 ? '#94a3b8' : '#059669',
                 color: '#ffffff',
+                fontSize: '0.76rem',
                 fontWeight: 700,
+                cursor: drawPoints.length < 2 ? 'not-allowed' : 'pointer',
+                opacity: drawPoints.length < 2 ? 0.6 : 1,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                boxShadow: drawPoints.length >= 2 ? '0 2px 6px rgba(5, 150, 105, 0.3)' : 'none',
               }}
+              title="Guardar recorrido trazado"
             >
-              <Check size={13} />
-              Guardar Recorrido
+              <Check size={14} />
+              <span>Guardar</span>
             </button>
           </div>
         </div>

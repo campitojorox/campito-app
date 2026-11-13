@@ -918,8 +918,11 @@ export const BASE_CATEGORY_MAP = {
   'Árboles': ['aguacate', 'olivo', 'limonero', 'naranjo', 'citrico', 'arbol', 'frutales', 'algarrobo', 'granado', 'mango', 'higuera', 'frutal'],
   'Plantas': ['planta', 'hierba', 'arbusto', 'herbaceo', 'vegetal', 'palmera', 'bambu', 'huerta'],
   'Riego / Agua': ['riego', 'llave', 'gotero', 'filtro', 'valvula', 'contador', 'arqueta', 'pozo', 'deposito', 'cisterna', 'grifo', 'tuberia', 'manguera', 'aspersor', 'bomba', 'caudal', 'acequia'],
+  'Ríos / Arroyos': ['rio', 'arroyo', 'cauce', 'torrente', 'barranco', 'riachuelo', 'rambla', 'vado', 'cascada', 'nacimiento'],
+  'Rios / Arroyos': ['rio', 'arroyo', 'cauce', 'torrente', 'barranco', 'riachuelo', 'rambla', 'vado', 'cascada', 'nacimiento'],
   'Casas': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
   'Casas / Edificios': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
+  'Caminos y Trazados': ['camino', 'sendero', 'carril', 'vereda', 'acequia', 'linea_riego', 'trazado', 'pista', 'senda', 'linde', 'calle'],
   'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario', 'apero'],
   'Hitos': ['mojon', 'linde', 'piedra', 'marca', 'señal', 'cota', 'limite'],
   'Otros': [],
@@ -929,10 +932,14 @@ export const BASE_CATEGORY_COLORS = {
   'Árboles': '#16a34a',           // Verde oscuro
   'Plantas': '#4ade80',           // Verde claro
   'Riego / Agua': '#0284c7',      // Azul
+  'Ríos / Arroyos': '#06b6d4',    // Cian acuático
+  'Rios / Arroyos': '#06b6d4',    // Cian acuático
   'Casas': '#eab308',             // Amarillo
   'Casas / Edificios': '#eab308', // Amarillo (retrocompatibilidad)
   'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
-  'Herramientas': '#f97316',      // Naranja
+  'Caminos y Trazados': '#f97316',// Naranja
+  'Caminos': '#f97316',           // Naranja
+  'Herramientas': '#ea580c',      // Naranja rojizo
   'Hitos': '#8b5cf6',             // Púrpura
   'Otros': '#64748b',             // Pizarra
 };
@@ -1014,9 +1021,21 @@ export function getFarmCategories() {
       isDefault: true,
     },
     {
+      name: 'Ríos / Arroyos',
+      subcategories: ['Río', 'Arroyo', 'Cauce natural', 'Torrente', 'Barranco', 'Vado', 'Nacimiento'],
+      color: BASE_CATEGORY_COLORS['Ríos / Arroyos'],
+      isDefault: true,
+    },
+    {
       name: 'Casas',
       subcategories: ['Casita Cueva', 'Almacén', 'Taller', 'Caseta', 'Caravana'],
       color: BASE_CATEGORY_COLORS['Casas'],
+      isDefault: true,
+    },
+    {
+      name: 'Caminos y Trazados',
+      subcategories: ['Sendero', 'Carril agrícola', 'Camino principal', 'Vereda', 'Acequia', 'Línea de Riego', 'Linde', 'Otro trazado'],
+      color: BASE_CATEGORY_COLORS['Caminos y Trazados'],
       isDefault: true,
     },
     {
@@ -1126,6 +1145,10 @@ export function createFarmCategory({ name, subcategories = [], color = null, ico
   }
 
   return savedCat;
+}
+
+export function saveFarmCategory(name, subcategories = [], color = null) {
+  return createFarmCategory({ name, subcategories, color });
 }
 
 /**
@@ -1337,6 +1360,93 @@ export function getCategoryColor(categoryName) {
   return DYNAMIC_PALETTE[index];
 }
 
+/**
+ * Convierte un código HEX a [Hue (0-360), Saturation (0-100), Lightness (0-100)].
+ */
+export function hexToHsl(hex) {
+  if (!hex || typeof hex !== 'string') return [200, 60, 50];
+  let c = hex.replace('#', '').trim();
+  if (c.length === 3) c = c.split('').map((x) => x + x).join('');
+  if (c.length !== 6) return [200, 60, 50];
+  const num = parseInt(c, 16);
+  if (Number.isNaN(num)) return [200, 60, 50];
+  const r = ((num >> 16) & 255) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      case b:
+        h = (r - g) / d + 4;
+        break;
+    }
+    h /= 6;
+  }
+  return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+}
+
+/**
+ * Convierte HSL a código hexadecimal (#rrggbb).
+ */
+export function hslToHex(h, s, l) {
+  const normH = ((h % 360) + 360) % 360;
+  const normS = Math.min(100, Math.max(0, s)) / 100;
+  const normL = Math.min(100, Math.max(0, l)) / 100;
+  const a = normS * Math.min(normL, 1 - normL);
+  const f = (n, k = (n + normH / 30) % 12) =>
+    normL - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+  const toHex = (x) => {
+    const hex = Math.round(Math.min(255, Math.max(0, x * 255))).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+
+/**
+ * Genera el color para una subcategoría perteneciente a la gama de su categoría raíz,
+ * pero en un tono más claro/pastel armónico (ej: Casas amarillo -> Pérgolas amarillo claro).
+ */
+export function getSubcategoryColor(parentCategory, subcategoryName) {
+  const rootColor = getCategoryColor(parentCategory);
+  const [h, s] = hexToHsl(rootColor);
+
+  if (!subcategoryName) {
+    return hslToHex(h, Math.max(40, Math.round(s * 0.8)), 75);
+  }
+
+  // Hash determinista del nombre de la subcategoría
+  let hash = 0;
+  const str = String(subcategoryName).trim().toLowerCase();
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  // Mantener el matiz (Hue) en la gama exacta de la categoría raíz con variación armoniosa (±5°)
+  const hueShift = (Math.abs(hash) % 11) - 5;
+  const finalHue = (h + hueShift + 360) % 360;
+
+  // Subcategoría notablemente más clara (gama pastel luminosa: 72% a 80% de luminosidad)
+  const lightnessOffset = Math.abs(hash >> 3) % 9;
+  const finalLightness = Math.min(84, Math.max(72, 73 + lightnessOffset));
+  const finalSaturation = Math.min(95, Math.max(50, Math.round(s * 0.88)));
+
+  return hslToHex(finalHue, finalSaturation, finalLightness);
+}
+
 export const PATH_TYPE_COLORS = {
   'camino': '#92400e',        // Marrón
   'carril': '#a16207',        // Ocre / tierra
@@ -1407,24 +1517,63 @@ export function getItemCategory(item) {
 }
 
 /**
- * Obtiene las subcategorías presentes dentro de una categoría padre (taxonomía + inventario vivo).
+ * Obtiene las subcategorías presentes estrictamente dentro de una categoría padre (taxonomía + inventario vivo).
  */
 export function getSubcategoriesForParent(inventory, parent) {
+  if (!parent) return [];
+  const cleanParent = String(parent).trim().toLowerCase();
   const subs = new Set();
   const activeCats = getFarmCategories();
-  const match = activeCats.find((c) => c.name.toLowerCase() === (parent || '').toLowerCase());
+  const match = activeCats.find((c) => c.name.toLowerCase() === cleanParent);
   if (match && Array.isArray(match.subcategories)) {
-    match.subcategories.forEach((s) => subs.add(s));
+    match.subcategories.forEach((s) => {
+      if (s && typeof s === 'string' && s.trim()) subs.add(s.trim());
+    });
   }
 
+  // Variedades o subtipos reales ya registrados en el inventario para esta categoría padre
   (inventory || []).forEach((item) => {
-    const itemParent = getItemCategory(item);
-    if (itemParent.toLowerCase() === (parent || '').toLowerCase()) {
-      const subLabel = item.variety_type || item.tipo || item.name;
-      if (subLabel && subLabel.toLowerCase() !== (parent || '').toLowerCase()) {
+    const itemParent = getItemCategory(item).toLowerCase();
+    const assignedCat = (item.category || '').toLowerCase();
+    if (itemParent === cleanParent || assignedCat === cleanParent) {
+      const subLabel = (item.variety_type || item.variety || '').trim();
+      if (subLabel && subLabel.toLowerCase() !== cleanParent) {
         subs.add(subLabel);
       }
     }
   });
-  return [...subs];
+  return Array.from(subs);
 }
+
+/**
+ * Obtiene la categoría normalizada para una polilínea o camino.
+ */
+export function getPathCategory(path) {
+  if (!path) return 'Caminos y Trazados';
+  const raw = String(path.category || '').trim();
+  if (raw && raw.toLowerCase() !== 'otros' && raw.toLowerCase() !== 'otro') {
+    return raw;
+  }
+  const pt = String(path.path_type || '').toLowerCase();
+  if (pt === 'linea_riego' || pt === 'riego') return 'Líneas de Riego';
+  if (pt === 'acequia') return 'Riego / Agua';
+  if (pt === 'linde') return 'Lindes y Límites';
+  return 'Caminos y Trazados';
+}
+
+/**
+ * Obtiene el subtipo o subcategoría legible para una polilínea o camino.
+ */
+export function getPathSubcategory(path) {
+  if (!path) return '';
+  const sub = String(path.variety_type || path.subcategory || '').trim();
+  if (sub && sub.toLowerCase() !== 'otro' && sub.toLowerCase() !== 'otros') {
+    return sub;
+  }
+  const pt = String(path.path_type || '').trim().toLowerCase();
+  if (pt && pt !== 'otro' && pt !== 'otro_trazado') {
+    return pt.charAt(0).toUpperCase() + pt.slice(1);
+  }
+  return '';
+}
+

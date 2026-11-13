@@ -1,15 +1,15 @@
 // src/components/map/MapFilterDrawer.jsx
+import { useMemo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import FilterDrawerShell from '../common/FilterDrawerShell';
 import {
   getCategoryColor,
-  PATH_TYPE_COLORS,
+  getSubcategoryColor,
   getItemCategory,
   getSubcategoriesForParent,
+  getPathCategory,
+  getPathSubcategory,
 } from '../../services/farmInventoryStorage';
-import { PATH_TYPES, PATH_TYPE_LABELS } from './mapUtils';
-
-const FILTERABLE_PATH_TYPES = PATH_TYPES.filter((pt) => pt !== 'linde');
 
 export default function MapFilterDrawer({
   isOpen,
@@ -27,36 +27,66 @@ export default function MapFilterDrawer({
   localPaths = [],
   showPaths = true,
   setShowPaths,
-  visiblePathTypes = new Set(),
-  setVisiblePathTypes,
-  togglePathType,
+  allPathCategories = [],
+  visiblePathCategories = new Set(),
+  setVisiblePathCategories,
+  togglePathCategory,
+  expandedPathParents = new Set(),
+  setExpandedPathParents,
+  visiblePathSubcats = null,
+  setVisiblePathSubcats,
+  togglePathSubcat,
 }) {
-  const nonEmptyCategories = (allCategories || [])
-    .map((parent) => {
-      const count = (localInventory || []).filter((i) => getItemCategory(i) === parent).length;
-      if (count === 0) return null;
-      const subcats = getSubcategoriesForParent(localInventory || [], parent)
-        .map((sub) => ({
-          sub,
-          subCount: (localInventory || []).filter(
-            (i) => getItemCategory(i) === parent && (i.variety_type || i.category || i.tipo) === sub
-          ).length,
-        }))
-        .filter((s) => s.subCount > 0);
-      return { parent, count, subcats };
-    })
-    .filter(Boolean);
+  // 1. Categorías no vacías de Puntos de Inventario
+  const nonEmptyCategories = useMemo(() => {
+    return (allCategories || [])
+      .map((parent) => {
+        const count = (localInventory || []).filter((i) => getItemCategory(i) === parent).length;
+        if (count === 0) return null;
+        const subcats = getSubcategoriesForParent(localInventory || [], parent)
+          .map((sub) => ({
+            sub,
+            subCount: (localInventory || []).filter(
+              (i) => getItemCategory(i) === parent && (i.variety_type || i.category || i.tipo) === sub
+            ).length,
+          }))
+          .filter((s) => s.subCount > 0);
+        return { parent, count, subcats };
+      })
+      .filter(Boolean);
+  }, [allCategories, localInventory]);
 
-  const nonLindePaths = (localPaths || []).filter((p) => (p.path_type || 'otro') !== 'linde');
+  // 2. Trazados que no son lindes catastrales
+  const nonLindePaths = useMemo(
+    () => (localPaths || []).filter((p) => (p.path_type || 'otro') !== 'linde'),
+    [localPaths]
+  );
 
-  const nonEmptyPathTypes = FILTERABLE_PATH_TYPES
-    .map((pt) => ({
-      pt,
-      count: nonLindePaths.filter((p) => (p.path_type || 'otro') === pt).length,
-    }))
-    .filter((item) => item.count > 0);
+  // 3. Agrupación de trazados por su categoría real (ej: Caminos y Trazados, Ríos / Arroyos, etc.)
+  const pathCategoryGroups = useMemo(() => {
+    const groups = new Map();
+    (nonLindePaths || []).forEach((path) => {
+      const cat = getPathCategory(path);
+      if (!groups.has(cat)) {
+        groups.set(cat, { cat, count: 0, subMap: new Map() });
+      }
+      const g = groups.get(cat);
+      g.count += 1;
+      const sub = getPathSubcategory(path);
+      if (sub) {
+        g.subMap.set(sub, (g.subMap.get(sub) || 0) + 1);
+      }
+    });
 
-  const visibleInventoryCount = localInventory.filter((item) => {
+    return Array.from(groups.values()).map((g) => ({
+      cat: g.cat,
+      count: g.count,
+      subcats: Array.from(g.subMap.entries()).map(([sub, subCount]) => ({ sub, subCount })),
+    }));
+  }, [nonLindePaths]);
+
+  // Conteo de puntos visibles
+  const visibleInventoryCount = (localInventory || []).filter((item) => {
     const parent = getItemCategory(item);
     if (!visibleCategories.has(parent)) return false;
     if (visibleSubcats !== null) {
@@ -66,8 +96,17 @@ export default function MapFilterDrawer({
     return true;
   }).length;
 
+  // Conteo de trazados visibles
   const visiblePathsCount = showPaths
-    ? nonLindePaths.filter((p) => visiblePathTypes.has(p.path_type || 'otro')).length
+    ? nonLindePaths.filter((p) => {
+        const cat = getPathCategory(p);
+        if (visiblePathCategories && !visiblePathCategories.has(cat)) return false;
+        if (visiblePathSubcats !== null) {
+          const sub = getPathSubcategory(p);
+          if (sub && !visiblePathSubcats.has(sub)) return false;
+        }
+        return true;
+      }).length
     : 0;
 
   const totalVisibleElements = visibleInventoryCount + visiblePathsCount;
@@ -90,6 +129,7 @@ export default function MapFilterDrawer({
       }
       footer={`${totalVisibleElements} ${totalVisibleElements === 1 ? 'elemento' : 'elementos'}`}
     >
+      {/* SECCIÓN 1: PUNTOS DE INVENTARIO */}
       {nonEmptyCategories.length > 0 && (
         <div id="map-filter-section-inventory">
           <span className="filter-drawer-section-label">Puntos de inventario</span>
@@ -175,19 +215,26 @@ export default function MapFilterDrawer({
         </div>
       )}
 
+      {/* SECCIÓN 2: CAMINOS Y TRAZADOS (POLILÍNEAS) */}
       {nonLindePaths.length > 0 && (
         <div id="map-filter-section-paths">
           <span className="filter-drawer-section-label">Caminos y trazados</span>
           <div className="filter-drawer-list">
-            <label className={`filter-drawer-option ${showPaths && visiblePathTypes.size > 0 ? 'is-active' : ''}`}>
+            {/* Master checkbox: Todos los trazados */}
+            <label className={`filter-drawer-option ${showPaths && visiblePathCategories.size > 0 ? 'is-active' : ''}`}>
               <span className="filter-drawer-option-label">
                 <input
                   type="checkbox"
-                  checked={showPaths && visiblePathTypes.size > 0}
+                  checked={showPaths && visiblePathCategories.size > 0}
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setShowPaths(checked);
-                    setVisiblePathTypes(checked ? new Set(FILTERABLE_PATH_TYPES) : new Set());
+                    if (checked) {
+                      setVisiblePathCategories(new Set(pathCategoryGroups.map((g) => g.cat)));
+                      if (setVisiblePathSubcats) setVisiblePathSubcats(null);
+                    } else {
+                      setVisiblePathCategories(new Set());
+                    }
                   }}
                   style={{ accentColor: '#f97316' }}
                 />
@@ -197,27 +244,79 @@ export default function MapFilterDrawer({
               <span className="filter-drawer-badge">{nonLindePaths.length}</span>
             </label>
 
-            {nonEmptyPathTypes.length > 0 && (
+            {/* Grupos de Categorías de Trazados (Caminos y Trazados, Ríos / Arroyos, etc.) */}
+            {pathCategoryGroups.length > 0 && (
               <div className="filter-drawer-sublist">
-                {nonEmptyPathTypes.map(({ pt, count }) => {
-                  const isChecked = showPaths && visiblePathTypes.has(pt);
+                {pathCategoryGroups.map(({ cat, count, subcats }) => {
+                  const isActive = showPaths && visiblePathCategories.has(cat);
+                  const isExpanded = expandedPathParents.has(cat);
+                  const color = getCategoryColor(cat);
                   return (
-                    <label key={pt} className={`filter-drawer-suboption ${isChecked ? 'is-active' : ''}`}>
-                      <span className="filter-drawer-option-label">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {
-                            if (!showPaths) setShowPaths(true);
-                            togglePathType(pt);
-                          }}
-                          style={{ accentColor: '#00979d' }}
-                        />
-                        <span style={{ width: 12, height: 3, borderRadius: 1, backgroundColor: PATH_TYPE_COLORS[pt] || '#64748b', flexShrink: 0 }} />
-                        <span>{PATH_TYPE_LABELS[pt]}</span>
-                      </span>
-                      <span className="filter-drawer-badge">{count}</span>
-                    </label>
+                    <div key={cat}>
+                      <div className="filter-drawer-option-row">
+                        <label className={`filter-drawer-option ${isActive ? 'is-active' : ''}`}>
+                          <span className="filter-drawer-option-label">
+                            <input
+                              type="checkbox"
+                              checked={isActive}
+                              onChange={() => {
+                                if (!showPaths) setShowPaths(true);
+                                togglePathCategory(cat);
+                              }}
+                              style={{ accentColor: '#00979d' }}
+                            />
+                            <span style={{ width: 12, height: 3, borderRadius: 1.5, backgroundColor: color, flexShrink: 0 }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</span>
+                          </span>
+                          <span className="filter-drawer-badge">{count}</span>
+                        </label>
+                        {subcats.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedPathParents((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(cat)) next.delete(cat);
+                                else next.add(cat);
+                                return next;
+                              })
+                            }
+                            className="filter-drawer-expand-btn"
+                            aria-label={isExpanded ? `Contraer ${cat}` : `Expandir ${cat}`}
+                          >
+                            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Subcategorías de la categoría de trazado */}
+                      {isExpanded && subcats.length > 0 && (
+                        <div className="filter-drawer-sublist">
+                          {subcats.map(({ sub, subCount }) => {
+                            const isSubActive = visiblePathSubcats === null || visiblePathSubcats.has(sub);
+                            const subColor = getSubcategoryColor(cat, sub);
+                            return (
+                              <label key={sub} className={`filter-drawer-suboption ${isSubActive ? 'is-active' : ''}`}>
+                                <span className="filter-drawer-option-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSubActive}
+                                    onChange={() => {
+                                      if (!showPaths) setShowPaths(true);
+                                      togglePathSubcat(sub);
+                                    }}
+                                    style={{ accentColor: '#00979d' }}
+                                  />
+                                  <span style={{ width: 10, height: 2.5, borderRadius: 1, backgroundColor: subColor, flexShrink: 0 }} />
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
+                                </span>
+                                <span className="filter-drawer-badge">{subCount}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

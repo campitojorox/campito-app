@@ -17,6 +17,12 @@ import {
   PATH_TYPE_COLORS,
   getItemCategory,
   getFarmCategories,
+  getCategoryColor,
+  getSubcategoryColor,
+  getSubcategoriesForParent,
+  getPathCategory,
+  getPathSubcategory,
+  saveFarmCategory,
 } from '../services/farmInventoryStorage';
 import { generateCustomPDF } from '../utils/exportTools';
 import { syncTextareaHeight } from '../utils/helpers';
@@ -218,9 +224,24 @@ export default function FarmSatelliteMap({
       const cat = getItemCategory(item);
       if (cat && cat !== 'Otros') found.add(cat);
     });
+    (localPaths || []).forEach((path) => {
+      const cat = getPathCategory(path);
+      if (cat && cat !== 'Otros') found.add(cat);
+    });
     found.add('Otros');
     return Array.from(found);
-  }, [localInventory, categoriesVersion]);
+  }, [localInventory, localPaths, categoriesVersion]);
+
+  const allPathCategories = useMemo(() => {
+    const cats = new Set();
+    (localPaths || []).forEach((p) => {
+      if ((p.path_type || '') !== 'linde') {
+        cats.add(getPathCategory(p));
+      }
+    });
+    if (cats.size === 0) cats.add('Caminos y Trazados');
+    return Array.from(cats);
+  }, [localPaths]);
 
   // ─── Capas y filtros persistidos ───────────────────────────────────────────
   const initialMapSettings = useMemo(() => loadMapSettingsFromCache(), []);
@@ -277,6 +298,20 @@ export default function FarmSatelliteMap({
       : null
   );
   const [expandedParents, setExpandedParents] = useState(new Set());
+
+  // Filtro de categorías y subcategorías para polilíneas y trazados
+  const [visiblePathCategories, setVisiblePathCategories] = useState(() => {
+    if (initialMapSettings?.visiblePathCategories && Array.isArray(initialMapSettings.visiblePathCategories)) {
+      return new Set(initialMapSettings.visiblePathCategories);
+    }
+    return new Set(['Caminos y Trazados', 'Ríos / Arroyos', 'Rios / Arroyos', 'Líneas de Riego', 'Lindes y Límites', ...Object.keys(BASE_CATEGORY_MAP)]);
+  });
+  const [visiblePathSubcats, setVisiblePathSubcats] = useState(() =>
+    initialMapSettings?.visiblePathSubcats && Array.isArray(initialMapSettings.visiblePathSubcats)
+      ? new Set(initialMapSettings.visiblePathSubcats)
+      : null
+  );
+  const [expandedPathParents, setExpandedPathParents] = useState(new Set());
   const [visiblePathTypes, setVisiblePathTypes] = useState(() =>
     initialMapSettings?.visiblePathTypes && Array.isArray(initialMapSettings.visiblePathTypes)
       ? new Set(initialMapSettings.visiblePathTypes)
@@ -295,6 +330,8 @@ export default function FarmSatelliteMap({
         showPoints,
         visibleCategories: Array.from(visibleCategories),
         visibleSubcats: visibleSubcats ? Array.from(visibleSubcats) : null,
+        visiblePathCategories: Array.from(visiblePathCategories),
+        visiblePathSubcats: visiblePathSubcats ? Array.from(visiblePathSubcats) : null,
         visiblePathTypes: Array.from(visiblePathTypes),
       };
       localStorage.setItem(MAP_SETTINGS_STORAGE_KEY, JSON.stringify(payload));
@@ -305,12 +342,17 @@ export default function FarmSatelliteMap({
     showLegend,
     showNavControls,
     satelliteType,
+    showLegend,
+    showNavControls,
+    satelliteType,
     showCatastro,
     showElevationContours,
     showPaths,
     showPoints,
     visibleCategories,
     visibleSubcats,
+    visiblePathCategories,
+    visiblePathSubcats,
     visiblePathTypes,
   ]);
 
@@ -320,7 +362,8 @@ export default function FarmSatelliteMap({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [newPathData, setNewPathData] = useState({
     name: '',
-    path_type: 'sendero',
+    category: 'Caminos y Trazados',
+    path_type: 'Sendero',
     color: '#f97316',
     stroke_width: 4,
     notes: '',
@@ -393,14 +436,27 @@ export default function FarmSatelliteMap({
     const q = searchQuery.toLowerCase().trim();
     return localPaths.filter((path) => {
       if (q) {
-        const searchable = [path.name, path.path_type, path.notes].filter(Boolean).join(' ').toLowerCase();
+        const searchable = [path.name, path.category, path.path_type, path.variety_type, path.notes]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
         if (!searchable.includes(q)) return false;
       }
       const pt = path.path_type || 'otro';
       if (pt === 'linde') return showCatastro;
-      return showPaths && visiblePathTypes.has(pt);
+      if (!showPaths) return false;
+
+      const cat = getPathCategory(path);
+      if (visiblePathCategories && visiblePathCategories.size > 0 && !visiblePathCategories.has(cat)) {
+        return false;
+      }
+      if (visiblePathSubcats !== null) {
+        const sub = getPathSubcategory(path);
+        if (sub && !visiblePathSubcats.has(sub)) return false;
+      }
+      return true;
     });
-  }, [localPaths, searchQuery, showCatastro, showPaths, visiblePathTypes]);
+  }, [localPaths, searchQuery, showCatastro, showPaths, visiblePathCategories, visiblePathSubcats]);
 
   useEffect(() => {
     const q = (searchQuery || '').trim();
@@ -490,12 +546,13 @@ export default function FarmSatelliteMap({
 
       const payload = {
         name: pathName,
-        path_type: newPathData.path_type,
+        category: newPathData.category || 'Caminos y Trazados',
+        path_type: newPathData.path_type || '',
         coordinates: drawPoints,
-        color: newPathData.color,
+        color: newPathData.color || getCategoryColor(newPathData.category || 'Caminos y Trazados'),
         stroke_width: Number(newPathData.stroke_width) || 4,
         length_meters: Number(lengthMeters.toFixed(2)),
-        notes: newPathData.notes.trim() || null,
+        notes: newPathData.notes?.trim() || null,
         user_id: user?.id || null,
         user_name: userName,
         is_active: true,
@@ -505,15 +562,26 @@ export default function FarmSatelliteMap({
       setIsDrawing(false);
       setDrawPoints([]);
       setShowSaveModal(false);
-      setNewPathData({ name: '', path_type: 'sendero', color: '#f97316', stroke_width: 4, notes: '' });
+      setNewPathData({
+        name: '',
+        category: 'Caminos y Trazados',
+        path_type: 'Sendero',
+        color: '#f97316',
+        stroke_width: 4,
+        notes: '',
+      });
 
       if (data) {
         setShowPaths(true);
+        const savedCat = getPathCategory(data);
+        setVisiblePathCategories((prev) => new Set([...prev, savedCat]));
         setLocalPaths((prev) => [data, ...prev.filter((p) => String(p.id) !== String(data.id))]);
+        saveFarmCategory(savedCat, data.path_type ? [data.path_type] : []);
         setSelectedTarget({
           type: 'path',
           id: data.id,
           title: data.name,
+          category: data.category || newPathData.category || 'Caminos y Trazados',
           path_type: data.path_type,
           color: data.color,
           length_meters: data.length_meters,
@@ -576,6 +644,31 @@ export default function FarmSatelliteMap({
     setVisibleSubcats(null);
   };
 
+  const togglePathCategory = (cat) => {
+    setVisiblePathCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  const togglePathSubcat = (sub) => {
+    setVisiblePathSubcats((prev) => {
+      if (prev === null) {
+        const allSubs = new Set(
+          (localPaths || []).map((p) => getPathSubcategory(p)).filter(Boolean)
+        );
+        allSubs.delete(sub);
+        return allSubs;
+      }
+      const next = new Set(prev);
+      if (next.has(sub)) next.delete(sub);
+      else next.add(sub);
+      return next;
+    });
+  };
+
   const togglePathType = (pt) => {
     setVisiblePathTypes((prev) => {
       const next = new Set(prev);
@@ -588,6 +681,8 @@ export default function FarmSatelliteMap({
   const selectAllFilters = () => {
     setVisibleCategories(new Set(allCategories));
     setVisibleSubcats(null);
+    setVisiblePathCategories(new Set(allPathCategories));
+    setVisiblePathSubcats(null);
     setVisiblePathTypes(new Set(PATH_TYPES.filter((pt) => pt !== 'linde')));
     setShowPaths(true);
   };
@@ -595,18 +690,20 @@ export default function FarmSatelliteMap({
   const clearAllFilters = () => {
     setVisibleCategories(new Set());
     setVisibleSubcats(null);
+    setVisiblePathCategories(new Set());
+    setVisiblePathSubcats(null);
     setVisiblePathTypes(new Set());
     setShowPaths(false);
   };
 
-  const handleDeleteTarget = async (e) => {
+  const handleDeleteTarget = async (e, skipConfirm = false) => {
     if (e) {
       e.stopPropagation?.();
       e.preventDefault?.();
     }
     if (!selectedTarget) return;
-    const targetTitle = selectedTarget.title || 'este elemento';
-    if (!window.confirm(`¿Seguro que deseas eliminar "${targetTitle}"?`)) return;
+    const targetTitle = selectedTarget.name || selectedTarget.title || 'este elemento';
+    if (!skipConfirm && !window.confirm(`¿Seguro que deseas eliminar "${targetTitle}"?`)) return;
 
     setIsProcessingIa(true);
     const targetId = selectedTarget.id;
@@ -672,10 +769,20 @@ export default function FarmSatelliteMap({
       const targetId = selectedTarget.id;
       const updateObj = {};
       if (field === 'title' || field === 'name') updateObj.name = value;
-      else if (field === 'category') updateObj.category = value;
-      else if (field === 'variety_type' || field === 'variety') updateObj.variety_type = value;
-      else if (field === 'status') updateObj.status = value;
-      else if (field === 'notes') updateObj.notes = value;
+      else if (field === 'category') {
+        updateObj.category = value;
+        const validSubs = getSubcategoriesForParent(localInventory, value);
+        const curSub = selectedTarget.variety_type || selectedTarget.variety || '';
+        if (curSub && !validSubs.some((s) => s.toLowerCase() === curSub.trim().toLowerCase())) {
+          updateObj.variety_type = '';
+        }
+      } else if (field === 'variety_type' || field === 'variety' || field === 'subcategory' || field === 'subcategoria') {
+        updateObj.variety_type = value;
+      } else if (field === 'status') {
+        updateObj.status = value;
+      } else if (field === 'notes' || field === 'description') {
+        updateObj.notes = value;
+      }
 
       setSelectedTarget((prev) => {
         if (!prev || String(prev.id) !== String(targetId)) return prev;
@@ -718,25 +825,58 @@ export default function FarmSatelliteMap({
       } else {
         directSaveTimersRef.current[saveKey] = setTimeout(flushPoint, 450);
       }
-    } else if (selectedTarget.type === 'path') {
-      const targetId = selectedTarget.id;
+    } else if (selectedTarget.type === 'path' || selectedTarget.type === 'node') {
+      const targetId = selectedTarget.type === 'node' ? selectedTarget.pathId : selectedTarget.id;
       const updateObj = {};
-      if (field === 'title' || field === 'name') updateObj.name = value;
-      else if (field === 'category') updateObj.category = value;
-      else if (field === 'path_type') {
+      const parentCat = selectedTarget.category || selectedTarget.raw?.category || 'Caminos y Trazados';
+
+      if (field === 'title' || field === 'name') {
+        updateObj.name = value;
+      } else if (field === 'category') {
+        updateObj.category = value;
+        const validSubs = getSubcategoriesForParent(localInventory, value);
+        const curSub = selectedTarget.path_type || selectedTarget.variety_type || selectedTarget.raw?.path_type || '';
+        if (curSub && !validSubs.some((s) => s.toLowerCase() === curSub.trim().toLowerCase())) {
+          updateObj.path_type = '';
+          updateObj.variety_type = '';
+        }
+        updateObj.color = getCategoryColor(value);
+      } else if (field === 'path_type' || field === 'variety_type' || field === 'subcategory' || field === 'subcategoria') {
         updateObj.path_type = value;
-        updateObj.color = PATH_TYPE_COLORS[value] || selectedTarget.color;
-      } else if (field === 'color') updateObj.color = value;
-      else if (field === 'notes') updateObj.notes = value;
+        updateObj.variety_type = value;
+        updateObj.color = value ? getSubcategoryColor(parentCat, value) : getCategoryColor(parentCat);
+      } else if (field === 'color') {
+        updateObj.color = value;
+      } else if (field === 'notes' || field === 'description') {
+        updateObj.notes = value;
+      }
 
       setSelectedTarget((prev) => {
-        if (!prev || String(prev.id) !== String(targetId)) return prev;
-        return {
-          ...prev,
-          ...updateObj,
-          ...('name' in updateObj ? { title: updateObj.name } : {}),
-        };
+        if (!prev) return prev;
+        if (prev.type === 'path' && String(prev.id) === String(targetId)) {
+          return {
+            ...prev,
+            ...updateObj,
+            ...('name' in updateObj ? { title: updateObj.name } : {}),
+            ...('variety_type' in updateObj ? { variety: updateObj.variety_type } : {}),
+          };
+        }
+        if (prev.type === 'node' && String(prev.pathId) === String(targetId)) {
+          return {
+            ...prev,
+            ...updateObj,
+            pathName: 'name' in updateObj ? updateObj.name : prev.pathName,
+            pathType: 'path_type' in updateObj ? updateObj.path_type : prev.pathType,
+            category: 'category' in updateObj ? updateObj.category : prev.category,
+            raw: {
+              ...(prev.raw || {}),
+              ...updateObj,
+            },
+          };
+        }
+        return prev;
       });
+
       setLocalPaths((prev) =>
         prev.map((p) => (String(p.id) === String(targetId) ? { ...p, ...updateObj } : p))
       );
@@ -761,7 +901,7 @@ export default function FarmSatelliteMap({
         }
       };
 
-      if (field === 'path_type' || field === 'color') {
+      if (field === 'path_type' || field === 'category' || field === 'color') {
         await flushPath();
       } else {
         directSaveTimersRef.current[saveKey] = setTimeout(flushPath, 450);
@@ -769,12 +909,19 @@ export default function FarmSatelliteMap({
     }
   };
 
-  const handleDeleteNode = async (pathId, nodeIndex) => {
+  const handleDeleteNode = async (pathId, nodeIndex, skipConfirm = false) => {
     const path = localPaths.find((p) => String(p.id) === String(pathId));
     if (!path || !Array.isArray(path.coordinates) || path.coordinates.length <= 2) {
       alert(
         'Un recorrido debe tener al menos 2 nodos. Si deseas eliminar el recorrido completo, usa el botón de borrar recorrido.'
       );
+      return;
+    }
+    const nodeNum = (Number(nodeIndex) || 0) + 1;
+    if (
+      !skipConfirm &&
+      !window.confirm(`¿Deseas eliminar el nodo ${nodeNum} de ${path.coordinates.length} del trazado "${path.name}"?`)
+    ) {
       return;
     }
     const updatedCoords = path.coordinates.filter((_, i) => i !== nodeIndex);
@@ -872,6 +1019,7 @@ export default function FarmSatelliteMap({
           setNewPathData={setNewPathData}
           setIsDrawing={setIsDrawing}
           setShowSaveModal={setShowSaveModal}
+          onSaveDrawnPath={handleSaveDrawnPath}
           showLegend={showLegend}
           selectedTarget={selectedTarget}
           allCategories={allCategories}
@@ -907,6 +1055,15 @@ export default function FarmSatelliteMap({
           localPaths={localPaths}
           showPaths={showPaths}
           setShowPaths={setShowPaths}
+          allPathCategories={allPathCategories}
+          visiblePathCategories={visiblePathCategories}
+          setVisiblePathCategories={setVisiblePathCategories}
+          togglePathCategory={togglePathCategory}
+          expandedPathParents={expandedPathParents}
+          setExpandedPathParents={setExpandedPathParents}
+          visiblePathSubcats={visiblePathSubcats}
+          setVisiblePathSubcats={setVisiblePathSubcats}
+          togglePathSubcat={togglePathSubcat}
           visiblePathTypes={visiblePathTypes}
           setVisiblePathTypes={setVisiblePathTypes}
           togglePathType={togglePathType}
