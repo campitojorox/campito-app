@@ -39,6 +39,8 @@ export async function processChatResponseActions({
   onEventDeleted,
   onTransactionAdded,
   onKnowledgeAdded,
+  onCategoryAdded,
+  onCategoryDeleted,
   refetchEvents,
   refetchTransactions,
 }) {
@@ -78,6 +80,14 @@ export async function processChatResponseActions({
     .replace(/\[\[CREAR_TRANSACCION:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[REGISTRAR_HERRAMIENTA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[CREAR_HERRAMIENTA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[CREAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[REGISTRAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[BORRAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[ELIMINAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[CREAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[REGISTRAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[BORRAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[ELIMINAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .trim();
 
   const actionsToExecute = [
@@ -87,6 +97,10 @@ export async function processChatResponseActions({
     ...structured.updates.map((u) => ({ type: 'UPDATE_POINT', data: u })),
     ...uCmds.pathUpdates.map((pth) => ({ type: 'UPDATE_PATH', data: pth })),
     ...uCmds.pathDeletions.map((d) => ({ type: 'DELETE_PATH', data: d })),
+    ...(structured.categories || uCmds.categories || []).map((c) => ({ type: 'CREATE_CATEGORY', data: c })),
+    ...(structured.categoryDeletions || uCmds.categoryDeletions || []).map((c) => ({ type: 'DELETE_CATEGORY', data: c })),
+    ...(structured.subcategories || uCmds.subcategories || []).map((s) => ({ type: 'CREATE_SUBCATEGORY', data: s })),
+    ...(structured.subcategoryDeletions || uCmds.subcategoryDeletions || []).map((s) => ({ type: 'DELETE_SUBCATEGORY', data: s })),
   ];
 
   if (userText && actionsToExecute.filter((a) => a.type === 'DELETE_POINT').length === 0) {
@@ -134,6 +148,12 @@ export async function processChatResponseActions({
       }
       if (execResult.updatedPaths.length > 0) {
         onPathUpdated?.(execResult.updatedPaths);
+      }
+      if (execResult.addedCategories?.length > 0 || execResult.newCategoriesCreated?.length > 0) {
+        onCategoryAdded?.([...(execResult.addedCategories || []), ...(execResult.newCategoriesCreated || [])]);
+      }
+      if (execResult.deletedCategories?.length > 0) {
+        onCategoryDeleted?.(execResult.deletedCategories);
       }
     } catch (e) {
       console.warn('[ChatIA] Error ejecutando acciones de inventario:', e);

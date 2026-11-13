@@ -332,6 +332,10 @@ export function parseAllStructuredCommands(rawText) {
       memories: [],
       customTools: [],
       exportFiles: [],
+      categories: [],
+      categoryDeletions: [],
+      subcategories: [],
+      subcategoryDeletions: [],
     };
   }
 
@@ -359,6 +363,11 @@ export function parseAllStructuredCommands(rawText) {
   const customTools = extractPayloads(rawText, ['REGISTRAR_HERRAMIENTA', 'CREAR_HERRAMIENTA']);
   const exportFiles = extractPayloads(rawText, ['EXPORTAR_ARCHIVO']);
 
+  const categories = extractPayloads(rawText, ['CREAR_CATEGORIA', 'REGISTRAR_CATEGORIA']);
+  const categoryDeletions = extractPayloads(rawText, ['BORRAR_CATEGORIA', 'ELIMINAR_CATEGORIA']);
+  const subcategories = extractPayloads(rawText, ['CREAR_SUBCATEGORIA', 'REGISTRAR_SUBCATEGORIA']);
+  const subcategoryDeletions = extractPayloads(rawText, ['BORRAR_SUBCATEGORIA', 'ELIMINAR_SUBCATEGORIA']);
+
   return {
     points,
     pointDeletions,
@@ -372,6 +381,10 @@ export function parseAllStructuredCommands(rawText) {
     memories,
     customTools,
     exportFiles,
+    categories,
+    categoryDeletions,
+    subcategories,
+    subcategoryDeletions,
   };
 }
 

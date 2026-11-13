@@ -16,6 +16,7 @@ import {
   BASE_CATEGORY_MAP,
   PATH_TYPE_COLORS,
   getItemCategory,
+  getFarmCategories,
 } from '../services/farmInventoryStorage';
 import { generateCustomPDF } from '../utils/exportTools';
 import { syncTextareaHeight } from '../utils/helpers';
@@ -200,17 +201,26 @@ export default function FarmSatelliteMap({
     };
   }, []);
 
-  // ─── Descubrimiento dinámico de categorías ─────────────────────────────────
+  // ─── Descubrimiento dinámico de categorías y taxonomía viva ────────────────
+  const [categoriesVersion, setCategoriesVersion] = useState(0);
+
+  useEffect(() => {
+    const handleCatsUpdated = () => setCategoriesVersion((v) => v + 1);
+    window.addEventListener('farm-categories-updated', handleCatsUpdated);
+    return () => window.removeEventListener('farm-categories-updated', handleCatsUpdated);
+  }, []);
+
   const allCategories = useMemo(() => {
-    const baseOrder = ['Árboles', 'Plantas', 'Riego / Agua', 'Casas', 'Herramientas', 'Hitos'];
-    const found = new Set(baseOrder);
+    if (categoriesVersion < 0) return [];
+    const activeCats = getFarmCategories().map((c) => c.name).filter((n) => n !== 'Otros');
+    const found = new Set(activeCats);
     (localInventory || []).forEach((item) => {
       const cat = getItemCategory(item);
       if (cat && cat !== 'Otros') found.add(cat);
     });
     found.add('Otros');
     return Array.from(found);
-  }, [localInventory]);
+  }, [localInventory, categoriesVersion]);
 
   // ─── Capas y filtros persistidos ───────────────────────────────────────────
   const initialMapSettings = useMemo(() => loadMapSettingsFromCache(), []);

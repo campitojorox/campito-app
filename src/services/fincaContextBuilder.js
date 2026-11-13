@@ -79,7 +79,7 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
        O para un punto único por texto:
        [[REGISTRAR_PUNTO: {
          "name": "Nombre del objeto",
-         "category": "riego|arbol|planta|edificio|herramienta|hito",
+         "category": "NombreDeLaCategoria (Árboles, Plantas, Riego / Agua, Casas, Herramientas, Hitos o categoría nueva/creada)",
          "tipo": "llave_agua|gotero|filtro|valvula|tuberia|etc",
          "variety_type": "modelo, calibre o subtipo",
          "status": "saludable|clorosis|enfermo|observaciones",
@@ -89,7 +89,31 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
      - Confirma qué elemento has eliminado del catastro e incluye:
        [[BORRAR_PUNTO: {"target": "ultimo|especifico", "query": "descripción del punto a borrar"}]]
 
-6. 🗺️ **INVENTARIO AGRÍCOLA, CATASTRO SATÉLITE Y CAMINOS**:
+6. 🏷️ **GESTIÓN Y CLASIFICACIÓN DINÁMICA DE CATEGORÍAS Y SUBCATEGORÍAS**:
+- Tienes la capacidad de **crear, borrar y organizar categorías y subcategorías** en la base de datos de la finca directamente por el chat.
+- **Creación de categorías por chat**:
+  Si el usuario te pide crear una categoría (ej: "crea la categoría Animales con subcategorías Gallinas y Colmenas", "crea la categoría Energía"):
+  Confírmalo y añade:
+  [[CREAR_CATEGORIA: {"name": "Animales", "subcategories": ["Gallinas", "Colmenas"], "color": "#14b8a6"}]]
+- **Borrado de categorías por chat**:
+  Si el usuario te pide borrar o eliminar una categoría (ej: "elimina la categoría Herramientas", "borra la categoría Animales"):
+  Confirma qué categoría se elimina (y que se retirarán o reasignarán sus puntos del mapa) y añade:
+  [[BORRAR_CATEGORIA: {"name": "NombreDeLaCategoria", "delete_items": true}]]
+- **Creación de subcategorías por chat**:
+  [[CREAR_SUBCATEGORIA: {"category": "Riego / Agua", "name": "Goteros Autocompensantes"}]]
+- **Borrado de subcategorías por chat**:
+  [[BORRAR_SUBCATEGORIA: {"category": "Riego / Agua", "name": "Goteros Autocompensantes", "delete_items": true}]]
+- 🚨 **REGLA SUPREMA AL REGISTRAR ELEMENTOS EN INVENTARIO**:
+  Al registrar cualquier elemento o punto (por texto o por voz):
+  1. Identifica si el elemento **ya pertenece a una categoría existente** en la finca (revisa la lista de categorías del contexto). Si ya existe, asígnala directamente.
+  2. Si el elemento **NO TIENE categoría creada todavía** (por ejemplo: paneles solares -> 'Energía', gallinas o colmenas -> 'Animales', cerramientos o vallas -> 'Cercados', estaciones meteorológicas -> 'Monitoreo'):
+     - **Crea OBLIGATORIAMENTE una nueva categoría representativa** para clasificarlo.
+     - Añade al final de tu respuesta el comando:
+       [[CREAR_CATEGORIA: {"name": "NombreCategoria", "subcategories": ["SubcategoriaDetectada"]}]]
+     - Asigna dicha categoría al elemento en [[REGISTRAR_PUNTO: {...}]] o [[REGISTRAR_PUNTOS: [...] ]].
+     - Explica amablemente en tu respuesta que has detectado que dicho elemento no pertenecía a ninguna categoría existente y que has creado la nueva categoría '[Nombre]' para mantener el catálogo agrícola perfectamente organizado.
+
+7. 🗺️ **INVENTARIO AGRÍCOLA, CATASTRO SATÉLITE Y CAMINOS**:
 - Cuentas con un registro georreferenciado de árboles, plantas, tuberías de riego, arquetas, acequias y mojones ('farm_inventory'), así como una capa de caminos, senderos y líneas de distribución ('farm_paths') y el catastro oficial de las Parcelas 195 y 196 de Campito Jorox.
 - Puedes consultar, crear, modificar y eliminar cualquier punto o camino:
   * Para crear un camino nuevo:
@@ -314,6 +338,23 @@ export function formatInventoryContext(inventory) {
 ${sample.join('\n')}`;
 }
 
+export function formatCategoriesContext(categories = []) {
+  if (!categories || categories.length === 0) return '';
+  const lines = categories.map((c) => {
+    const subs = Array.isArray(c.subcategories) && c.subcategories.length > 0
+      ? ` | Subcategorías: ${c.subcategories.join(', ')}`
+      : '';
+    return `- **${c.name}**${subs}`;
+  });
+  return `\n\n🏷️ **CATEGORÍAS Y SUBCATEGORÍAS DISPONIBLES EN LA FINCA (${categories.length} categorías registradas)**:
+${lines.join('\n')}
+*REGLAS VITALES DE TAXONOMÍA:
+1. Si el usuario te pide crear o borrar categorías o subcategorías mediante el chat, utiliza los comandos estructurados [[CREAR_CATEGORIA]], [[BORRAR_CATEGORIA]], [[CREAR_SUBCATEGORIA]] o [[BORRAR_SUBCATEGORIA]].
+2. Al registrar un nuevo elemento en el inventario:
+   - Identifica si el elemento ya encaja en alguna categoría creada previamente.
+   - Si NO encaja en ninguna categoría existente (ej: paneles solares -> Energía, gallinas/colmenas -> Animales, valla -> Cercados), CREA OBLIGATORIAMENTE una nueva categoría para clasificarlo con [[CREAR_CATEGORIA: {"name": "...", "subcategories": ["..."]}]] y asígnala al elemento.*`;
+}
+
 export function buildComprehensiveFincaContext({
   events = [],
   transactions = [],
@@ -321,12 +362,16 @@ export function buildComprehensiveFincaContext({
   knowledge = [],
   inventory = [],
   paths = [],
+  categories = [],
 }) {
   let ctx = '';
   ctx += formatEventsContext(events);
   ctx += formatFinancesContext(transactions, users);
   ctx += formatKnowledgeContext(knowledge);
   ctx += formatInventoryContext(inventory);
+  if (categories && categories.length > 0) {
+    ctx += formatCategoriesContext(categories);
+  }
 
   if (paths && paths.length > 0) {
     const pLines = paths.map((p) => {

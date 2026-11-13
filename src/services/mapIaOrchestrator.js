@@ -16,6 +16,11 @@ import {
   updateFarmPath,
   deleteFarmPath,
   getItemCategory,
+  createFarmCategory,
+  deleteFarmCategory,
+  createFarmSubcategory,
+  deleteFarmSubcategory,
+  ensureCategoryExistsForElement,
 } from './farmInventoryStorage';
 import {
   interpolateGpsAtAudioTime,
@@ -126,11 +131,15 @@ function extractTagPayloads(rawText, tagNames) {
  * - [[EDITAR_PUNTO: { ... } ]]
  */
 export function parseStructuredCommands(rawText) {
-  if (!rawText || typeof rawText !== 'string') return { points: [], deletions: [], paths: [], updates: [] };
+  if (!rawText || typeof rawText !== 'string') return { points: [], deletions: [], paths: [], updates: [], categories: [], categoryDeletions: [], subcategories: [], subcategoryDeletions: [] };
   const points = [];
   const deletions = [];
   const paths = [];
   const updates = [];
+  const categories = [];
+  const categoryDeletions = [];
+  const subcategories = [];
+  const subcategoryDeletions = [];
 
   for (const payload of extractTagPayloads(rawText, ['REGISTRAR_PUNTOS', 'REGISTRAR_PUNTO'])) {
     if (Array.isArray(payload)) points.push(...payload.filter((p) => p && typeof p === 'object'));
@@ -156,7 +165,27 @@ export function parseStructuredCommands(rawText) {
     else if (payload && typeof payload === 'object') updates.push(payload);
   }
 
-  return { points, deletions, paths, updates };
+  for (const payload of extractTagPayloads(rawText, ['CREAR_CATEGORIA', 'REGISTRAR_CATEGORIA'])) {
+    if (Array.isArray(payload)) categories.push(...payload.filter((c) => c && typeof c === 'object'));
+    else if (payload && typeof payload === 'object') categories.push(payload);
+  }
+
+  for (const payload of extractTagPayloads(rawText, ['BORRAR_CATEGORIA', 'ELIMINAR_CATEGORIA'])) {
+    if (Array.isArray(payload)) categoryDeletions.push(...payload.filter((c) => c && typeof c === 'object'));
+    else if (payload && typeof payload === 'object') categoryDeletions.push(payload);
+  }
+
+  for (const payload of extractTagPayloads(rawText, ['CREAR_SUBCATEGORIA', 'REGISTRAR_SUBCATEGORIA'])) {
+    if (Array.isArray(payload)) subcategories.push(...payload.filter((s) => s && typeof s === 'object'));
+    else if (payload && typeof payload === 'object') subcategories.push(payload);
+  }
+
+  for (const payload of extractTagPayloads(rawText, ['BORRAR_SUBCATEGORIA', 'ELIMINAR_SUBCATEGORIA'])) {
+    if (Array.isArray(payload)) subcategoryDeletions.push(...payload.filter((s) => s && typeof s === 'object'));
+    else if (payload && typeof payload === 'object') subcategoryDeletions.push(payload);
+  }
+
+  return { points, deletions, paths, updates, categories, categoryDeletions, subcategories, subcategoryDeletions };
 }
 
 /**
@@ -279,6 +308,18 @@ function structuredCommandsToActions(parsedCmds) {
   }
   for (const upd of parsedCmds.updates || []) {
     actions.push({ type: 'UPDATE_POINT', target_id: upd.target_id || upd.id, data: upd });
+  }
+  for (const cat of parsedCmds.categories || []) {
+    actions.push({ type: 'CREATE_CATEGORY', data: cat });
+  }
+  for (const catDel of parsedCmds.categoryDeletions || []) {
+    actions.push({ type: 'DELETE_CATEGORY', data: catDel });
+  }
+  for (const sub of parsedCmds.subcategories || []) {
+    actions.push({ type: 'CREATE_SUBCATEGORY', data: sub });
+  }
+  for (const subDel of parsedCmds.subcategoryDeletions || []) {
+    actions.push({ type: 'DELETE_SUBCATEGORY', data: subDel });
   }
   return actions;
 }
@@ -564,6 +605,11 @@ export async function executeInventoryActions({
     addedPaths: [],
     updatedPaths: [],
     deletedPaths: [],
+    addedCategories: [],
+    deletedCategories: [],
+    addedSubcategories: [],
+    deletedSubcategories: [],
+    newCategoriesCreated: [],
     reverts: [],
   };
 
@@ -580,6 +626,10 @@ export async function executeInventoryActions({
   const ADD_PATH_TYPES = new Set(['ADD_PATH', 'CREATE_PATH', 'INSERT_PATH', 'REGISTRAR_CAMINO', 'CREAR_CAMINO', 'DRAW_PATH']);
   const UPDATE_PATH_TYPES = new Set(['UPDATE_PATH', 'EDIT_PATH', 'EDITAR_CAMINO']);
   const DELETE_PATH_TYPES = new Set(['DELETE_PATH', 'REMOVE_PATH', 'BORRAR_CAMINO', 'ELIMINAR_CAMINO']);
+  const CREATE_CATEGORY_TYPES = new Set(['CREATE_CATEGORY', 'CREAR_CATEGORIA', 'REGISTRAR_CATEGORIA']);
+  const DELETE_CATEGORY_TYPES = new Set(['DELETE_CATEGORY', 'BORRAR_CATEGORIA', 'ELIMINAR_CATEGORIA']);
+  const CREATE_SUBCATEGORY_TYPES = new Set(['CREATE_SUBCATEGORY', 'CREAR_SUBCATEGORIA', 'REGISTRAR_SUBCATEGORIA']);
+  const DELETE_SUBCATEGORY_TYPES = new Set(['DELETE_SUBCATEGORY', 'BORRAR_SUBCATEGORIA', 'ELIMINAR_SUBCATEGORIA']);
 
   const normalizedActions = [];
   for (const act of actions) {
@@ -780,11 +830,20 @@ export async function executeInventoryActions({
 
       const rawName = actData.name || actData.nombre || actData.title || actData.titulo || actData.tipo || 'Punto registrado';
       const formattedName = String(rawName).charAt(0).toUpperCase() + String(rawName).slice(1);
-      let category = actData.category || actData.categoria || actData.tipo;
-      if (!category || category === 'Otros' || category === 'otro') {
-        category = getItemCategory({ name: formattedName, ...actData });
+      
+      // REQUIREMENT 2: Identificar si el elemento ya tiene categoría creada, de lo contrario crear una nueva
+      const { category: resolvedCategory, created: catCreated } = ensureCategoryExistsForElement({
+        name: formattedName,
+        category: actData.category || actData.categoria,
+        variety_type: actData.variety_type || actData.variety || actData.variedad || actData.tipo,
+        tipo: actData.tipo,
+      });
+
+      if (catCreated) {
+        result.newCategoriesCreated.push(resolvedCategory);
       }
 
+      const category = resolvedCategory;
       const notes = actData.notes || actData.observaciones || actData.observacion || actData.notas || '';
 
       const newItem = {
@@ -854,6 +913,46 @@ export async function executeInventoryActions({
           }
         }
       }
+    }
+
+    // ── CREAR CATEGORÍA ───────────────────────────────────────────────────────
+    else if (CREATE_CATEGORY_TYPES.has(actType)) {
+      const cat = createFarmCategory({
+        name: actData.name || actData.category || actData.categoria,
+        subcategories: actData.subcategories || actData.subcategorias || (actData.subcategory ? [actData.subcategory] : []),
+        color: actData.color || null,
+        icon: actData.icon || null,
+      });
+      if (cat) result.addedCategories.push(cat);
+    }
+
+    // ── BORRAR CATEGORÍA ──────────────────────────────────────────────────────
+    else if (DELETE_CATEGORY_TYPES.has(actType)) {
+      const res = await deleteFarmCategory({
+        name: actData.name || actData.category || actData.categoria || actData.query,
+        deleteItems: actData.delete_items !== false,
+        reassignTo: actData.reassign_to || 'Otros',
+      });
+      if (res?.success) result.deletedCategories.push(res);
+    }
+
+    // ── CREAR SUBCATEGORÍA ────────────────────────────────────────────────────
+    else if (CREATE_SUBCATEGORY_TYPES.has(actType)) {
+      const sub = createFarmSubcategory({
+        parentCategory: actData.category || actData.categoria || actData.parent || actData.parentCategory,
+        name: actData.name || actData.subcategory || actData.subcategoria,
+      });
+      if (sub) result.addedSubcategories.push(sub);
+    }
+
+    // ── BORRAR SUBCATEGORÍA ───────────────────────────────────────────────────
+    else if (DELETE_SUBCATEGORY_TYPES.has(actType)) {
+      const res = await deleteFarmSubcategory({
+        parentCategory: actData.category || actData.categoria || actData.parent || actData.parentCategory,
+        name: actData.name || actData.subcategory || actData.subcategoria || actData.query,
+        deleteItems: Boolean(actData.delete_items),
+      });
+      if (res?.success) result.deletedSubcategories.push(res);
     }
   }
 

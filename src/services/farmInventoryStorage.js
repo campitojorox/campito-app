@@ -27,6 +27,8 @@ if (mapSyncBroadcast) {
       window.dispatchEvent(new CustomEvent('farm-inventory-updated', { detail: { id, deleted, ...item } }));
     } else if (type === 'PATHS_CHANGED') {
       window.dispatchEvent(new CustomEvent('farm-paths-updated', { detail: { id, deleted, ...path } }));
+    } else if (type === 'CATEGORIES_CHANGED') {
+      window.dispatchEvent(new CustomEvent('farm-categories-updated', { detail: event.data }));
     }
   };
 }
@@ -42,7 +44,7 @@ export function broadcastMapSync(type, id, extra = {}) {
 /**
  * Validador de formato UUID v4
  */
-function isValidUUID(str) {
+export function isValidUUID(str) {
   if (typeof str !== 'string') return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 }
@@ -50,7 +52,7 @@ function isValidUUID(str) {
 /**
  * Generador universal de UUID v4 compatible con navegadores y Node
  */
-function generateUUID() {
+export function generateUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -590,10 +592,6 @@ export async function updateFarmInventoryItem(id, updatePayload) {
   }
 
   const cleanPayload = { ...updatePayload, updated_at: now };
-  if (cleanPayload.category && !DB_ALLOWED_CATEGORIES.has(cleanPayload.category)) {
-    // Si viene una categoría fuera del constraint, adaptar limpiamente
-    cleanPayload.category = toDbCategory(cleanPayload.category);
-  }
   if (cleanPayload.photo_url && !cleanPayload.image_url) {
     cleanPayload.image_url = cleanPayload.photo_url;
     delete cleanPayload.photo_url;
@@ -611,7 +609,8 @@ export async function updateFarmInventoryItem(id, updatePayload) {
       .single();
 
     if (error && (error.code === '23514' || error.message?.includes('category_check'))) {
-      cleanPayload.category = 'otro';
+      cleanPayload.category = toDbCategory(updatePayload.category);
+      cleanPayload.variety_type = `${updatePayload.category || ''}${updatePayload.variety_type ? ` · ${updatePayload.variety_type}` : ''}`;
       const retry = await supabase.from('farm_inventory').update(cleanPayload).eq('id', id).select().single();
       data = retry.data;
       error = retry.error;
@@ -926,7 +925,7 @@ export const BASE_CATEGORY_MAP = {
   'Otros': [],
 };
 
-const BASE_CATEGORY_COLORS = {
+export const BASE_CATEGORY_COLORS = {
   'Árboles': '#16a34a',           // Verde oscuro
   'Plantas': '#4ade80',           // Verde claro
   'Riego / Agua': '#0284c7',      // Azul
@@ -938,7 +937,7 @@ const BASE_CATEGORY_COLORS = {
   'Otros': '#64748b',             // Pizarra
 };
 
-const DYNAMIC_PALETTE = [
+export const DYNAMIC_PALETTE = [
   '#06b6d4', // Cian
   '#ec4899', // Rosa fucsia
   '#14b8a6', // Teal esmeralda
@@ -951,8 +950,383 @@ const DYNAMIC_PALETTE = [
   '#e11d48', // Rubí
 ];
 
+const CUSTOM_CATEGORIES_KEY = 'campito_custom_categories_cache';
+const DELETED_CATEGORIES_KEY = 'campito_deleted_categories_cache';
+
+export function getDeletedCategories() {
+  try {
+    const raw = localStorage.getItem(DELETED_CATEGORIES_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function setDeletedCategories(setOrArray) {
+  try {
+    localStorage.setItem(DELETED_CATEGORIES_KEY, JSON.stringify(Array.from(setOrArray)));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error guardando categorías eliminadas:', e);
+  }
+}
+
+export function getCustomCategories() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_CATEGORIES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setCustomCategories(cats) {
+  try {
+    localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(cats));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error guardando categorías personalizadas:', e);
+  }
+}
+
+/**
+ * Obtiene la lista completa y viva de categorías de la finca (nativas + personalizadas no eliminadas).
+ */
+export function getFarmCategories() {
+  const deleted = getDeletedCategories();
+  const custom = getCustomCategories();
+
+  const defaultList = [
+    {
+      name: 'Árboles',
+      subcategories: ['Aguacate Hass', 'Aguacate Bacon', 'Olivo', 'Limonero', 'Naranjo', 'Algarrobo', 'Higuera', 'Frutales'],
+      color: BASE_CATEGORY_COLORS['Árboles'],
+      isDefault: true,
+    },
+    {
+      name: 'Plantas',
+      subcategories: ['Huerta', 'Arbusto', 'Hierba', 'Palmera', 'Bambú'],
+      color: BASE_CATEGORY_COLORS['Plantas'],
+      isDefault: true,
+    },
+    {
+      name: 'Riego / Agua',
+      subcategories: ['Llave de paso', 'Gotero', 'Filtro', 'Válvula', 'Arqueta', 'Pozo', 'Depósito', 'Tubería', 'Bomba', 'Acequia'],
+      color: BASE_CATEGORY_COLORS['Riego / Agua'],
+      isDefault: true,
+    },
+    {
+      name: 'Casas',
+      subcategories: ['Casita Cueva', 'Almacén', 'Taller', 'Caseta', 'Caravana'],
+      color: BASE_CATEGORY_COLORS['Casas'],
+      isDefault: true,
+    },
+    {
+      name: 'Herramientas',
+      subcategories: ['Tractor', 'Maquinaria', 'Apero', 'Mobiliario', 'Equipo'],
+      color: BASE_CATEGORY_COLORS['Herramientas'],
+      isDefault: true,
+    },
+    {
+      name: 'Hitos',
+      subcategories: ['Mojón', 'Linde', 'Piedra', 'Cota catastral'],
+      color: BASE_CATEGORY_COLORS['Hitos'],
+      isDefault: true,
+    },
+  ];
+
+  const map = new Map();
+
+  defaultList.forEach((c) => {
+    if (!deleted.has(c.name)) {
+      map.set(c.name.toLowerCase(), c);
+    }
+  });
+
+  custom.forEach((c) => {
+    if (!c.name || deleted.has(c.name)) return;
+    const key = c.name.toLowerCase();
+    if (map.has(key)) {
+      const existing = map.get(key);
+      const mergedSubs = Array.from(new Set([...(existing.subcategories || []), ...(c.subcategories || [])]));
+      map.set(key, { ...existing, ...c, subcategories: mergedSubs });
+    } else {
+      map.set(key, {
+        name: c.name,
+        subcategories: Array.isArray(c.subcategories) ? c.subcategories : [],
+        color: c.color || getCategoryColor(c.name),
+        isDefault: false,
+      });
+    }
+  });
+
+  const list = Array.from(map.values());
+  if (!deleted.has('Otros')) {
+    list.push({
+      name: 'Otros',
+      subcategories: ['Sin clasificar'],
+      color: BASE_CATEGORY_COLORS['Otros'],
+      isDefault: true,
+    });
+  }
+  return list;
+}
+
+/**
+ * Crea una nueva categoría o expande una existente con nuevas subcategorías.
+ */
+export function createFarmCategory({ name, subcategories = [], color = null, icon = null }) {
+  if (!name || typeof name !== 'string') return null;
+  const cleanName = name.trim().charAt(0).toUpperCase() + name.trim().slice(1);
+  if (!cleanName) return null;
+
+  const deleted = getDeletedCategories();
+  if (deleted.has(cleanName)) {
+    deleted.delete(cleanName);
+    setDeletedCategories(deleted);
+  }
+
+  const custom = getCustomCategories();
+  const existingIdx = custom.findIndex((c) => c.name.toLowerCase() === cleanName.toLowerCase());
+
+  const subArray = Array.isArray(subcategories)
+    ? subcategories.map((s) => String(s).trim()).filter(Boolean)
+    : [];
+
+  let savedCat;
+  if (existingIdx >= 0) {
+    const existing = custom[existingIdx];
+    const updatedSubs = Array.from(new Set([...(existing.subcategories || []), ...subArray]));
+    savedCat = {
+      ...existing,
+      color: color || existing.color || getCategoryColor(cleanName),
+      subcategories: updatedSubs,
+      updated_at: new Date().toISOString(),
+    };
+    custom[existingIdx] = savedCat;
+  } else {
+    savedCat = {
+      id: generateUUID(),
+      name: cleanName,
+      color: color || getCategoryColor(cleanName),
+      subcategories: subArray,
+      icon: icon || null,
+      isDefault: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    custom.push(savedCat);
+  }
+
+  setCustomCategories(custom);
+
+  syncCategoriesToSupabase(getFarmCategories());
+
+  broadcastMapSync('CATEGORIES_CHANGED', cleanName, { category: savedCat });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-categories-updated', { detail: { category: savedCat } }));
+  }
+
+  return savedCat;
+}
+
+/**
+ * Elimina una categoría. Puede opcionalmente borrar sus puntos asociados en el mapa
+ * o reasignarlos a otra categoría (por defecto 'Otros').
+ */
+export async function deleteFarmCategory({ name, deleteItems = true, reassignTo = 'Otros' }) {
+  if (!name) return { success: false, reason: 'Nombre de categoría no proporcionado' };
+  const cleanName = name.trim();
+
+  const deleted = getDeletedCategories();
+  deleted.add(cleanName);
+  const allCurrent = getFarmCategories();
+  const match = allCurrent.find((c) => c.name.toLowerCase() === cleanName.toLowerCase());
+  const actualName = match?.name || cleanName;
+  deleted.add(actualName);
+  setDeletedCategories(deleted);
+
+  const custom = getCustomCategories().filter((c) => c.name.toLowerCase() !== cleanName.toLowerCase());
+  setCustomCategories(custom);
+
+  let affectedCount = 0;
+  const localItems = getLocalInventory();
+  const matchingItems = localItems.filter((i) => {
+    const parent = getItemCategory(i);
+    return parent.toLowerCase() === actualName.toLowerCase() || (i.category || '').toLowerCase() === actualName.toLowerCase();
+  });
+
+  if (deleteItems) {
+    for (const item of matchingItems) {
+      await deleteFarmInventoryItem(item.id);
+      affectedCount++;
+    }
+  } else if (matchingItems.length > 0) {
+    for (const item of matchingItems) {
+      await updateFarmInventoryItem(item.id, { category: reassignTo });
+      affectedCount++;
+    }
+  }
+
+  syncCategoriesToSupabase(getFarmCategories());
+
+  broadcastMapSync('CATEGORIES_CHANGED', actualName, { deleted: true, affectedCount });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-categories-updated', { detail: { name: actualName, deleted: true } }));
+    window.dispatchEvent(new CustomEvent('farm-inventory-updated'));
+  }
+
+  return { success: true, name: actualName, affectedCount, deletedItems: deleteItems };
+}
+
+/**
+ * Crea una subcategoría dentro de una categoría padre.
+ */
+export function createFarmSubcategory({ parentCategory, name }) {
+  if (!parentCategory || !name) return null;
+  const pName = parentCategory.trim();
+  const sName = name.trim();
+  return createFarmCategory({ name: pName, subcategories: [sName] });
+}
+
+/**
+ * Elimina una subcategoría de una categoría padre.
+ */
+export async function deleteFarmSubcategory({ parentCategory, name, deleteItems = false }) {
+  if (!parentCategory || !name) return { success: false };
+  const pName = parentCategory.trim().toLowerCase();
+  const sName = name.trim();
+
+  const custom = getCustomCategories();
+  let modified = false;
+  custom.forEach((c) => {
+    if (c.name.toLowerCase() === pName && Array.isArray(c.subcategories)) {
+      c.subcategories = c.subcategories.filter((s) => s.toLowerCase() !== sName.toLowerCase());
+      modified = true;
+    }
+  });
+  if (modified) setCustomCategories(custom);
+
+  let affectedCount = 0;
+  const localItems = getLocalInventory();
+  const matching = localItems.filter((i) => {
+    const parent = getItemCategory(i).toLowerCase();
+    const sub = (i.variety_type || i.tipo || '').toLowerCase();
+    return parent === pName && sub.includes(sName.toLowerCase());
+  });
+
+  if (deleteItems) {
+    for (const item of matching) {
+      await deleteFarmInventoryItem(item.id);
+      affectedCount++;
+    }
+  } else if (matching.length > 0) {
+    for (const item of matching) {
+      await updateFarmInventoryItem(item.id, { variety_type: null });
+      affectedCount++;
+    }
+  }
+
+  syncCategoriesToSupabase(getFarmCategories());
+
+  broadcastMapSync('CATEGORIES_CHANGED', parentCategory, { subcategoryDeleted: sName });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-categories-updated', { detail: { parentCategory, subcategory: sName, deleted: true } }));
+  }
+
+  return { success: true, parentCategory, subcategory: sName, affectedCount };
+}
+
+/**
+ * Identifica si un elemento nuevo encaja en alguna categoría existente.
+ * Si NO existe, la crea dinámicamente y la registra en la taxonomía viva de la finca.
+ */
+export function ensureCategoryExistsForElement(item = {}) {
+  const activeCats = getFarmCategories();
+  const rawCat = (item.category || item.categoria || '').trim();
+  const rawSub = (item.variety_type || item.variedad || item.tipo || '').trim();
+  const rawName = (item.name || item.nombre || '').trim();
+
+  // 1. Si el item ya traía una categoría explícita, verificar si existe
+  if (rawCat && rawCat !== 'Otros' && rawCat !== 'otro') {
+    const match = activeCats.find((c) => c.name.toLowerCase() === rawCat.toLowerCase());
+    if (match) {
+      if (rawSub && !match.subcategories?.some((s) => s.toLowerCase() === rawSub.toLowerCase())) {
+        createFarmSubcategory({ parentCategory: match.name, name: rawSub });
+      }
+      return { category: match.name, created: false };
+    }
+    // La categoría explícita no existía en el catálogo -> CREARLA NUEVA
+    const createdCat = createFarmCategory({
+      name: rawCat,
+      subcategories: rawSub ? [rawSub] : [],
+    });
+    return { category: createdCat ? createdCat.name : rawCat, created: true };
+  }
+
+  // 2. Si no traía categoría explícita, intentar clasificar según palabras clave y taxonomía
+  const fullText = [rawName, rawSub, rawCat].filter(Boolean).join(' ').toLowerCase();
+
+  for (const cat of activeCats) {
+    if (cat.name === 'Otros') continue;
+    if (fullText.includes(cat.name.toLowerCase())) {
+      if (rawSub) createFarmSubcategory({ parentCategory: cat.name, name: rawSub });
+      return { category: cat.name, created: false };
+    }
+    if (cat.subcategories?.some((sub) => fullText.includes(sub.toLowerCase()))) {
+      return { category: cat.name, created: false };
+    }
+    const baseKeywords = BASE_CATEGORY_MAP[cat.name] || [];
+    if (baseKeywords.some((kw) => fullText.includes(kw))) {
+      if (rawSub) createFarmSubcategory({ parentCategory: cat.name, name: rawSub });
+      return { category: cat.name, created: false };
+    }
+  }
+
+  // 3. Si no encaja en ninguna categoría existente:
+  // Deducir un nombre de categoría representativo y CREARLA NUEVA
+  let smartCatName = 'Instalaciones';
+  if (fullText.includes('panel') || fullText.includes('solar') || fullText.includes('bateria') || fullText.includes('inversor')) {
+    smartCatName = 'Energía';
+  } else if (fullText.includes('gallin') || fullText.includes('colmena') || fullText.includes('pato') || fullText.includes('oveja') || fullText.includes('perro') || fullText.includes('animal') || fullText.includes('abeja')) {
+    smartCatName = 'Animales';
+  } else if (fullText.includes('valla') || fullText.includes('puerta') || fullText.includes('cancela') || fullText.includes('cerramiento') || fullText.includes('cercado')) {
+    smartCatName = 'Cercados';
+  } else if (fullText.includes('estacion') || fullText.includes('sensor') || fullText.includes('sonda') || fullText.includes('camara') || fullText.includes('vigilancia')) {
+    smartCatName = 'Monitoreo';
+  } else if (fullText.includes('abono') || fullText.includes('compost') || fullText.includes('fertilizante') || fullText.includes('sustrato')) {
+    smartCatName = 'Nutrición / Suelo';
+  } else if (rawName) {
+    const firstWord = rawName.split(' ')[0];
+    smartCatName = firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
+  }
+
+  const newCat = createFarmCategory({
+    name: smartCatName,
+    subcategories: [rawSub || rawName].filter(Boolean),
+  });
+
+  return { category: newCat ? newCat.name : smartCatName, created: true };
+}
+
+async function syncCategoriesToSupabase(categoriesList) {
+  try {
+    const payload = {
+      category: 'general',
+      title: 'TAXONOMIA_CATEGORIAS_CAMPITO',
+      content: JSON.stringify(categoriesList),
+      metadata: { updated_at: new Date().toISOString(), version: 1 },
+      is_active: true,
+    };
+    await supabase.from('farm_knowledge').upsert([payload], { onConflict: 'title' });
+  } catch {
+    // Silencioso si no hay red o tabla
+  }
+}
+
 export function getCategoryColor(categoryName) {
   if (!categoryName) return '#64748b';
+  const activeCats = getFarmCategories();
+  const match = activeCats.find((c) => c.name.toLowerCase() === categoryName.toLowerCase());
+  if (match?.color) return match.color;
   if (BASE_CATEGORY_COLORS[categoryName]) return BASE_CATEGORY_COLORS[categoryName];
 
   let hash = 0;
@@ -975,48 +1349,33 @@ export const PATH_TYPE_COLORS = {
 };
 
 /**
- * Determina la categoría de un elemento del inventario con promoción dinámica.
+ * Determina la categoría de un elemento del inventario con promoción dinámica y soporte taxonómico.
  */
 export function getItemCategory(item) {
   if (!item) return 'Otros';
 
+  const activeCats = getFarmCategories();
+  const catNamesMap = new Map(activeCats.map((c) => [c.name.toLowerCase(), c.name]));
+
+  // 1. Chequeo por variedad / subcategoría
   if (item.variety_type) {
-    const vt = String(item.variety_type).split('·')[0].trim();
-    if (vt === 'Casas / Edificios' || vt === 'Edificios' || vt === 'Casas') {
-      return 'Casas';
-    }
-    if (BASE_CATEGORY_MAP[vt]) {
-      return vt;
-    }
-  }
-
-  const rawCat = (item.category || '').trim();
-  if (rawCat === 'Casas / Edificios' || rawCat === 'Edificios') {
-    return 'Casas';
-  }
-  if (rawCat && BASE_CATEGORY_MAP[rawCat]) {
-    return rawCat;
-  }
-
-  const normCat = rawCat
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  if (normCat) {
-    if (normCat.includes('casa') || normCat.includes('cueva') || normCat.includes('edificio')) {
-      return 'Casas';
-    }
-    for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
-      if (parent === 'Otros' || parent === 'Casas / Edificios') continue;
-      if (keywords.some((k) => normCat.includes(k))) return parent;
-    }
-    if (normCat !== 'otros' && normCat !== 'otro' && normCat !== 'inventario') {
-      return rawCat.charAt(0).toUpperCase() + rawCat.slice(1);
+    const vt = String(item.variety_type).split('·')[0].trim().toLowerCase();
+    if (catNamesMap.has(vt)) return catNamesMap.get(vt);
+    for (const c of activeCats) {
+      if (c.subcategories?.some((s) => s.toLowerCase() === vt)) {
+        return c.name;
+      }
     }
   }
 
-  const text = [item.tipo, item.variety_type, item.name, item.title]
+  // 2. Chequeo exacto de categoría asignada
+  const rawCat = (item.category || '').trim().toLowerCase();
+  if (rawCat && catNamesMap.has(rawCat)) {
+    return catNamesMap.get(rawCat);
+  }
+
+  // 3. Chequeo de texto normalizado contra palabras clave y subcategorías
+  const text = [item.tipo, item.variety_type, item.name, item.title, item.category]
     .filter(Boolean)
     .join(' ')
     .toLowerCase()
@@ -1024,12 +1383,15 @@ export function getItemCategory(item) {
     .replace(/[\u0300-\u036f]/g, '');
 
   if (text.includes('casa') || text.includes('cueva') || text.includes('edificio')) {
-    return 'Casas';
+    if (catNamesMap.has('casas')) return catNamesMap.get('casas');
   }
 
-  for (const [parent, keywords] of Object.entries(BASE_CATEGORY_MAP)) {
-    if (parent === 'Otros' || parent === 'Casas / Edificios') continue;
-    if (keywords.some((k) => text.includes(k))) return parent;
+  for (const cat of activeCats) {
+    if (cat.name === 'Otros') continue;
+    if (text.includes(cat.name.toLowerCase())) return cat.name;
+    if (cat.subcategories?.some((s) => text.includes(s.toLowerCase()))) return cat.name;
+    const baseKeywords = BASE_CATEGORY_MAP[cat.name] || [];
+    if (baseKeywords.some((k) => text.includes(k))) return cat.name;
   }
 
   const explicitTipo = (item.tipo || '').trim();
@@ -1037,19 +1399,29 @@ export function getItemCategory(item) {
     return explicitTipo.charAt(0).toUpperCase() + explicitTipo.slice(1);
   }
 
+  if (rawCat && rawCat !== 'otros' && rawCat !== 'otro' && rawCat !== 'inventario') {
+    return rawCat.charAt(0).toUpperCase() + rawCat.slice(1);
+  }
+
   return 'Otros';
 }
 
 /**
- * Obtiene las subcategorías presentes dentro de una categoría padre.
+ * Obtiene las subcategorías presentes dentro de una categoría padre (taxonomía + inventario vivo).
  */
 export function getSubcategoriesForParent(inventory, parent) {
   const subs = new Set();
+  const activeCats = getFarmCategories();
+  const match = activeCats.find((c) => c.name.toLowerCase() === (parent || '').toLowerCase());
+  if (match && Array.isArray(match.subcategories)) {
+    match.subcategories.forEach((s) => subs.add(s));
+  }
+
   (inventory || []).forEach((item) => {
     const itemParent = getItemCategory(item);
-    if (itemParent === parent) {
+    if (itemParent.toLowerCase() === (parent || '').toLowerCase()) {
       const subLabel = item.variety_type || item.tipo || item.name;
-      if (subLabel && subLabel !== parent) {
+      if (subLabel && subLabel.toLowerCase() !== (parent || '').toLowerCase()) {
         subs.add(subLabel);
       }
     }

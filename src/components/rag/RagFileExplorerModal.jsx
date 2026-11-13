@@ -1,9 +1,9 @@
 // src/components/rag/RagFileExplorerModal.jsx
 // Modal / Explorador de Archivos Vectorial (RAG) de Campito Jorox.
-// Permite visualizar los documentos cargados históricamente (KML, KMZ, GeoJSON, PDF, CSV, etc.),
-// ver su estado de indexación vectorial, puntos/caminos extraídos y forzar su aprendizaje/reindexación.
+// Permite visualizar los documentos cargados (KML, KMZ, GeoJSON, PDF, CSV, etc.),
+// sincronizados bidireccionalmente entre el móvil y el Mac mediante Supabase y Storage.
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Folder,
   FileText,
@@ -12,17 +12,25 @@ import {
   RefreshCw,
   X,
   Search,
-  CheckCircle2,
   Sparkles,
   Layers,
   Database,
+  UploadCloud,
+  ExternalLink,
+  Download,
+  Trash2,
+  Cloud,
+  HardDrive,
+  Plus,
 } from 'lucide-react';
 import {
-  getLocalRagDocuments,
   getLocalRagChunks,
+  fetchAllRagDocuments,
+  deleteRagDocument,
+  subscribeToRagDocuments,
+  indexDocumentForRag,
   searchRagKnowledge,
 } from '../../services/ragDocumentService';
-import { supabase } from '../../supabaseClient';
 
 export default function RagFileExplorerModal({ isOpen, onClose }) {
   const [documents, setDocuments] = useState([]);
@@ -30,49 +38,86 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState('');
   const [activeTab, setActiveTab] = useState('files'); // 'files' | 'test_search'
   const [testQuery, setTestQuery] = useState('');
   const [testResults, setTestResults] = useState([]);
   const [isSearchingTest, setIsSearchingTest] = useState(false);
 
+  const fileInputRef = useRef(null);
+
   const loadDocuments = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // 1. Cargar documentos locales
-      const localDocs = getLocalRagDocuments();
       const localChunks = getLocalRagChunks();
       setChunksCount(localChunks.length);
-
-      // 2. Intentar cargar documentos desde Supabase
-      const { data: dbDocs, error } = await supabase
-        .from('farm_documents')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (!error && Array.isArray(dbDocs) && dbDocs.length > 0) {
-        // Mezclar dando prioridad a Supabase
-        const map = new Map();
-        localDocs.forEach((d) => map.set(d.id || d.name, d));
-        dbDocs.forEach((d) => map.set(d.id || d.name, d));
-        setDocuments(Array.from(map.values()));
-      } else {
-        setDocuments(localDocs);
-      }
-    } catch {
-      setDocuments(getLocalRagDocuments());
+      const docs = await fetchAllRagDocuments();
+      setDocuments(docs);
+    } catch (err) {
+      console.warn('[RagFileExplorerModal] Error cargando documentos:', err);
     } finally {
       setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      const timer = setTimeout(() => {
-        loadDocuments();
-      }, 0);
-      return () => clearTimeout(timer);
-    }
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      loadDocuments();
+    }, 0);
+
+    // Suscripción bidireccional en tiempo real (móvil <-> Mac <-> Supabase)
+    const unsubscribe = subscribeToRagDocuments(() => {
+      loadDocuments();
+    });
+
+    return () => {
+      clearTimeout(timer);
+      unsubscribe?.();
+    };
   }, [isOpen, loadDocuments]);
+
+  // Subida directa desde el explorador
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setIsUploading(true);
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgressText(`Indexando y subiendo ${file.name} (${i + 1}/${files.length})...`);
+        await indexDocumentForRag({
+          file,
+          name: file.name,
+          userName: 'Usuario',
+          apiKey: import.meta.env.VITE_GEMINI_API_KEY,
+        });
+      }
+      await loadDocuments();
+    } catch (upErr) {
+      console.warn('[RagFileExplorerModal] Error en subida directa:', upErr);
+      alert('Aviso al subir archivo: ' + upErr.message);
+    } finally {
+      setIsUploading(false);
+      setUploadProgressText('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Eliminación con confirmación
+  const handleDelete = async (docId, docName) => {
+    if (!window.confirm(`¿Seguro que deseas eliminar "${docName}" de la biblioteca permanente y la nube?`)) {
+      return;
+    }
+    try {
+      await deleteRagDocument(docId);
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+    } catch (delErr) {
+      console.warn('[RagFileExplorerModal] Error eliminando archivo:', delErr);
+    }
+  };
 
   const filteredDocs = useMemo(() => {
     return documents.filter((doc) => {
@@ -121,17 +166,26 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '16px',
+        padding: '12px',
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileSelect}
+        multiple
+        accept=".kml,.kmz,.geojson,.gpx,.pdf,.csv,.xlsx,.xls,.txt,.md,.xml,image/*"
+        style={{ display: 'none' }}
+      />
+
       <div
         style={{
           width: '100%',
-          maxWidth: '780px',
-          maxHeight: '90vh',
+          maxWidth: '820px',
+          maxHeight: '92vh',
           backgroundColor: '#ffffff',
           borderRadius: '16px',
           boxShadow: '0 20px 40px rgba(0, 0, 0, 0.25)',
@@ -151,65 +205,111 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
             alignItems: 'center',
             justifyContent: 'space-between',
             borderBottom: '1px solid #1e293b',
+            flexWrap: 'wrap',
+            gap: 10,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: '8px',
+                width: 38,
+                height: 38,
+                borderRadius: '10px',
                 backgroundColor: '#00979d',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
               <Database size={20} color="#ffffff" />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>
-                Explorador de Archivos y Memoria Vectorial (RAG)
+              <h2 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 700, color: '#f8fafc' }}>
+                Biblioteca de Archivos y Memoria Vectorial
               </h2>
-              <p style={{ margin: 0, fontSize: '0.74rem', color: '#94a3b8' }}>
-                Biblioteca permanente de Campito Jorox · {documents.length} archivos indexados ({chunksCount} vectores)
+              <p style={{ margin: 0, fontSize: '0.73rem', color: '#94a3b8' }}>
+                Campito Jorox · {documents.length} archivos en la nube ({chunksCount} vectores)
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                backgroundColor: '#00979d',
+                color: '#ffffff',
+                border: 'none',
+                padding: '7px 12px',
+                borderRadius: '8px',
+                fontSize: '0.76rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              title="Subir archivo desde este dispositivo"
+            >
+              <Plus size={15} />
+              <span>{isUploading ? 'Subiendo...' : '+ Subir Archivo'}</span>
+            </button>
+
             <button
               onClick={loadDocuments}
               disabled={isRefreshing}
               style={{
-                background: 'none',
+                background: 'rgba(255, 255, 255, 0.1)',
                 border: 'none',
-                color: isRefreshing ? '#00979d' : '#94a3b8',
+                color: isRefreshing ? '#00979d' : '#cbd5e1',
                 cursor: 'pointer',
-                padding: '6px',
-                borderRadius: '6px',
+                padding: '7px',
+                borderRadius: '8px',
                 display: 'flex',
               }}
-              title="Refrescar lista de archivos"
+              title="Sincronizar con Supabase"
             >
-              <RefreshCw size={17} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+              <RefreshCw size={16} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
             </button>
+
             <button
               onClick={onClose}
               style={{
-                background: 'none',
+                background: 'rgba(255, 255, 255, 0.1)',
                 border: 'none',
-                color: '#94a3b8',
+                color: '#cbd5e1',
                 cursor: 'pointer',
-                padding: '6px',
-                borderRadius: '6px',
+                padding: '7px',
+                borderRadius: '8px',
                 display: 'flex',
               }}
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
         </div>
+
+        {/* Barra de progreso de subida si está activa */}
+        {isUploading && (
+          <div
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#e6f7f7',
+              borderBottom: '1px solid #b2ecee',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: '0.78rem',
+              color: '#007b80',
+              fontWeight: 600,
+            }}
+          >
+            <UploadCloud size={16} className="animate-pulse" />
+            <span>{uploadProgressText || 'Procesando e indexando archivo...'}</span>
+          </div>
+        )}
 
         {/* Pestañas superiores */}
         <div
@@ -257,14 +357,14 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
             }}
           >
             <Sparkles size={15} />
-            Probar Búsqueda Vectorial (RAG)
+            Búsqueda Vectorial RAG
           </button>
         </div>
 
-        {/* Contenido según pestaña */}
+        {/* Contenido de la Pestaña */}
         {activeTab === 'files' ? (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-            {/* Barra de Filtros y Búsqueda */}
+            {/* Buscador y Filtros */}
             <div
               style={{
                 padding: '12px 16px',
@@ -291,7 +391,7 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                 <Search size={16} color="#64748b" />
                 <input
                   type="text"
-                  placeholder="Buscar en archivos aprendidos (KML, KMZ, facturas, tuberías)..."
+                  placeholder="Buscar archivos (KML, KMZ, facturas, tuberías)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
@@ -313,7 +413,7 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {[
                   { id: 'all', label: 'Todos' },
                   { id: 'geo', label: '🗺️ KML / KMZ / GeoJSON' },
@@ -351,22 +451,44 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 10,
+                    gap: 12,
                   }}
                 >
-                  <Folder size={42} strokeWidth={1.5} color="#cbd5e1" />
-                  <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600, color: '#475569' }}>
+                  <Folder size={46} strokeWidth={1.5} color="#cbd5e1" />
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: '#475569' }}>
                     No hay archivos en la biblioteca todavía
                   </p>
-                  <p style={{ margin: 0, fontSize: '0.76rem', maxWidth: '380px' }}>
-                    Sube un archivo <b>.KML</b>, <b>.KMZ</b>, <b>GeoJSON</b> o <b>PDF</b> mediante el botón <b>+</b> en el Chat o en Mapas. El sistema lo descomprimirá, indexará y aprenderá automáticamente.
+                  <p style={{ margin: 0, fontSize: '0.76rem', maxWidth: '420px', color: '#64748b' }}>
+                    Sube un archivo <b>.KML</b>, <b>.KMZ</b>, <b>GeoJSON</b>, <b>PDF</b> o foto mediante el botón de arriba o en el Chat. Se sincronizará automáticamente en la nube de Supabase para estar disponible en tu móvil y Mac.
                   </p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      marginTop: 6,
+                      padding: '8px 16px',
+                      backgroundColor: '#00979d',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <UploadCloud size={16} />
+                    <span>Subir archivo a la biblioteca</span>
+                  </button>
                 </div>
               ) : (
                 filteredDocs.map((doc) => {
                   const isGeo = ['kml', 'kmz', 'geojson', 'gpx'].includes(doc.file_type?.toLowerCase());
-                  const formattedSize = doc.size_bytes ? `${(doc.size_bytes / 1024).toFixed(1)} KB` : '—';
+                  const formattedSize = doc.size_bytes || doc.file_size ? `${((doc.size_bytes || doc.file_size) / 1024).toFixed(1)} KB` : '—';
                   const dateStr = doc.created_at ? new Date(doc.created_at).toLocaleDateString('es-ES') : '';
+                  const fileUrl = doc.public_url || doc.file_url;
+                  const isSyncedToCloud = Boolean(fileUrl && fileUrl.startsWith('http'));
 
                   return (
                     <div
@@ -384,8 +506,8 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                     >
                       <div
                         style={{
-                          width: 38,
-                          height: 38,
+                          width: 40,
+                          height: 40,
                           borderRadius: '8px',
                           backgroundColor: isGeo ? '#ecfdf5' : '#eff6ff',
                           color: isGeo ? '#059669' : '#2563eb',
@@ -395,12 +517,12 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                           flexShrink: 0,
                         }}
                       >
-                        {isGeo ? <Layers size={20} /> : <FileText size={20} />}
+                        {isGeo ? <Layers size={22} /> : <FileText size={22} />}
                       </div>
 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0f172a' }}>{doc.name}</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>{doc.name}</span>
                           <span
                             style={{
                               fontSize: '0.65rem',
@@ -414,8 +536,21 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                           >
                             {doc.file_type}
                           </span>
-                          <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 3 }}>
-                            <CheckCircle2 size={12} color="#10b981" /> Indexado en RAG ({doc.chunk_count || 1} chunks)
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 600,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: isSyncedToCloud ? '#f0fdf4' : '#fef3c7',
+                              color: isSyncedToCloud ? '#166534' : '#92400e',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                          >
+                            {isSyncedToCloud ? <Cloud size={11} /> : <HardDrive size={11} />}
+                            {isSyncedToCloud ? 'En la nube (Supabase)' : 'Local'}
                           </span>
                         </div>
 
@@ -434,7 +569,7 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                           </p>
                         )}
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.68rem', color: '#64748b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.68rem', color: '#64748b', flexWrap: 'wrap' }}>
                           <span>📅 {dateStr}</span>
                           <span>📦 {formattedSize}</span>
                           {doc.geo_points_count > 0 && (
@@ -449,6 +584,74 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                           )}
                         </div>
                       </div>
+
+                      {/* Botones de acción directos: Ver, Descargar, Borrar */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        {fileUrl && (
+                          <a
+                            href={fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #e2e8f0',
+                              backgroundColor: '#f8fafc',
+                              color: '#0284c7',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              textDecoration: 'none',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                            }}
+                            title="Abrir o ver archivo"
+                          >
+                            <ExternalLink size={13} />
+                            <span style={{ display: 'none', sm: 'inline' }}>Ver</span>
+                          </a>
+                        )}
+
+                        {fileUrl && (
+                          <a
+                            href={fileUrl}
+                            download={doc.name}
+                            style={{
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #e2e8f0',
+                              backgroundColor: '#f8fafc',
+                              color: '#475569',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              textDecoration: 'none',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                            }}
+                            title="Descargar archivo"
+                          >
+                            <Download size={13} />
+                          </a>
+                        )}
+
+                        <button
+                          onClick={() => handleDelete(doc.id, doc.name)}
+                          style={{
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #fee2e2',
+                            backgroundColor: '#fff5f5',
+                            color: '#dc2626',
+                            display: 'flex',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                          }}
+                          title="Eliminar de la biblioteca"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -459,7 +662,7 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
           /* Pestaña de Búsqueda Vectorial Interactiva */
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: '16px' }}>
             <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: '#475569' }}>
-              Comprueba en tiempo real qué fragmentos y coordenadas recupera el modelo mediante similitud de coseno ante cualquier consulta:
+              Comprueba qué fragmentos y datos cartográficos recupera el modelo mediante similitud de coseno en Supabase / RAG:
             </p>
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
@@ -552,7 +755,7 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
           }}
         >
           <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-            Los archivos subidos se incorporan automáticamente a la memoria RAG del Chat y Mapas.
+            Los archivos subidos se sincronizan con Supabase Storage para acceso universal móvil y web.
           </span>
           <button
             onClick={onClose}

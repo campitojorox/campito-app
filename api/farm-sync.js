@@ -124,6 +124,31 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, results });
       }
 
+      case 'INSERT_DOCUMENT': {
+        if (!payload) return res.status(400).json({ error: 'Falta payload de documento.' });
+        const { data, error } = await supabaseAdmin.from('farm_documents').upsert([payload]).select().single();
+        if (error) throw error;
+        return res.status(200).json({ success: true, data });
+      }
+
+      case 'DELETE_DOCUMENT': {
+        if (!id) return res.status(400).json({ error: 'Falta id para eliminar documento.' });
+        await supabaseAdmin.from('farm_document_chunks').delete().eq('document_id', id);
+        const { error } = await supabaseAdmin.from('farm_documents').delete().eq('id', id);
+        if (error) throw error;
+        return res.status(200).json({ success: true });
+      }
+
+      case 'FETCH_DOCUMENTS': {
+        const { data, error } = await supabaseAdmin
+          .from('farm_documents')
+          .select('*')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        return res.status(200).json({ success: true, data });
+      }
+
       default:
         return res.status(400).json({ error: `Acción desconocida: ${action}` });
     }

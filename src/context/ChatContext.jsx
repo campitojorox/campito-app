@@ -8,7 +8,7 @@ import { SYSTEM_PROMPT, buildComprehensiveFincaContext } from '../services/finca
 import { processChatResponseActions, persistChatTurnToHistory } from '../services/chatIaActions';
 import { normalizeAttachments } from '../utils/attachmentUtils';
 import { indexDocumentForRag, searchRagKnowledge, formatRagContextForPrompt } from '../services/ragDocumentService';
-import { getLocalInventory, getLocalPaths } from '../services/farmInventoryStorage';
+import { getLocalInventory, getLocalPaths, getFarmCategories } from '../services/farmInventoryStorage';
 import { getGlobalLastKnownGps } from '../hooks/useVoiceGeoTracker';
 import { WELCOME_MESSAGE, stripLegacyGpsTag } from './chatConstants';
 import { ChatContext } from './chatInstance';
@@ -345,6 +345,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             knowledge: farmKnowledge,
             inventory: farmInventoryRef.current,
             paths: farmPathsRef.current,
+            categories: getFarmCategories(),
           });
 
           // Indexación RAG para nuevos adjuntos
@@ -493,6 +494,12 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
                   })
                 );
                 window.dispatchEvent(new CustomEvent('farm-paths-updated'));
+              },
+              onCategoryAdded: () => {
+                window.dispatchEvent(new CustomEvent('farm-categories-updated'));
+              },
+              onCategoryDeleted: () => {
+                window.dispatchEvent(new CustomEvent('farm-categories-updated'));
               },
               onKnowledgeAdded: (entry) => {
                 setFarmKnowledge((prev) => {
