@@ -231,6 +231,7 @@ export default function ChatIA() {
 
   const handleSendMessage = (text, attachments, audio, skipAudioPlayback) => {
     setIsRagExplorerOpen(false);
+    setIsInfoModalOpen(false);
     sendMessage(text, attachments, audio, skipAudioPlayback);
   };
 
@@ -244,7 +245,13 @@ export default function ChatIA() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
             <p style={styles.headerTitle}>CHAT IA</p>
             <button
-              onClick={() => setIsRagExplorerOpen((prev) => !prev)}
+              onClick={() => {
+                setIsRagExplorerOpen((prev) => {
+                  const next = !prev;
+                  if (next) setIsInfoModalOpen(false);
+                  return next;
+                });
+              }}
               style={{
                 background: isRagExplorerOpen ? 'rgba(0, 151, 157, 0.14)' : 'none',
                 border: isRagExplorerOpen ? '1px solid rgba(0, 151, 157, 0.35)' : 'none',
@@ -267,23 +274,33 @@ export default function ChatIA() {
               )}
             </button>
             <button
-              onClick={() => setIsInfoModalOpen(true)}
+              onClick={() => {
+                setIsInfoModalOpen((prev) => {
+                  const next = !prev;
+                  if (next) setIsRagExplorerOpen(false);
+                  return next;
+                });
+              }}
               style={{
-                background: 'none',
-                border: 'none',
-                padding: '2px',
+                background: isInfoModalOpen ? 'rgba(0, 151, 157, 0.14)' : 'none',
+                border: isInfoModalOpen ? '1px solid rgba(0, 151, 157, 0.35)' : 'none',
+                padding: isInfoModalOpen ? '2px 7px' : '2px',
+                borderRadius: isInfoModalOpen ? '12px' : '50%',
                 display: 'flex',
                 alignItems: 'center',
+                gap: 4,
                 cursor: 'pointer',
-                color: '#94a3b8',
-                borderRadius: '50%',
-                transition: 'color 0.15s, background-color 0.15s',
+                color: isInfoModalOpen ? '#00979d' : '#94a3b8',
+                transition: 'all 0.15s ease',
                 flexShrink: 0,
               }}
-              title="Información de confidencialidad y modo de operación"
-              aria-label="Información de confidencialidad y modo de operación"
+              title={isInfoModalOpen ? 'Volver a la conversación del chat' : 'Guía y virtudes del asistente'}
+              aria-label="Guía y virtudes del asistente"
             >
               <Info size={15} />
+              {isInfoModalOpen && (
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#00979d' }}>Guía</span>
+              )}
             </button>
             <button
               onClick={clearChat}
@@ -358,16 +375,6 @@ export default function ChatIA() {
         setAutoFallback={setAutoFallback}
       />
 
-      <ChatInfoModal
-        isOpen={isInfoModalOpen}
-        onClose={() => setIsInfoModalOpen(false)}
-        farmKnowledge={farmKnowledge}
-        farmInventory={farmInventory}
-        setIsInventoryMapOpen={setIsInventoryMapOpen}
-        setMessages={setMessages}
-        activeServer={activeServer}
-      />
-
       {isInventoryMapOpen && (
         <Suspense fallback={<div style={styles.modalOverlay}>Cargando mapa...</div>}>
           <CatastroLiveModal
@@ -400,6 +407,20 @@ export default function ChatIA() {
         />
       )}
 
+      {/* Vista de Información y Guía integrada dentro del chat (como contenido, no div flotante) */}
+      {isInfoModalOpen && (
+        <ChatInfoModal
+          isOpen={true}
+          inline={true}
+          onClose={() => setIsInfoModalOpen(false)}
+          farmKnowledge={farmKnowledge}
+          farmInventory={farmInventory}
+          setIsInventoryMapOpen={setIsInventoryMapOpen}
+          setMessages={setMessages}
+          activeServer={activeServer}
+        />
+      )}
+
       <ChatMessageList
         isSearchOpen={isSearchOpen}
         outletSearchQuery={outletSearchQuery}
@@ -409,7 +430,7 @@ export default function ChatIA() {
         messagesEndRef={messagesEndRef}
         setInventoryModalTab={setInventoryModalTab}
         setIsInventoryMapOpen={setIsInventoryMapOpen}
-        style={{ display: isRagExplorerOpen ? 'none' : 'flex' }}
+        style={{ display: isRagExplorerOpen || isInfoModalOpen ? 'none' : 'flex' }}
       />
 
       <ChatInputBar
