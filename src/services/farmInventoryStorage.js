@@ -616,18 +616,56 @@ export async function insertFarmInventoryItem(newItem) {
 
     if (!error && data) {
       removePendingInventoryCreation(id);
-      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...data, _synced: true } : i));
+      let resolvedCat = itemToSave.category;
+      let resolvedSub = itemToSave.variety_type;
+      if (data.zone && typeof data.zone === 'string' && data.zone.startsWith('{')) {
+        try {
+          const z = JSON.parse(data.zone);
+          if (z.cat) resolvedCat = z.cat;
+          if (z.sub !== undefined) resolvedSub = z.sub;
+        } catch {}
+      }
+      if ((!resolvedCat || resolvedCat === 'otro' || resolvedCat === 'Otros') && data.category && data.category !== 'otro' && data.category !== 'Otros') {
+        resolvedCat = data.category;
+      }
+      const finalItem = {
+        ...itemToSave,
+        ...data,
+        category: resolvedCat || itemToSave.category || data.category || 'Otros',
+        variety_type: resolvedSub !== undefined ? resolvedSub : (itemToSave.variety_type ?? data.variety_type ?? ''),
+        _synced: true,
+      };
+      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? finalItem : i));
       setLocalInventory(synced);
-      return { ...itemToSave, ...data, _synced: true };
+      return finalItem;
     }
   } catch (err) {
     console.warn('[InventoryStorage] Error en llamada Supabase, intentando proxy:', err.message);
     const proxyRes = await callFarmSyncProxy('INSERT_INVENTORY', { payload: dbPayload });
     if (proxyRes?.data) {
       removePendingInventoryCreation(id);
-      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? { ...itemToSave, ...proxyRes.data, _synced: true } : i));
+      let resolvedCat = itemToSave.category;
+      let resolvedSub = itemToSave.variety_type;
+      if (proxyRes.data.zone && typeof proxyRes.data.zone === 'string' && proxyRes.data.zone.startsWith('{')) {
+        try {
+          const z = JSON.parse(proxyRes.data.zone);
+          if (z.cat) resolvedCat = z.cat;
+          if (z.sub !== undefined) resolvedSub = z.sub;
+        } catch {}
+      }
+      if ((!resolvedCat || resolvedCat === 'otro' || resolvedCat === 'Otros') && proxyRes.data.category && proxyRes.data.category !== 'otro' && proxyRes.data.category !== 'Otros') {
+        resolvedCat = proxyRes.data.category;
+      }
+      const finalItem = {
+        ...itemToSave,
+        ...proxyRes.data,
+        category: resolvedCat || itemToSave.category || proxyRes.data.category || 'Otros',
+        variety_type: resolvedSub !== undefined ? resolvedSub : (itemToSave.variety_type ?? proxyRes.data.variety_type ?? ''),
+        _synced: true,
+      };
+      const synced = updatedLocal.map((i) => (String(i.id) === String(id) ? finalItem : i));
       setLocalInventory(synced);
-      return { ...itemToSave, ...proxyRes.data, _synced: true };
+      return finalItem;
     }
   }
 
@@ -687,14 +725,58 @@ export async function updateFarmInventoryItem(id, updatePayload) {
     }
 
     if (data) {
-      const synced = updatedLocal.map((i) => (String(i.id) === targetIdStr ? { ...i, ...data, _synced: true } : i));
+      let resolvedCat = updatePayload.category;
+      let resolvedSub = updatePayload.variety_type;
+      if (data.zone && typeof data.zone === 'string' && data.zone.startsWith('{')) {
+        try {
+          const z = JSON.parse(data.zone);
+          if (z.cat) resolvedCat = z.cat;
+          if (z.sub !== undefined) resolvedSub = z.sub;
+        } catch {}
+      }
+      const existing = updatedLocal.find((i) => String(i.id) === targetIdStr) || {};
+      if ((!resolvedCat || resolvedCat === 'otro' || resolvedCat === 'Otros') && data.category && data.category !== 'otro' && data.category !== 'Otros') {
+        resolvedCat = data.category;
+      }
+      const finalItem = {
+        ...existing,
+        ...data,
+        category: resolvedCat || existing.category || data.category || 'Otros',
+        variety_type: resolvedSub !== undefined ? resolvedSub : (existing.variety_type ?? data.variety_type ?? ''),
+        _synced: true,
+      };
+      const synced = updatedLocal.map((i) => (String(i.id) === targetIdStr ? finalItem : i));
       setLocalInventory(synced);
-      return data;
+      return finalItem;
     }
   } catch (err) {
     console.warn('[InventoryStorage] Error actualizando en Supabase, usando proxy:', err.message);
     const proxyRes = await callFarmSyncProxy('UPDATE_INVENTORY', { id, payload: cleanPayload });
-    if (proxyRes?.data) return proxyRes.data;
+    if (proxyRes?.data) {
+      let resolvedCat = updatePayload.category;
+      let resolvedSub = updatePayload.variety_type;
+      if (proxyRes.data.zone && typeof proxyRes.data.zone === 'string' && proxyRes.data.zone.startsWith('{')) {
+        try {
+          const z = JSON.parse(proxyRes.data.zone);
+          if (z.cat) resolvedCat = z.cat;
+          if (z.sub !== undefined) resolvedSub = z.sub;
+        } catch {}
+      }
+      const existing = updatedLocal.find((i) => String(i.id) === targetIdStr) || {};
+      if ((!resolvedCat || resolvedCat === 'otro' || resolvedCat === 'Otros') && proxyRes.data.category && proxyRes.data.category !== 'otro' && proxyRes.data.category !== 'Otros') {
+        resolvedCat = proxyRes.data.category;
+      }
+      const finalItem = {
+        ...existing,
+        ...proxyRes.data,
+        category: resolvedCat || existing.category || proxyRes.data.category || 'Otros',
+        variety_type: resolvedSub !== undefined ? resolvedSub : (existing.variety_type ?? proxyRes.data.variety_type ?? ''),
+        _synced: true,
+      };
+      const synced = updatedLocal.map((i) => (String(i.id) === targetIdStr ? finalItem : i));
+      setLocalInventory(synced);
+      return finalItem;
+    }
   }
 
   return updatedLocal.find((i) => String(i.id) === targetIdStr) || null;
@@ -2143,35 +2225,45 @@ export const PATH_TYPE_COLORS = {
 export function getItemCategory(item) {
   if (!item) return 'Sin clasificar';
 
-  const rawCat = (item.category || '').trim();
+  let rawCat = (item.category || item.raw?.category || '').trim();
+  let rawSub = item.variety_type || item.subcategory || item.variety || item.raw?.variety_type || item.raw?.subcategory || '';
+
+  // 0. Si tiene metadatos en zone, extraer categoría y subcategoría reales
+  const zoneStr = item.zone || item.raw?.zone;
+  if (zoneStr && typeof zoneStr === 'string' && zoneStr.startsWith('{')) {
+    try {
+      const z = JSON.parse(zoneStr);
+      if (z.cat && typeof z.cat === 'string') rawCat = z.cat.trim();
+      if (z.sub !== undefined && !rawSub) rawSub = String(z.sub).trim();
+    } catch {}
+  }
+
+  const deleted = getDeletedCategories();
   const lowerCat = rawCat.toLowerCase();
-  if (
+
+  if (deleted.has(rawCat) || deleted.has(lowerCat) || Array.from(deleted).some((d) => d.toLowerCase() === lowerCat)) {
+    return 'Sin clasificar';
+  }
+
+  const isUnclassifiedCat =
+    !rawCat ||
     lowerCat === 'sin categoria' ||
     lowerCat === 'sin categoría' ||
     lowerCat === 'sin clasificar' ||
     lowerCat === 'otros' ||
-    lowerCat === 'otro' ||
-    !rawCat
-  ) {
-    return 'Sin clasificar';
-  }
-
-  const deleted = getDeletedCategories();
-  if (deleted.has(rawCat) || deleted.has(lowerCat) || Array.from(deleted).some((d) => d.toLowerCase() === lowerCat)) {
-    return 'Sin clasificar';
-  }
+    lowerCat === 'otro';
 
   const activeCats = getFarmCategories();
   const catNamesMap = new Map(activeCats.map((c) => [c.name.toLowerCase(), c.name]));
 
   // 1. Chequeo exacto de categoría asignada activa
-  if (rawCat && catNamesMap.has(lowerCat)) {
+  if (!isUnclassifiedCat && catNamesMap.has(lowerCat)) {
     return catNamesMap.get(lowerCat);
   }
 
   // 2. Chequeo por variedad / subcategoría activa
-  if (item.variety_type) {
-    const vt = String(item.variety_type).split('·')[0].trim().toLowerCase();
+  if (rawSub) {
+    const vt = String(rawSub).split('·')[0].trim().toLowerCase();
     if (catNamesMap.has(vt)) return catNamesMap.get(vt);
     for (const c of activeCats) {
       if (c.subcategories?.some((s) => s.toLowerCase() === vt)) {
@@ -2180,7 +2272,12 @@ export function getItemCategory(item) {
     }
   }
 
-  // 3. Si no pertenece a ninguna categoría activa de la finca, queda 'Sin clasificar'
+  // 3. Si la categoría no era vacía ni "otro" ni eliminada, conservarla
+  if (!isUnclassifiedCat) {
+    return rawCat.charAt(0).toUpperCase() + rawCat.slice(1);
+  }
+
+  // 4. Si no pertenece a ninguna categoría activa de la finca, queda 'Sin clasificar'
   return 'Sin clasificar';
 }
 

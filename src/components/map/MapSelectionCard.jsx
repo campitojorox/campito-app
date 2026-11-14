@@ -106,10 +106,12 @@ export default function MapSelectionCard({
 
   // Categoría raíz resuelta según tipo
   const resolvedRootCategory = isNew
-    ? (selectedTarget?.category || '')
+    ? (selectedTarget?.category || selectedTarget?.raw?.category || '')
     : isPoint
       ? (isUnclassified(selectedTarget?.category)
-          ? (isUnclassified(getItemCategory(selectedTarget)) ? '' : getItemCategory(selectedTarget))
+          ? (isUnclassified(getItemCategory(selectedTarget))
+              ? (isUnclassified(selectedTarget?.raw?.category) ? '' : selectedTarget.raw.category)
+              : getItemCategory(selectedTarget))
           : selectedTarget?.category)
       : isPath
         ? (isUnclassified(selectedTarget?.category)
@@ -139,7 +141,14 @@ export default function MapSelectionCard({
 
   // 3. Subcategoría actual (si no tiene o no pertenece a la categoría raíz, dejar en blanco "")
   const rawSubcategory = isPoint
-    ? String(selectedTarget.variety_type ?? selectedTarget.variety ?? '')
+    ? String(
+        selectedTarget.variety_type ??
+          selectedTarget.subcategory ??
+          selectedTarget.variety ??
+          selectedTarget.raw?.variety_type ??
+          selectedTarget.raw?.subcategory ??
+          ''
+      )
     : isPath
       ? String(
           selectedTarget.variety_type ??
@@ -225,8 +234,8 @@ export default function MapSelectionCard({
     if (!handleSaveTarget || isSaving) return;
     setIsSaving(true);
     try {
-      if (currentCategory && currentSubcategory) {
-        saveFarmCategory(currentCategory, [currentSubcategory]);
+      if (currentCategory) {
+        saveFarmCategory(currentCategory, currentSubcategory ? [currentSubcategory] : []);
       }
       await handleSaveTarget();
       setIsSaved(true);

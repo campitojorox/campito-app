@@ -114,6 +114,31 @@ export default function Layout({ session }) {
   }, []);
   const viewerUrl = 'https://www.google.com/maps/d/viewer?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
   const editUrl = 'https://www.google.com/maps/d/u/1/edit?mid=1ZotmxWNQzkVPwYvhOcV881raekp78jM';
+
+  const LAST_SEEN_VERSION_KEY = 'campito_last_seen_app_version';
+  const APP_JUST_UPDATED_KEY = 'campito_app_just_updated';
+
+  const [hasAppUpdated, setHasAppUpdated] = useState(() => {
+    try {
+      const justUpdated = localStorage.getItem(APP_JUST_UPDATED_KEY) === 'true';
+      const lastSeen = localStorage.getItem(LAST_SEEN_VERSION_KEY);
+      if (justUpdated) return true;
+      if (!lastSeen) return true;
+      return lastSeen !== appVersion;
+    } catch {
+      return false;
+    }
+  });
+
+  const markAppUpdateAsSeen = () => {
+    try {
+      localStorage.setItem(LAST_SEEN_VERSION_KEY, appVersion);
+      localStorage.removeItem(APP_JUST_UPDATED_KEY);
+      setHasAppUpdated(false);
+    } catch (e) {
+      console.warn('Error saving seen version:', e);
+    }
+  };
   
   const {
     needRefresh: [needRefresh],
@@ -129,6 +154,9 @@ export default function Layout({ session }) {
 
   useEffect(() => {
     if (needRefresh) {
+      try {
+        localStorage.setItem(APP_JUST_UPDATED_KEY, 'true');
+      } catch {}
       updateServiceWorker(true);
     }
   }, [needRefresh, updateServiceWorker]);
@@ -152,13 +180,16 @@ export default function Layout({ session }) {
         {/* 1. Menú 3 rayitas */}
         <button
           style={{ background: 'none', border: 'none', color: isMenuOpen ? '#9edb9e' : '#888888', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: '6px' }}
-          onClick={() => setIsMenuOpen(true)}
+          onClick={() => {
+            setIsMenuOpen(true);
+            markAppUpdateAsSeen();
+          }}
           title="Menú"
         >
           <MenuIcon size={24} />
-          {needRefresh && (
+          {(hasAppUpdated || needRefresh) && (
             <span
-              title="Actualización disponible"
+              title={needRefresh ? 'Actualización disponible' : 'Aplicación actualizada'}
               style={{
                 position: 'absolute',
                 top: '3px',
@@ -328,6 +359,9 @@ export default function Layout({ session }) {
                 <button 
                   onClick={() => {
                     if (needRefresh) {
+                      try {
+                        localStorage.setItem(APP_JUST_UPDATED_KEY, 'true');
+                      } catch {}
                       updateServiceWorker(true);
                     }
                   }} 
@@ -376,11 +410,11 @@ export default function Layout({ session }) {
                     <span style={{ fontSize: '0.65rem', color: '#888888', fontWeight: 500 }}>Novedades</span>
                   </div>
                   <ul style={{ margin: 0, paddingLeft: '14px', display: 'flex', flexDirection: 'column', gap: '3px', color: '#cbd5e1' }}>
-                    <li>Archivos del Chat IA centralizados (visibles y descargables en móvil y PC).</li>
-                    <li>Almacenamiento universal en Supabase con respaldo y copia en Google Drive.</li>
-                    <li>Sincronización en tiempo real del historial de chat entre dispositivos.</li>
+                    <li>Aviso visual de app actualizada en las 3 barritas del menú.</li>
+                    <li>Persistencia inmediata de categorías y colores en el mapa.</li>
+                    <li>Explorador de archivos e información integrados en el Chat IA.</li>
+                    <li>Archivos del Chat IA centralizados en Supabase y Google Drive.</li>
                     <li>Fichas unificadas en mapas (puntos, nodos y polilíneas).</li>
-                    <li>Categorías y subcategorías armónicas en gama de color.</li>
                     <li>Trazado rápido de polilíneas con métricas y guardado directo.</li>
                   </ul>
                 </div>

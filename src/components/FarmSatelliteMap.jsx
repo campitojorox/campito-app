@@ -1037,10 +1037,14 @@ export default function FarmSatelliteMap({
     if (selectedTarget.isNew || selectedTarget.type === 'coord') {
       const name = (selectedTarget.name || selectedTarget.title || '').trim() || 'Nuevo punto';
       const category = selectedTarget.category || 'Otros';
+      const subcategory = selectedTarget.variety_type || selectedTarget.subcategory || '';
+      if (category && category !== 'Otros' && category !== 'Sin clasificar' && category !== 'otro') {
+        saveFarmCategory(category, subcategory ? [subcategory] : []);
+      }
       const payload = {
         name,
         category,
-        variety_type: selectedTarget.variety_type || '',
+        variety_type: subcategory,
         status: selectedTarget.status || 'saludable',
         notes: (selectedTarget.notes || '').trim() || null,
         latitude: selectedTarget.lat,
@@ -1051,19 +1055,30 @@ export default function FarmSatelliteMap({
       try {
         const newItem = await insertFarmInventoryItem(payload);
         const itemObj = newItem || { ...payload, id: `item-${Date.now()}` };
-        setLocalInventory((prev) => [...prev, itemObj]);
+        const savedCat = (itemObj.category && itemObj.category !== 'otro' && itemObj.category !== 'Otros')
+          ? itemObj.category
+          : (category && category !== 'otro' && category !== 'Otros' ? category : (getItemCategory(itemObj) || 'Otros'));
+        const savedSub = (itemObj.variety_type !== undefined && itemObj.variety_type !== '')
+          ? itemObj.variety_type
+          : subcategory;
+
+        setLocalInventory((prev) => [
+          ...prev.filter((i) => String(i.id) !== String(itemObj.id)),
+          { ...itemObj, category: savedCat, variety_type: savedSub }
+        ]);
         setSelectedTarget({
           type: 'point',
           id: itemObj.id,
           name: itemObj.name,
           title: itemObj.name,
-          category: itemObj.category,
-          variety_type: itemObj.variety_type,
+          category: savedCat,
+          variety_type: savedSub,
+          subcategory: savedSub,
           lat: selectedTarget.lat,
           lng: selectedTarget.lng,
           notes: itemObj.notes,
           status: itemObj.status,
-          raw: itemObj,
+          raw: { ...itemObj, category: savedCat, variety_type: savedSub },
         });
         setIaFeedback({ type: 'success', text: `✨ Punto guardado: ${name}` });
         if (onReloadInventory) onReloadInventory();
