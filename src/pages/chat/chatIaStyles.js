@@ -132,9 +132,10 @@ export const styles = {
   }),
   typingDots: {
     display: 'flex',
-    gap: '4px',
-    padding: '4px 2px',
+    gap: '6px',
+    padding: '6px 2px 2px 2px',
     alignItems: 'center',
+    minHeight: '16px',
   },
   inputBar: {
     display: 'flex',

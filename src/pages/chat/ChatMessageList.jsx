@@ -28,29 +28,50 @@ import {
 import { styles } from './chatIaStyles';
 
 export function TypingIndicator({ currentServer }) {
+  const dotColor = currentServer?.badgeColor || '#10b981';
   return (
     <div style={styles.bubbleRow(false)}>
+      <style>{`
+        @keyframes chatBounce {
+          0%, 80%, 100% {
+            transform: translateY(0) scale(0.85);
+            opacity: 0.4;
+          }
+          40% {
+            transform: translateY(-6px) scale(1.15);
+            opacity: 1;
+          }
+        }
+      `}</style>
       <div style={styles.avatar(false)}>
         <Bot size={13} color="#888" />
       </div>
       <div style={{ ...styles.bubble(false), padding: '10px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-          <span style={styles.statusDot(currentServer?.badgeColor || '#00979d')} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+          <span
+            style={{
+              ...styles.statusDot(dotColor),
+              animation: 'pulse-color 1.4s ease-in-out infinite',
+              flexShrink: 0,
+            }}
+          />
           <span style={{ fontSize: '0.72rem', color: '#666', fontWeight: 600 }}>
-            {currentServer?.name} ({currentServer?.level}) procesando...
+            {currentServer?.name || 'Gemini'} ({currentServer?.level || 'Procesando'}) procesando...
           </span>
         </div>
         <div style={styles.typingDots}>
           {[0, 1, 2].map((i) => (
             <span
               key={i}
+              className="chat-typing-dot"
               style={{
-                width: 6,
-                height: 6,
+                width: 7,
+                height: 7,
                 borderRadius: '50%',
-                backgroundColor: currentServer?.badgeColor || '#00979d',
+                backgroundColor: dotColor,
                 display: 'inline-block',
-                animation: `chatBounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+                willChange: 'transform, opacity',
+                animation: `chatBounce 1.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) ${i * 0.18}s infinite`,
               }}
             />
           ))}
