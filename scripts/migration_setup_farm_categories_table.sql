@@ -27,6 +27,11 @@ ALTER TABLE public.farm_paths ADD COLUMN IF NOT EXISTS category TEXT;
 ALTER TABLE public.farm_paths ADD COLUMN IF NOT EXISTS subcategory TEXT;
 ALTER TABLE public.farm_paths ADD COLUMN IF NOT EXISTS variety_type TEXT;
 
+-- Migración retroactiva: Unificar cualquier camino con la categoría antigua 'Caminos y Trazados' en 'Trazados'
+UPDATE public.farm_paths
+SET category = 'Trazados'
+WHERE category ILIKE 'Caminos y Trazados' OR category ILIKE 'Caminos';
+
 -- 3. Semilla de categorías maestras de Campito Jorox
 INSERT INTO public.farm_categories (name, subcategories, color, is_default, is_active)
 VALUES

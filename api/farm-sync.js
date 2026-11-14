@@ -126,7 +126,28 @@ export default async function handler(req, res) {
 
       case 'INSERT_DOCUMENT': {
         if (!payload) return res.status(400).json({ error: 'Falta payload de documento.' });
-        const { data, error } = await supabaseAdmin.from('farm_documents').upsert([payload]).select().single();
+        const cleanPayload = {
+          id: payload.id,
+          name: payload.name,
+          file_type: payload.file_type || (payload.name ? payload.name.split('.').pop().toLowerCase() : 'bin'),
+          file_url: payload.file_url || payload.public_url || null,
+          public_url: payload.public_url || payload.file_url || '',
+          storage_path: payload.storage_path || null,
+          size_bytes: Number(payload.size_bytes || payload.file_size || 0),
+          file_size: Number(payload.file_size || payload.size_bytes || 0),
+          status: payload.status || 'indexed',
+          section_origin: payload.section_origin || 'biblioteca',
+          category: payload.category || 'general',
+          chunk_count: Number(payload.chunk_count || 0),
+          geo_points_count: Number(payload.geo_points_count || 0),
+          geo_paths_count: Number(payload.geo_paths_count || 0),
+          summary: payload.summary || '',
+          metadata: typeof payload.metadata === 'object' && payload.metadata !== null ? payload.metadata : {},
+          user_name: payload.user_name || 'Admin',
+          user_id: payload.user_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.user_id) ? payload.user_id : null,
+          is_active: payload.is_active !== false,
+        };
+        const { data, error } = await supabaseAdmin.from('farm_documents').upsert([cleanPayload]).select().single();
         if (error) throw error;
         return res.status(200).json({ success: true, data });
       }
@@ -145,6 +166,34 @@ export default async function handler(req, res) {
           .select('*')
           .eq('is_active', true)
           .order('created_at', { ascending: false });
+        if (error) throw error;
+        return res.status(200).json({ success: true, data });
+      }
+
+      case 'FETCH_CHAT_HISTORY': {
+        const limit = Number(req.body?.limit) || 60;
+        const { data, error } = await supabaseAdmin
+          .from('chat_history')
+          .select('*')
+          .order('created_at', { ascending: true })
+          .limit(limit);
+        if (error) throw error;
+        return res.status(200).json({ success: true, data });
+      }
+
+      case 'INSERT_CHAT_HISTORY': {
+        if (!payload) return res.status(400).json({ error: 'Falta payload de mensaje.' });
+        const cleanChat = {
+          role: payload.role,
+          content: payload.content || '',
+          file_url: payload.file_url || null,
+          file_name: payload.file_name || null,
+          model_used: payload.model_used || null,
+          session_id: payload.session_id || null,
+          user_name: payload.user_name || 'Admin',
+          user_id: payload.user_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.user_id) ? payload.user_id : null,
+        };
+        const { data, error } = await supabaseAdmin.from('chat_history').insert([cleanChat]).select().single();
         if (error) throw error;
         return res.status(200).json({ success: true, data });
       }

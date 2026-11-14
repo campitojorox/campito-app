@@ -33,7 +33,7 @@ export function broadcastDocumentSync(type, id, extra = {}) {
 }
 
 // ─── PROXY SERVERLESS PARA BYPASS DE RLS EN REDES MÓVILES / DESCONEXIÓN ──────
-async function callFarmSyncProxy(action, body = {}) {
+export async function callFarmSyncProxy(action, body = {}) {
   try {
     const res = await fetch('/api/farm-sync', {
       method: 'POST',
@@ -45,6 +45,34 @@ async function callFarmSyncProxy(action, body = {}) {
     console.warn('[RAG] Proxy farm-sync falló:', e.message);
   }
   return null;
+}
+
+// ─── LIMPIEZA DE PAYLOAD PARA ESQUEMA ESTRICTO DE POSTGRESQL ──────────────────
+export function toCleanDocumentRecord(raw) {
+  if (!raw) return null;
+  const validId = isValidUUID(raw.id) ? raw.id : generateUUID();
+  const fileUrl = raw.public_url || raw.file_url || '';
+  return {
+    id: validId,
+    name: raw.name || 'documento.bin',
+    file_type: raw.file_type || (raw.name ? raw.name.split('.').pop().toLowerCase() : 'bin'),
+    file_url: fileUrl,
+    public_url: fileUrl,
+    storage_path: raw.storage_path || `farm-files/${validId}_${(raw.name || 'archivo').replace(/[^a-zA-Z0-9._-]/g, '_')}`,
+    size_bytes: Number(raw.size_bytes || raw.file_size || 0),
+    file_size: Number(raw.file_size || raw.size_bytes || 0),
+    status: raw.status || 'indexed',
+    section_origin: raw.section_origin || 'biblioteca',
+    category: raw.category || 'general',
+    chunk_count: Number(raw.chunk_count || 0),
+    geo_points_count: Number(raw.geo_points_count || 0),
+    geo_paths_count: Number(raw.geo_paths_count || 0),
+    summary: raw.summary || '',
+    metadata: typeof raw.metadata === 'object' && raw.metadata !== null ? raw.metadata : {},
+    user_name: raw.user_name || 'Admin',
+    user_id: isValidUUID(raw.user_id) ? raw.user_id : null,
+    is_active: raw.is_active !== false,
+  };
 }
 
 // ─── UTILIDAD: DATAURL A BLOB PARA SUBIDA A SUPABASE STORAGE ──────────────────
@@ -177,39 +205,97 @@ export async function fetchAllRagDocuments() {
     const existing = foundById || foundByName;
 
     if (!existing) {
-      // Documento local en Mac que falló por ID antiguo: auto-migrar con UUID válido a Supabase
+      // Documento local en Mac que falló por ID antiguo: auto-migrar con UUID válido y limpio a Supabase
       const validId = isValidUUID(ld.id) ? ld.id : generateUUID();
-      const migratedDoc = {
+      const cleanMigrated = toCleanDocumentRecord({
         ...ld,
         id: validId,
-        public_url: ld.public_url || ld.file_url || '',
-        file_url: ld.public_url || ld.file_url || '',
-        size_bytes: ld.size_bytes || ld.file_size || 0,
-        file_size: ld.size_bytes || ld.file_size || 0,
-        storage_path: ld.storage_path || `farm-files/${validId}_${ld.name}`,
-        is_active: true,
-        _cloudSynced: false,
-      };
-      mergedMap.set(validId, migratedDoc);
+      });
 
-      // Sincronizar en segundo plano
+      mergedMap.set(validId, {
+        ...cleanMigrated,
+        _cloudSynced: Boolean(cleanMigrated.public_url && cleanMigrated.public_url.startsWith('http')),
+      });
+
+      // Sincronizar en segundo plano sin campos no existentes en la BD
       (async () => {
         try {
-          const { error } = await supabase.from('farm_documents').upsert([migratedDoc]);
+          const { error } = await supabase.from('farm_documents').upsert([cleanMigrated]);
           if (error) {
-            await callFarmSyncProxy('INSERT_DOCUMENT', { payload: migratedDoc });
+            await callFarmSyncProxy('INSERT_DOCUMENT', { payload: cleanMigrated });
           }
         } catch {
-          await callFarmSyncProxy('INSERT_DOCUMENT', { payload: migratedDoc });
+          await callFarmSyncProxy('INSERT_DOCUMENT', { payload: cleanMigrated });
         }
       })();
     } else {
       mergedMap.set(existing.id, {
         ...ld,
         ...existing,
-        _cloudSynced: true,
+        _cloudSynced: Boolean((existing.public_url || existing.file_url)?.startsWith('http')),
       });
     }
+  }
+
+  // 3. Centralizar también todos los archivos adjuntos cargados en Chat IA (imágenes de campo, facturas, KMLs)
+  try {
+    const { data: chatFiles } = await supabase
+      .from('chat_history')
+      .select('id, created_at, content, file_url, file_name, user_name, user_id')
+      .not('file_url', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(60);
+
+    if (Array.isArray(chatFiles)) {
+      chatFiles.forEach((cf) => {
+        let urls = [];
+        try {
+          urls = cf.file_url.startsWith('[') ? JSON.parse(cf.file_url) : [cf.file_url];
+        } catch {
+          urls = [cf.file_url];
+        }
+        let names = [];
+        try {
+          names = cf.file_name && cf.file_name.startsWith('[') ? JSON.parse(cf.file_name) : [cf.file_name || 'adjunto'];
+        } catch {
+          names = [cf.file_name || 'adjunto'];
+        }
+
+        urls.forEach((url, i) => {
+          if (!url || typeof url !== 'string') return;
+          const fileName = names[i] || url.split('/').pop().split('?')[0] || `archivo-chat-${i + 1}`;
+          const fileId = `chat_file_${cf.id}_${i}`;
+          if (!mergedMap.has(fileId)) {
+            const ext = fileName.split('.').pop()?.toLowerCase() || 'bin';
+            const isGeo = ['kml', 'kmz', 'geojson', 'gpx'].includes(ext);
+            mergedMap.set(fileId, {
+              id: fileId,
+              name: fileName,
+              file_type: ext,
+              file_url: url,
+              public_url: url,
+              storage_path: url,
+              size_bytes: 0,
+              file_size: 0,
+              status: 'indexed',
+              section_origin: 'chat-ia',
+              category: isGeo ? 'catastro' : 'chat',
+              chunk_count: 0,
+              geo_points_count: 0,
+              geo_paths_count: 0,
+              summary: `Adjunto del Chat IA (${cf.user_name || 'Usuario'}): ${cf.content?.substring(0, 90) || fileName}`,
+              created_at: cf.created_at,
+              user_name: cf.user_name || 'Usuario',
+              user_id: cf.user_id,
+              is_active: true,
+              _cloudSynced: true,
+            });
+          }
+        });
+      });
+    }
+  } catch (chatDocsErr) {
+    console.warn('[RAG] Aviso unificando archivos de chat_history:', chatDocsErr.message);
   }
 
   const result = Array.from(mergedMap.values());
@@ -424,33 +510,17 @@ export async function indexDocumentForRag({
   // 5. Sincronización asíncrona y resiliente con Supabase
   (async () => {
     try {
-      const { error: insErr } = await supabase.from('farm_documents').insert([
-        {
-          id: docRecord.id,
-          name: docRecord.name,
-          file_type: docRecord.file_type,
-          file_url: docRecord.file_url,
-          public_url: docRecord.public_url,
-          storage_path: docRecord.storage_path,
-          size_bytes: docRecord.size_bytes,
-          file_size: docRecord.file_size,
-          status: docRecord.status,
-          section_origin: docRecord.section_origin,
-          category: docRecord.category,
-          chunk_count: docRecord.chunk_count,
-          geo_points_count: docRecord.geo_points_count,
-          geo_paths_count: docRecord.geo_paths_count,
-          summary: docRecord.summary,
-          metadata: docRecord.metadata,
-          user_name: userName,
-          user_id: userId,
-          is_active: true,
-        },
-      ]);
+      const cleanDocToInsert = toCleanDocumentRecord({
+        ...docRecord,
+        user_name: userName,
+        user_id: userId,
+      });
+
+      const { error: insErr } = await supabase.from('farm_documents').insert([cleanDocToInsert]);
 
       if (insErr) {
         console.warn('[RAG] Inserción directa falló, llamando proxy /api/farm-sync:', insErr.message);
-        await callFarmSyncProxy('INSERT_DOCUMENT', { payload: docRecord });
+        await callFarmSyncProxy('INSERT_DOCUMENT', { payload: cleanDocToInsert });
       }
 
       const dbChunks = enrichedChunks

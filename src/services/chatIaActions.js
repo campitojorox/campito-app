@@ -10,7 +10,25 @@ import {
   parseAllStructuredCommands,
   saveNewCustomTool,
 } from './unifiedAiBrain';
-import { extractCategoriesFromText, updateAllFarmCategories } from './farmInventoryStorage';
+import { extractCategoriesFromText, updateAllFarmCategories, isValidUUID } from './farmInventoryStorage';
+import { callFarmSyncProxy } from './ragDocumentService';
+
+function base64DataUrlToBlob(dataUrl) {
+  try {
+    const parts = dataUrl.split(',');
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Ejecuta comandos estructurados devueltos por Gemini (inventario, caminos, calendario,
@@ -527,21 +545,38 @@ export async function persistChatTurnToHistory({
     const uploadedPaths = [];
 
     for (const item of attList) {
-      if (!item?.file) continue;
+      if (!item) continue;
       const fileExt = item.name ? item.name.split('.').pop() : item.isPdf ? 'pdf' : 'jpg';
       const cleanFileName = `chat-ia/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      try {
-        const { error: uploadErr } = await supabase.storage
-          .from('comprobantes')
-          .upload(cleanFileName, item.file, { contentType: item.type || 'application/octet-stream' });
+      
+      let uploadTarget = item.file;
+      if (!uploadTarget && item.dataUrl && item.dataUrl.startsWith('data:')) {
+        uploadTarget = base64DataUrlToBlob(item.dataUrl);
+      } else if (!uploadTarget && item.textContent) {
+        uploadTarget = new Blob([item.textContent], { type: 'text/plain;charset=utf-8' });
+      }
 
-        if (!uploadErr) {
-          const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
-          if (pubUrl?.publicUrl) uploadedUrls.push(pubUrl.publicUrl);
-          uploadedPaths.push(cleanFileName);
+      if (uploadTarget) {
+        try {
+          const { error: uploadErr } = await supabase.storage
+            .from('comprobantes')
+            .upload(cleanFileName, uploadTarget, {
+              contentType: item.type || uploadTarget.type || 'application/octet-stream',
+              upsert: true,
+            });
+
+          if (!uploadErr) {
+            const { data: pubUrl } = supabase.storage.from('comprobantes').getPublicUrl(cleanFileName);
+            if (pubUrl?.publicUrl) {
+              uploadedUrls.push(pubUrl.publicUrl);
+              uploadedPaths.push(cleanFileName);
+            }
+          } else {
+            console.warn('[ChatIA] No se pudo subir archivo a storage:', uploadErr.message);
+          }
+        } catch (fileErr) {
+          console.warn('[ChatIA] No se pudo subir archivo a storage:', fileErr);
         }
-      } catch (fileErr) {
-        console.warn('[ChatIA] No se pudo subir archivo a storage:', fileErr);
       }
     }
 
@@ -571,7 +606,7 @@ export async function persistChatTurnToHistory({
     const uploadedFileName =
       uploadedPaths.length > 1 ? JSON.stringify(uploadedPaths) : uploadedPaths[0] || null;
 
-    const { data: authData } = await supabase.auth.getUser();
+    const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: {} }));
     const u = authData?.user;
     const currentUserName = u?.user_metadata?.name || u?.email?.split('@')[0] || 'Admin';
 
@@ -582,27 +617,54 @@ export async function persistChatTurnToHistory({
           ? `[Archivo adjunto: ${attList[0].name}]`
           : '';
 
-    await supabase.from('chat_history').insert({
+    const validUserId = isValidUUID(u?.id) ? u.id : null;
+
+    const userPayload = {
       role: 'user',
       content: userText || attSummary || (aud ? `[Audio grabado: ${aud.duration}s]` : ''),
       file_url: uploadedFileUrl,
       file_name: uploadedFileName,
-      user_id: u?.id || null,
+      user_id: validUserId,
       user_name: currentUserName,
       model_used: null,
-    });
+    };
 
-    await supabase.from('chat_history').insert({
+    try {
+      const { error: userErr } = await supabase.from('chat_history').insert([userPayload]);
+      if (userErr) {
+        console.warn('[ChatIA] Inserción directa en chat_history falló, usando proxy admin:', userErr.message);
+        await callFarmSyncProxy('INSERT_CHAT_HISTORY', { payload: userPayload });
+      }
+    } catch {
+      await callFarmSyncProxy('INSERT_CHAT_HISTORY', { payload: userPayload });
+    }
+
+    const assistantPayload = {
       role: 'assistant',
       content: displayedContent,
       file_url: null,
       file_name: null,
-      user_id: u?.id || null,
+      user_id: validUserId,
       user_name: 'Asistente IA',
-      model_used: `${serverThatAnswered.name} (${serverThatAnswered.level})`,
-    });
+      model_used: serverThatAnswered?.name ? `${serverThatAnswered.name} (${serverThatAnswered.level || 'AI'})` : 'Gemini AI',
+    };
+
+    try {
+      const { error: astErr } = await supabase.from('chat_history').insert([assistantPayload]);
+      if (astErr) {
+        await callFarmSyncProxy('INSERT_CHAT_HISTORY', { payload: assistantPayload });
+      }
+    } catch {
+      await callFarmSyncProxy('INSERT_CHAT_HISTORY', { payload: assistantPayload });
+    }
+
+    return {
+      uploadedUrls,
+      uploadedPaths,
+    };
   } catch (persistErr) {
     console.warn('[ChatIA] Aviso al persistir para backup:', persistErr.message);
+    return null;
   }
 }
 

@@ -65,7 +65,7 @@ export default function MapFilterDrawer({
     [localPaths]
   );
 
-  // 3. Agrupación de trazados por su categoría real (ej: Caminos y Trazados, Ríos / Arroyos, etc.)
+  // 3. Agrupación de trazados por su categoría real (ej: Trazados, Ríos / Arroyos, etc.)
   const pathCategoryGroups = useMemo(() => {
     const groups = new Map();
     (nonLindePaths || []).forEach((path) => {
@@ -247,7 +247,7 @@ export default function MapFilterDrawer({
               <span className="filter-drawer-badge">{nonLindePaths.length}</span>
             </label>
 
-            {/* Grupos de Categorías de Trazados (Caminos y Trazados, Ríos / Arroyos, etc.) */}
+            {/* Grupos de Categorías de Trazados (Trazados, Ríos / Arroyos, etc.) */}
             {pathCategoryGroups.length > 0 && (
               <div className="filter-drawer-sublist">
                 {pathCategoryGroups.map(({ cat, count, subcats }) => {

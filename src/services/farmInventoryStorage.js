@@ -1085,7 +1085,6 @@ export const BASE_CATEGORY_MAP = {
   'Casas': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
   'Casas / Edificios': ['casa', 'casita', 'cueva', 'edificio', 'vivienda', 'cortijo', 'caseta', 'caravana', 'taller', 'almacen', 'nave', 'cobertizo', 'cabana', 'choza', 'domo', 'habitacion', 'construccion'],
   'Trazados': ['camino', 'sendero', 'carril', 'vereda', 'acequia', 'linea_riego', 'trazado', 'pista', 'senda', 'linde', 'calle', 'mtb', 'rio', 'arroyo', 'cauce', 'torrente', 'barranco', 'riachuelo', 'rambla', 'vado', 'cascada', 'nacimiento'],
-  'Caminos y Trazados': ['camino', 'sendero', 'carril', 'vereda', 'acequia', 'linea_riego', 'trazado', 'pista', 'senda', 'linde', 'calle', 'mtb'],
   'Ríos / Arroyos': ['rio', 'arroyo', 'cauce', 'torrente', 'barranco', 'riachuelo', 'rambla', 'vado', 'cascada', 'nacimiento'],
   'Rios / Arroyos': ['rio', 'arroyo', 'cauce', 'torrente', 'barranco', 'riachuelo', 'rambla', 'vado', 'cascada', 'nacimiento'],
   'Herramientas': ['herramienta', 'maquina', 'tractor', 'moto', 'equipo', 'mobiliario', 'apero'],
@@ -1100,8 +1099,6 @@ export const BASE_CATEGORY_COLORS = {
   'Plantas': '#4ade80',           // Verde claro
   'Riego / Agua': '#0284c7',      // Azul
   'Trazados': '#f97316',          // Naranja trazados
-  'Caminos y Trazados': '#f97316',// Naranja (alias)
-  'Caminos': '#f97316',           // Naranja (alias)
   'Casas': '#eab308',             // Amarillo
   'Casas / Edificios': '#eab308', // Amarillo (retrocompatibilidad)
   'Edificios': '#eab308',         // Amarillo (retrocompatibilidad)
@@ -1131,8 +1128,7 @@ const DELETED_CATEGORIES_KEY = 'campito_deleted_categories_cache';
 export function getDeletedCategories() {
   try {
     const raw = localStorage.getItem(DELETED_CATEGORIES_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
+    const arr = raw ? JSON.parse(raw) : [];
     const set = new Set();
     (arr || []).forEach((item) => {
       if (item && typeof item === 'string') {
@@ -1140,9 +1136,15 @@ export function getDeletedCategories() {
         set.add(item.trim().toLowerCase());
       }
     });
+    // 'Caminos y Trazados' queda permanentemente eliminada en favor de 'Trazados'
+    set.add('Caminos y Trazados');
+    set.add('caminos y trazados');
     return set;
   } catch {
-    return new Set();
+    const fallback = new Set();
+    fallback.add('Caminos y Trazados');
+    fallback.add('caminos y trazados');
+    return fallback;
   }
 }
 

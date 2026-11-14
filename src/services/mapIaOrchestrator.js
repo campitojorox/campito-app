@@ -962,10 +962,16 @@ export async function executeInventoryActions({
     else if (CREATE_CATEGORY_TYPES.has(actType)) {
       if (Array.isArray(actData)) {
         const cats = updateAllFarmCategories(actData);
-        if (cats && cats.length > 0) result.addedCategories.push(...cats);
+        if (cats && cats.length > 0) {
+          result.addedCategories.push(...cats);
+          cats.forEach((c) => result.reverts.push({ type: 'DELETE_CATEGORY', name: c.name || c }));
+        }
       } else if (actData && Array.isArray(actData.categories || actData.categorias)) {
         const cats = updateAllFarmCategories(actData.categories || actData.categorias);
-        if (cats && cats.length > 0) result.addedCategories.push(...cats);
+        if (cats && cats.length > 0) {
+          result.addedCategories.push(...cats);
+          cats.forEach((c) => result.reverts.push({ type: 'DELETE_CATEGORY', name: c.name || c }));
+        }
       } else {
         const cat = createFarmCategory({
           name: actData.name || actData.category || actData.categoria,
@@ -973,28 +979,40 @@ export async function executeInventoryActions({
           color: actData.color || null,
           icon: actData.icon || null,
         });
-        if (cat) result.addedCategories.push(cat);
+        if (cat) {
+          result.addedCategories.push(cat);
+          result.reverts.push({ type: 'DELETE_CATEGORY', name: cat.name });
+        }
       }
     }
 
     // ── BORRAR CATEGORÍA (NUNCA BORRAR ELEMENTOS NI NODOS) ───────────────────
     else if (DELETE_CATEGORY_TYPES.has(actType)) {
+      const catName = actData.name || actData.category || actData.categoria || actData.query;
       const res = await deleteFarmCategory({
-        name: actData.name || actData.category || actData.categoria || actData.query,
+        name: catName,
         deleteItems: false,
         reassignTo: actData.reassign_to || 'Sin categoría',
       });
-      if (res?.success) result.deletedCategories.push(res);
+      if (res?.success) {
+        result.deletedCategories.push(res);
+        result.reverts.push({ type: 'RESTORE_CATEGORY', name: catName });
+      }
     }
 
     // ── RENOMBRAR CATEGORÍA ──────────────────────────────────────────────────
     else if (RENAME_CATEGORY_TYPES.has(actType)) {
+      const oldName = actData.old_name || actData.oldName || actData.origen || actData.source;
+      const newName = actData.new_name || actData.newName || actData.destino || actData.target;
       const res = await renameFarmCategory({
-        oldName: actData.old_name || actData.oldName || actData.origen || actData.source,
-        newName: actData.new_name || actData.newName || actData.destino || actData.target,
+        oldName,
+        newName,
         subcategories: actData.subcategories || actData.subcategorias,
       });
-      if (res?.success) result.addedCategories.push({ name: res.newName });
+      if (res?.success) {
+        result.addedCategories.push({ name: res.newName });
+        result.reverts.push({ type: 'RENAME_CATEGORY', oldName: res.newName, newName: res.oldName });
+      }
     }
 
     // ── INTEGRAR / FUSIONAR CATEGORÍA ─────────────────────────────────────────

@@ -437,7 +437,7 @@ export default function FarmSatelliteMap({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [newPathData, setNewPathData] = useState({
     name: '',
-    category: 'Caminos y Trazados',
+    category: 'Trazados',
     path_type: 'Sendero',
     color: '#f97316',
     stroke_width: 4,
@@ -452,6 +452,19 @@ export default function FarmSatelliteMap({
   const mapIaTextareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
+
+  // Control de visibilidad de capas mientras un FORM (crear o editar) está activo
+  const isFormActive = Boolean(isDrawing || selectedTarget);
+  const effectiveShowLegend = isFormActive ? false : showLegend;
+  const effectiveShowElevationContours = isFormActive ? false : showElevationContours;
+  const effectiveShowCatastro = isFormActive ? false : showCatastro;
+  const effectiveShowNavControls = isFormActive ? false : showNavControls;
+
+  useEffect(() => {
+    if (isFormActive) {
+      setIsLayersMenuOpen(false);
+    }
+  }, [isFormActive]);
 
   useEffect(() => {
     syncTextareaHeight(mapIaTextareaRef.current, mapIaInput);
@@ -485,7 +498,7 @@ export default function FarmSatelliteMap({
   );
 
   const liveDrawDistance = useMemo(() => calculatePathMeters(drawPoints), [drawPoints]);
-  const activeDrawCategory = newPathData?.category || 'Caminos y Trazados';
+  const activeDrawCategory = newPathData?.category || 'Trazados';
   const drawSubcategories = useMemo(
     () => getSubcategoriesForParent(localInventory, activeDrawCategory),
     [localInventory, activeDrawCategory]
@@ -523,7 +536,7 @@ export default function FarmSatelliteMap({
         if (!searchable.includes(q)) return false;
       }
       const pt = path.path_type || 'otro';
-      if (pt === 'linde') return showCatastro;
+      if (pt === 'linde') return effectiveShowCatastro;
       if (!showPaths) return false;
 
       const cat = getPathCategory(path);
@@ -536,7 +549,7 @@ export default function FarmSatelliteMap({
       }
       return true;
     });
-  }, [localPaths, searchQuery, showCatastro, showPaths, visiblePathCategories, visiblePathSubcats]);
+  }, [localPaths, searchQuery, effectiveShowCatastro, showPaths, visiblePathCategories, visiblePathSubcats]);
 
   useEffect(() => {
     const q = (searchQuery || '').trim();
@@ -593,8 +606,8 @@ export default function FarmSatelliteMap({
     showPaths,
     filteredPaths,
     localPaths,
-    showCatastro,
-    showElevationContours,
+    showCatastro: effectiveShowCatastro,
+    showElevationContours: effectiveShowElevationContours,
     inventory,
     paths,
   });
@@ -626,10 +639,10 @@ export default function FarmSatelliteMap({
 
       const payload = {
         name: pathName,
-        category: newPathData.category || 'Caminos y Trazados',
+        category: newPathData.category || 'Trazados',
         path_type: newPathData.path_type || '',
         coordinates: drawPoints,
-        color: newPathData.color || getCategoryColor(newPathData.category || 'Caminos y Trazados'),
+        color: newPathData.color || getCategoryColor(newPathData.category || 'Trazados'),
         stroke_width: Number(newPathData.stroke_width) || 4,
         length_meters: Number(lengthMeters.toFixed(2)),
         notes: newPathData.notes?.trim() || null,
@@ -644,7 +657,7 @@ export default function FarmSatelliteMap({
       setShowSaveModal(false);
       setNewPathData({
         name: '',
-        category: 'Caminos y Trazados',
+        category: 'Trazados',
         path_type: 'Sendero',
         color: '#f97316',
         stroke_width: 4,
@@ -661,7 +674,7 @@ export default function FarmSatelliteMap({
           type: 'path',
           id: data.id,
           title: data.name,
-          category: data.category || newPathData.category || 'Caminos y Trazados',
+          category: data.category || newPathData.category || 'Trazados',
           path_type: data.path_type,
           color: data.color,
           length_meters: data.length_meters,
@@ -791,14 +804,36 @@ export default function FarmSatelliteMap({
 
     try {
       if (targetType === 'point') {
+        const itemToDelete = localInventory.find((i) => String(i.id) === String(targetId)) || selectedTarget?.raw;
         setLocalInventory((prev) => prev.filter((i) => String(i.id) !== String(targetId)));
         await deleteFarmInventoryItem(targetId);
+        if (itemToDelete) {
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Eliminado pin "${targetTitle}"`,
+              reverts: [{ type: 'RESTORE_POINT', itemData: itemToDelete }],
+              timestamp: Date.now(),
+            },
+          ]);
+        }
         setIaFeedback({ type: 'success', text: `🗑️ Pin eliminado: ${targetTitle}` });
         setSelectedTarget(null);
         if (onReloadInventory) await onReloadInventory();
       } else if (targetType === 'path') {
+        const pathToDelete = localPaths.find((p) => String(p.id) === String(targetId)) || selectedTarget?.raw;
         setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(targetId)));
         await deleteFarmPath(targetId);
+        if (pathToDelete) {
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Eliminado trazado "${targetTitle}"`,
+              reverts: [{ type: 'RESTORE_PATH', pathData: pathToDelete }],
+              timestamp: Date.now(),
+            },
+          ]);
+        }
         setIaFeedback({ type: 'success', text: `🗑️ Trazado eliminado: ${targetTitle}` });
         setSelectedTarget(null);
         if (onReloadPaths) await onReloadPaths();
@@ -893,7 +928,7 @@ export default function FarmSatelliteMap({
         ? (selectedTarget.pathId ?? (selectedTarget.id ? String(selectedTarget.id).split('-node-')[0] : null))
         : selectedTarget.id;
       const updateObj = {};
-      const parentCat = selectedTarget.category || selectedTarget.raw?.category || 'Caminos y Trazados';
+      const parentCat = selectedTarget.category || selectedTarget.raw?.category || 'Trazados';
 
       if (field === 'title' || field === 'name') {
         updateObj.name = value;
@@ -1050,7 +1085,7 @@ export default function FarmSatelliteMap({
       if (selectedTarget.type === 'path') {
         const pathId = selectedTarget.id;
         const currentPath = localPaths.find((p) => String(p.id) === String(pathId)) || selectedTarget;
-        const cat = selectedTarget.category || currentPath.category || 'Caminos y Trazados';
+        const cat = selectedTarget.category || currentPath.category || 'Trazados';
         const sub = selectedTarget.variety_type !== undefined
           ? selectedTarget.variety_type
           : (selectedTarget.subcategory !== undefined
@@ -1084,7 +1119,7 @@ export default function FarmSatelliteMap({
       } else if (selectedTarget.type === 'node') {
         const pathId = selectedTarget.pathId ?? (selectedTarget.id ? String(selectedTarget.id).split('-node-')[0] : null);
         const currentPath = localPaths.find((p) => String(p.id) === String(pathId)) || selectedTarget.raw || {};
-        const cat = selectedTarget.category || currentPath.category || 'Caminos y Trazados';
+        const cat = selectedTarget.category || currentPath.category || 'Trazados';
         const sub = selectedTarget.variety_type !== undefined
           ? selectedTarget.variety_type
           : (selectedTarget.subcategory !== undefined
@@ -1197,42 +1232,40 @@ export default function FarmSatelliteMap({
 
   return (
     <div style={isPageMode ? stylesPage.wrapper : styles.wrapper}>
-      <MapTopToolbar
-        searchQuery={searchQuery}
-        filteredCount={filteredInventory.length + filteredPaths.length}
-        isFilterOpen={isFilterOpen}
-        setIsFilterOpen={setIsFilterOpen}
-        isDrawing={isDrawing}
-        handleToggleDraw={handleToggleDraw}
-        isLayersMenuOpen={isLayersMenuOpen}
-        setIsLayersMenuOpen={setIsLayersMenuOpen}
-        showLegend={showLegend}
-        setShowLegend={setShowLegend}
-        showNavControls={showNavControls}
-        setShowNavControls={setShowNavControls}
-        showElevationContours={showElevationContours}
-        setShowElevationContours={setShowElevationContours}
-        showCatastro={showCatastro}
-        setShowCatastro={setShowCatastro}
-        handleExportVisiblePDF={handleExportVisiblePDF}
-        setIsInfoModalOpen={setIsInfoModalOpen}
-        onOpenRagExplorer={() => setIsRagExplorerOpen(true)}
-      />
-
       <div style={styles.mapContainer}>
         <div ref={mapContainerRef} style={styles.leafletMap} />
 
+        <MapTopToolbar
+          searchQuery={searchQuery}
+          filteredCount={filteredInventory.length + filteredPaths.length}
+          isFilterOpen={isFilterOpen}
+          setIsFilterOpen={setIsFilterOpen}
+          isDrawing={isDrawing}
+          handleToggleDraw={handleToggleDraw}
+          isLayersMenuOpen={isLayersMenuOpen}
+          setIsLayersMenuOpen={setIsLayersMenuOpen}
+          showLegend={showLegend}
+          setShowLegend={setShowLegend}
+          showNavControls={showNavControls}
+          setShowNavControls={setShowNavControls}
+          showElevationContours={showElevationContours}
+          setShowElevationContours={setShowElevationContours}
+          showCatastro={showCatastro}
+          setShowCatastro={setShowCatastro}
+          setIsInfoModalOpen={setIsInfoModalOpen}
+        />
+
         <MapOverlays
           isDrawing={isDrawing}
-          showLegend={showLegend}
+          showLegend={effectiveShowLegend}
           selectedTarget={selectedTarget}
           allCategories={allCategories}
           localInventory={localInventory}
           localPaths={localPaths}
           showPaths={showPaths}
-          showCatastro={showCatastro}
-          showElevationContours={showElevationContours}
-          showNavControls={showNavControls}
+          showCatastro={effectiveShowCatastro}
+          showElevationContours={effectiveShowElevationContours}
+          showNavControls={effectiveShowNavControls}
           mapInstanceRef={mapInstanceRef}
           handleCenterOnUserLocation={handleCenterOnUserLocation}
           isLocatingUser={isLocatingUser}

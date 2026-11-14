@@ -10,6 +10,7 @@ import {
   Paperclip,
   Brain,
   Download,
+  ExternalLink,
   Map,
   Compass,
   FileCode,
@@ -87,15 +88,95 @@ export default function ChatMessageList({
             <div style={styles.bubble(isUser)}>
               {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: msg.content ? 6 : 0 }}>
-                  {msg.attachments.map((attItem, idx) =>
-                    attItem.isImage && attItem.dataUrl ? (
-                      <img
-                        key={`${attItem.name || 'img'}-${idx}`}
-                        src={attItem.dataUrl}
-                        alt={attItem.name || 'Adjunto'}
-                        style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, display: 'block' }}
-                      />
-                    ) : (
+                  {msg.attachments.map((attItem, idx) => {
+                    const isImg =
+                      attItem.isImage ||
+                      (attItem.type && attItem.type.startsWith('image/')) ||
+                      (attItem.name && /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(attItem.name));
+                    const fileUrl = attItem.public_url || attItem.file_url || attItem.url || attItem.dataUrl;
+                    const isPdf = attItem.isPdf || (attItem.name && attItem.name.toLowerCase().endsWith('.pdf'));
+                    const isSpreadsheet =
+                      attItem.isSpreadsheet || (attItem.name && /\.(xlsx|xls|csv)$/i.test(attItem.name));
+                    const isGeo =
+                      attItem.isGeo || (attItem.name && /\.(kml|kmz|geojson|gpx)$/i.test(attItem.name));
+                    const isRemote = Boolean(fileUrl && fileUrl.startsWith('http'));
+
+                    if (isImg && fileUrl) {
+                      return (
+                        <div
+                          key={`${attItem.name || 'img'}-${idx}`}
+                          style={{
+                            maxWidth: 240,
+                            borderRadius: 10,
+                            overflow: 'hidden',
+                            backgroundColor: isUser ? 'rgba(0,0,0,0.1)' : '#f1f5f9',
+                            border: isUser ? '1px solid rgba(255,255,255,0.2)' : '1px solid #e2e8f0',
+                          }}
+                        >
+                          <a
+                            href={fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ display: 'block', textDecoration: 'none' }}
+                            title="Abrir imagen completa"
+                          >
+                            <img
+                              src={fileUrl}
+                              alt={attItem.name || 'Adjunto'}
+                              style={{
+                                width: '100%',
+                                maxHeight: 180,
+                                objectFit: 'cover',
+                                display: 'block',
+                              }}
+                            />
+                          </a>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '5px 8px',
+                              fontSize: '0.68rem',
+                              color: isUser ? '#ffffff' : '#475569',
+                              backgroundColor: isUser ? 'rgba(0,0,0,0.15)' : '#ffffff',
+                            }}
+                          >
+                            <span
+                              style={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: 140,
+                                fontWeight: 500,
+                              }}
+                            >
+                              {attItem.name || 'Foto'}
+                            </span>
+                            {isRemote && (
+                              <a
+                                href={fileUrl}
+                                download={attItem.name || 'foto.jpg'}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 2,
+                                  color: isUser ? '#ffffff' : '#0284c7',
+                                  textDecoration: 'none',
+                                  fontWeight: 600,
+                                }}
+                                title="Descargar foto"
+                              >
+                                <Download size={12} />
+                                <span>Bajar</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
                       <div
                         key={`${attItem.name || 'file'}-${idx}`}
                         style={{
@@ -103,40 +184,92 @@ export default function ChatMessageList({
                           alignItems: 'center',
                           gap: 8,
                           padding: '7px 10px',
-                          backgroundColor: isUser ? 'rgba(255,255,255,0.18)' : '#f1f5f9',
+                          backgroundColor: isUser ? 'rgba(255,255,255,0.18)' : '#f8fafc',
                           borderRadius: 8,
-                          maxWidth: 260,
+                          maxWidth: 320,
                           border: isUser ? '1px solid rgba(255,255,255,0.25)' : '1px solid #e2e8f0',
                         }}
                       >
-                        {attItem.isPdf ? (
-                          <FileText size={18} color={isUser ? '#ffffff' : '#dc2626'} />
-                        ) : attItem.isSpreadsheet ? (
-                          <FileSpreadsheet size={18} color={isUser ? '#ffffff' : '#16a34a'} />
+                        {isPdf ? (
+                          <FileText size={18} color={isUser ? '#ffffff' : '#dc2626'} style={{ flexShrink: 0 }} />
+                        ) : isSpreadsheet ? (
+                          <FileSpreadsheet size={18} color={isUser ? '#ffffff' : '#16a34a'} style={{ flexShrink: 0 }} />
+                        ) : isGeo ? (
+                          <Map size={18} color={isUser ? '#ffffff' : '#059669'} style={{ flexShrink: 0 }} />
                         ) : (
-                          <Paperclip size={18} color={isUser ? '#ffffff' : '#0284c7'} />
+                          <Paperclip size={18} color={isUser ? '#ffffff' : '#0284c7'} style={{ flexShrink: 0 }} />
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ margin: 0, fontSize: '0.78rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: '0.78rem',
+                              fontWeight: 600,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
                             {attItem.name}
                           </p>
-                          {attItem.size > 0 && (
-                            <p style={{ margin: 0, fontSize: '0.64rem', opacity: 0.85 }}>
-                              {(attItem.size / 1024).toFixed(1)} KB
-                            </p>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: 0, fontSize: '0.64rem', opacity: 0.85 }}>
+                            {attItem.size > 0 && <span>{(attItem.size / 1024).toFixed(1)} KB</span>}
+                            {isRemote && <span>• ☁️ Centralizado</span>}
+                          </div>
                         </div>
+
+                        {isRemote && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                padding: '3px 5px',
+                                borderRadius: 4,
+                                backgroundColor: isUser ? 'rgba(255,255,255,0.25)' : '#e0f2fe',
+                                color: isUser ? '#ffffff' : '#0284c7',
+                                textDecoration: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                              title="Abrir / Ver archivo"
+                            >
+                              <ExternalLink size={12} />
+                            </a>
+                            <a
+                              href={fileUrl}
+                              download={attItem.name}
+                              style={{
+                                padding: '3px 5px',
+                                borderRadius: 4,
+                                backgroundColor: isUser ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+                                color: isUser ? '#ffffff' : '#475569',
+                                textDecoration: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                              title="Descargar archivo"
+                            >
+                              <Download size={12} />
+                            </a>
+                          </div>
+                        )}
                       </div>
-                    )
-                  )}
+                    );
+                  })}
                 </div>
               )}
               {!msg.attachments && msg.image && (
-                <img
-                  src={msg.image}
-                  alt="Adjunto"
-                  style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, marginBottom: 6, display: 'block' }}
-                />
+                <div style={{ maxWidth: 220, marginBottom: 6 }}>
+                  <a href={msg.image} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={msg.image}
+                      alt="Adjunto"
+                      style={{ maxWidth: 220, maxHeight: 160, borderRadius: 8, display: 'block' }}
+                    />
+                  </a>
+                </div>
               )}
               {!msg.attachments && msg.file && !msg.image && (
                 <div
@@ -169,12 +302,23 @@ export default function ChatMessageList({
                       </p>
                     )}
                   </div>
+                  {msg.file.url && (
+                    <a
+                      href={msg.file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: isUser ? '#ffffff' : '#0284c7' }}
+                      title="Abrir archivo"
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
                 </div>
               )}
               {msg.audio && (
                 <div style={{ marginBottom: msg.content ? 6 : 0, maxWidth: 260 }}>
                   <audio
-                    src={msg.audio.dataUrl}
+                    src={msg.audio.public_url || msg.audio.file_url || msg.audio.dataUrl}
                     controls
                     style={{ width: '100%', height: 36, borderRadius: 18, outline: 'none' }}
                   />

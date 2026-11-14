@@ -7,11 +7,62 @@ import { GEMINI_SERVERS, callGeminiDirect } from '../services/geminiDirectClient
 import { SYSTEM_PROMPT, buildComprehensiveFincaContext } from '../services/fincaContextBuilder';
 import { processChatResponseActions, persistChatTurnToHistory } from '../services/chatIaActions';
 import { normalizeAttachments } from '../utils/attachmentUtils';
-import { indexDocumentForRag, searchRagKnowledge, formatRagContextForPrompt } from '../services/ragDocumentService';
+import { indexDocumentForRag, searchRagKnowledge, formatRagContextForPrompt, callFarmSyncProxy } from '../services/ragDocumentService';
 import { getLocalInventory, getLocalPaths, getFarmCategories } from '../services/farmInventoryStorage';
 import { getGlobalLastKnownGps } from '../hooks/useVoiceGeoTracker';
 import { WELCOME_MESSAGE, stripLegacyGpsTag } from './chatConstants';
 import { ChatContext } from './chatInstance';
+
+function formatRemoteChatRowToMessage(row) {
+  let attachments = null;
+  if (row.file_url) {
+    let urls = [];
+    try {
+      urls = row.file_url.startsWith('[') ? JSON.parse(row.file_url) : [row.file_url];
+    } catch {
+      urls = [row.file_url];
+    }
+    let names = [];
+    try {
+      names = row.file_name && row.file_name.startsWith('[') ? JSON.parse(row.file_name) : [row.file_name || 'archivo'];
+    } catch {
+      names = [row.file_name || 'archivo'];
+    }
+
+    attachments = urls.map((url, idx) => {
+      if (!url || typeof url !== 'string') return null;
+      const name = names[idx] || url.split('/').pop().split('?')[0] || `archivo-${idx + 1}`;
+      const nameLower = name.toLowerCase();
+      const isImg =
+        /\.(jpg|jpeg|png|webp|gif|avif)$/i.test(nameLower) ||
+        (url.toLowerCase().includes('/chat-ia/') && /\.(jpg|jpeg|png|webp|gif)/i.test(url));
+      const isPdf = nameLower.endsWith('.pdf') || url.toLowerCase().includes('.pdf');
+      const isSpreadsheet = /\.(xlsx|xls|csv)$/i.test(nameLower);
+      const isGeo = /\.(kml|kmz|geojson|gpx)$/i.test(nameLower);
+
+      return {
+        id: `att_${row.id}_${idx}`,
+        name,
+        file_url: url,
+        public_url: url,
+        url,
+        isImage: isImg,
+        isPdf,
+        isSpreadsheet,
+        isGeo,
+      };
+    }).filter(Boolean);
+  }
+
+  return {
+    id: row.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    role: row.role,
+    content: row.content || '',
+    attachments: attachments && attachments.length > 0 ? attachments : null,
+    serverUsed: row.model_used ? { name: row.model_used } : null,
+    created_at: row.created_at,
+  };
+}
 
 export function ChatProvider({ children, session }) {
   const initialIndex = GEMINI_SERVERS.findIndex((s) => s.id === 'gemini-2.5-flash');
@@ -210,6 +261,104 @@ export function ChatProvider({ children, session }) {
     }
   }, []);
 
+  // ─── Sincronización bidireccional de historial con Supabase (Móvil <-> PC) ─────
+  const syncChatHistoryFromRemote = useCallback(async () => {
+    try {
+      let remoteRows = [];
+      const { data, error } = await supabase
+        .from('chat_history')
+        .select('*')
+        .order('created_at', { ascending: true })
+        .limit(60);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        remoteRows = data;
+      } else {
+        const proxyRes = await callFarmSyncProxy('FETCH_CHAT_HISTORY', { limit: 60 });
+        if (proxyRes?.data && Array.isArray(proxyRes.data)) {
+          remoteRows = proxyRes.data;
+        }
+      }
+
+      if (remoteRows.length > 0) {
+        const convertedMessages = remoteRows.map(formatRemoteChatRowToMessage);
+
+        setMessages((prev) => {
+          // Si el chat local solo tiene el welcome message, inicializar con el historial remoto
+          if (prev.length <= 1 && prev[0]?.id === 'welcome') {
+            return convertedMessages;
+          }
+
+          // Combinar y deduplicar por id o por huella de contenido
+          const existingIds = new Set(prev.map((m) => m.id));
+          const toAdd = convertedMessages.filter((m) => !existingIds.has(m.id));
+
+          if (toAdd.length === 0) return prev;
+
+          const merged = [...prev, ...toAdd];
+          merged.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+
+          const uid = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
+          try {
+            localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify(merged.slice(-60)));
+          } catch {
+            // ignore
+          }
+
+          return merged.slice(-60);
+        });
+      }
+    } catch (err) {
+      console.warn('[ChatContext] Aviso sincronizando historial remoto:', err.message);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    // Sincronización inicial
+    syncChatHistoryFromRemote();
+
+    // Suscripción Realtime a nuevos mensajes insertados desde móvil u ordenador
+    const channel = supabase
+      .channel('chat_history_realtime_sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_history' }, (payload) => {
+        if (payload?.new) {
+          const newMsg = formatRemoteChatRowToMessage(payload.new);
+          setMessages((prev) => {
+            const alreadyExists = prev.some(
+              (m) =>
+                m.id === newMsg.id ||
+                (m.role === newMsg.role &&
+                  m.content === newMsg.content &&
+                  Math.abs(new Date(m.created_at || Date.now()) - new Date(newMsg.created_at || Date.now())) < 4000)
+            );
+            if (alreadyExists) return prev;
+            const nextList = [...prev, newMsg];
+            const uid = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
+            try {
+              localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify(nextList.slice(-60)));
+            } catch {
+              // ignore
+            }
+            return nextList;
+          });
+        }
+      })
+      .subscribe();
+
+    // Al volver a la pestaña o abrir la app en el móvil
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncChatHistoryFromRemote();
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      supabase.removeChannel(channel);
+      window.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [syncChatHistoryFromRemote, currentUserId]);
+
   // ─── Enviar Mensaje (Se ejecuta de forma continua sin importar la pestaña) ─────
   const sendMessage = useCallback(
     async (textOverride = null, attachmentData = null, audioData = null) => {
@@ -233,8 +382,9 @@ export function ChatProvider({ children, session }) {
             ? `📎 ${atts[0].name}`
             : '';
 
+      const tempUserMsgId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       const userMsg = {
-        id: Date.now().toString(),
+        id: tempUserMsgId,
         role: 'user',
         content: text || fallbackAttText || (aud ? '🎙️ Mensaje de voz' : ''),
         attachments:
@@ -246,7 +396,10 @@ export function ChatProvider({ children, session }) {
                 isImage: a.isImage,
                 isPdf: a.isPdf,
                 isSpreadsheet: a.isSpreadsheet,
+                isGeo: a.isGeo || /\.(kml|kmz|geojson|gpx)$/i.test(a.name || ''),
                 dataUrl: a.dataUrl,
+                file_url: a.file_url || a.public_url || null,
+                public_url: a.public_url || a.file_url || null,
               }))
             : null,
         audio: aud ? { dataUrl: aud.dataUrl, duration: aud.duration } : null,
@@ -538,14 +691,43 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             return nextList;
           });
 
-          // Persistir en Supabase
-          persistChatTurnToHistory({
+          // Persistir en Supabase Storage y chat_history
+          const persistResult = await persistChatTurnToHistory({
             userText: text,
             atts,
             aud,
             displayedContent,
             serverThatAnswered,
-          }).catch((e) => console.warn('[ChatContext] Aviso persistiendo en chat_history:', e));
+          }).catch((e) => {
+            console.warn('[ChatContext] Aviso persistiendo en chat_history:', e);
+            return null;
+          });
+
+          // Actualizar las URLs públicas remotas en el mensaje local para que persistan en cualquier dispositivo
+          if (persistResult?.uploadedUrls && persistResult.uploadedUrls.length > 0) {
+            setMessages((prev) => {
+              const nextList = prev.map((m) => {
+                if (m.id === tempUserMsgId && Array.isArray(m.attachments)) {
+                  return {
+                    ...m,
+                    attachments: m.attachments.map((att, idx) => ({
+                      ...att,
+                      file_url: persistResult.uploadedUrls[idx] || att.file_url,
+                      public_url: persistResult.uploadedUrls[idx] || att.public_url,
+                      url: persistResult.uploadedUrls[idx] || att.url,
+                    })),
+                  };
+                }
+                return m;
+              });
+              try {
+                localStorage.setItem(`campito_chat_messages_${uidForCache}`, JSON.stringify(nextList.slice(-60)));
+              } catch {
+                // ignore
+              }
+              return nextList;
+            });
+          }
 
           // Si el usuario navegó a otra pestaña mientras se procesaba, activar badge verde
           if (window.location.pathname !== '/chat-ia') {

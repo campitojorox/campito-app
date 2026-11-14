@@ -241,7 +241,7 @@ ${transactionsSummary.join('\n') || 'Sin transacciones'}
    - Añadir: [[REGISTRAR_PUNTOS: [ {"name": "Aguacate Hass 3", "category": "arbol|riego|edificio|planta|hito", "variety_type": "Hass", "status": "saludable|clorosis|enfermo", "latitude": 36.72..., "longitude": -4.89..., "timestamp_audio_s": 2.5} ] ]]
    - Modificar: [[EDITAR_PUNTO: {"target_id": "UUID_O_ID", "status": "clorosis", "notes": "Falta de hierro"}]]
    - Borrar: [[BORRAR_PUNTO: {"target_id": "UUID", "query": "nombre"}]]
-2. Caminos y Trazados de Riego:
+2. Trazados y Líneas de Riego:
    - Crear: [[REGISTRAR_CAMINO: {"name": "Línea Riego Sector 1", "path_type": "linea_riego|camino|sendero", "color": "#00979d", "coordinates": [[36.7259, -4.8946], [36.7262, -4.8948]] }]]
    - Modificar Línea/Ruta: [[EDITAR_CAMINO: {"target_id": "UUID", "name": "Nuevo Nombre", "color": "#f97316", "coordinates": [[36.72..., -4.89...]] }]]
    - Borrar: [[BORRAR_CAMINO: {"target_id": "UUID", "query": "nombre"}]]
@@ -257,7 +257,7 @@ ${transactionsSummary.join('\n') || 'Sin transacciones'}
      [[REGISTRAR_HERRAMIENTA: {"name": "calculo_abono_ce", "display_name": "Calculadora de Abono por CE", "description": "Calcula abono según conductividad", "category": "agronomia", "parameters": [{"name": "ce_actual", "type": "number"}], "execution_recipe": "Fórmula matemática...", "output_format": "markdown|table|card"}]]
 7. Categorías y Subcategorías del Inventario:
    - Crear Categoría: [[CREAR_CATEGORIA: {"name": "NombreCategoria", "subcategories": ["sub1", "sub2"], "color": "#10b981"}]]
-   - Borrar Categoría: [[BORRAR_CATEGORIA: {"name": "NombreCategoria", "reassign_to": "Otros"}]]
+   - Borrar Categoría: [[BORRAR_CATEGORIA: {"name": "NombreCategoria", "reassign_to": "Sin clasificar"}]]
    - Crear Subcategoría: [[CREAR_SUBCATEGORIA: {"category": "CategoriaPadre", "name": "NuevaSubcat"}]]
    - Borrar Subcategoría: [[BORRAR_SUBCATEGORIA: {"category": "CategoriaPadre", "name": "SubcatABorrar"}]]
    - *REGLA CRÍTICA DE TAXONOMÍA*: Si el usuario pide crear una categoría y agregar/publicar un elemento dentro de ella (ej: "crea categoría Cabañas y publica Cabaña 1"), DEBES emitir [[CREAR_CATEGORIA: {"name": "..."}]] Y SIMULTÁNEAMENTE [[REGISTRAR_PUNTOS: [ {"name": "...", "category": "..."} ] ]]. Si el elemento pertenece a una categoría no existente, créala de forma automática.

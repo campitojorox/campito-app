@@ -1,6 +1,6 @@
 // src/components/map/MapSelectionCard.jsx
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Undo2, Trash2, Check, X } from 'lucide-react';
+import { Trash2, Check, X } from 'lucide-react';
 import {
   getItemCategory,
   getPathCategory,
@@ -528,31 +528,9 @@ export default function MapSelectionCard({
           )}
         </div>
 
-        {/* Grupo de 4 botones circulares verdes con icono blanco */}
-        {/* Orden: Deshacer (activo en polilíneas), Borrar, Guardar (solo Check), Cerrar */}
+        {/* Grupo de botones de acción: Borrar a la izquierda y Cerrar a la derecha */}
         <div style={styles.cardActionGroup}>
-          {/* 1. Deshacer (activo en polilíneas) */}
-          <button
-            type="button"
-            className="map-circle-btn"
-            style={(isPath || isNode) && undoStack && undoStack.length > 0 ? styles.circleBtn : styles.circleBtnDisabled}
-            disabled={!((isPath || isNode) && undoStack && undoStack.length > 0)}
-            onClick={() => {
-              if (handleUndoMapAction) handleUndoMapAction();
-            }}
-            title={
-              isPath || isNode
-                ? undoStack && undoStack.length > 0
-                  ? 'Deshacer último cambio de polilínea'
-                  : 'Sin cambios que deshacer en polilínea'
-                : 'Deshacer disponible en polilíneas'
-            }
-            aria-label="Deshacer"
-          >
-            <Undo2 size={15} color="#ffffff" strokeWidth={2.2} />
-          </button>
-
-          {/* 2. Borrar */}
+          {/* 1. Borrar */}
           <button
             type="button"
             className="map-circle-btn"
@@ -573,26 +551,7 @@ export default function MapSelectionCard({
             <Trash2 size={15} color="#ffffff" strokeWidth={2.2} />
           </button>
 
-          {/* 3. Guardar (icono CHECK solamente - pasa a color claro si está guardado) */}
-          <button
-            type="button"
-            className={`map-circle-btn ${isSaved ? 'map-circle-btn--light' : ''}`}
-            style={
-              !isEditable
-                ? styles.circleBtnDisabled
-                : isSaved
-                  ? styles.circleBtnLight
-                  : styles.circleBtn
-            }
-            disabled={!isEditable || isSaving}
-            onClick={onSaveClick}
-            title={isSaved ? 'Guardado (sin cambios pendientes)' : 'Guardar cambios'}
-            aria-label={isSaved ? 'Guardado' : 'Guardar cambios'}
-          >
-            <Check size={16} color="#ffffff" strokeWidth={2.6} />
-          </button>
-
-          {/* 4. Cerrar */}
+          {/* 2. Cerrar */}
           <button
             type="button"
             className="map-circle-btn"
@@ -630,21 +589,44 @@ export default function MapSelectionCard({
       </div>
 
       {/* ──────────────────────────────────────────────────────────────────────────
-          LÍNEA 3: DESCRIPCIÓN O NOTAS DEL ELEMENTO
+          LÍNEA 3: DESCRIPCIÓN O NOTAS (Izquierda) + BOTÓN GUARDAR (Esquina derecha abajo)
           ────────────────────────────────────────────────────────────────────────── */}
-      <textarea
-        rows={2}
-        value={itemNotes}
-        readOnly={!isEditable}
-        onChange={(e) => {
-          if (isEditable) {
-            handleDirectFieldUpdate('notes', e.target.value);
-            setIsSaved(false);
-          }
-        }}
-        placeholder="Descripción..."
-        style={styles.cleanFieldTextarea}
-      />
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, width: '100%' }}>
+        <textarea
+          rows={2}
+          value={itemNotes}
+          readOnly={!isEditable}
+          onChange={(e) => {
+            if (isEditable) {
+              handleDirectFieldUpdate('notes', e.target.value);
+              setIsSaved(false);
+            }
+          }}
+          placeholder="Descripción..."
+          style={{ ...styles.cleanFieldTextarea, flex: 1, minWidth: 0, margin: 0 }}
+        />
+
+        {/* Guardar (icono CHECK solamente - pasa a color claro si está guardado) */}
+        <button
+          type="button"
+          className={`map-circle-btn map-circle-btn--save ${isSaved ? 'map-circle-btn--light' : ''}`}
+          style={{
+            ...(!isEditable
+              ? styles.circleBtnSaveDisabled
+              : isSaved
+                ? styles.circleBtnSaveLight
+                : styles.circleBtnSave),
+            flexShrink: 0,
+            marginBottom: 2,
+          }}
+          disabled={!isEditable || isSaving}
+          onClick={onSaveClick}
+          title={isSaved ? 'Guardado (sin cambios pendientes)' : 'Guardar cambios'}
+          aria-label={isSaved ? 'Guardado' : 'Guardar cambios'}
+        >
+          <Check size={20} color="#ffffff" strokeWidth={2.6} />
+        </button>
+      </div>
 
       {/* ──────────────────────────────────────────────────────────────────────────
           LÍNEA 4 (PIE / METADATOS): ESTADO BOTÁNICO, FOTO Y NAVEGACIÓN
@@ -694,7 +676,7 @@ export default function MapSelectionCard({
                       type: 'path',
                       id: path.id,
                       title: path.name,
-                      category: path.category || PATH_TYPE_LABELS[path.path_type] || 'Caminos y Trazados',
+                      category: path.category || PATH_TYPE_LABELS[path.path_type] || 'Trazados',
                       path_type: path.path_type,
                       variety_type: path.variety_type,
                       color: path.color,

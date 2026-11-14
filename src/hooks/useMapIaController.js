@@ -13,6 +13,8 @@ import {
   updateFarmPath,
   deleteFarmPath,
   deleteFarmCategory,
+  createFarmCategory,
+  renameFarmCategory,
   getItemCategory,
 } from '../services/farmInventoryStorage';
 import {
@@ -255,6 +257,19 @@ export function useMapIaController({
             });
           }
 
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Renombrada categoría "${oldCat}" a "${newCat}"`,
+              reverts: targetItems.map((item) => ({
+                type: 'UPDATE_POINT',
+                target_id: item.id,
+                prevData: { category: item.category },
+              })),
+              timestamp: Date.now(),
+            },
+          ]);
+
           setIaFeedback({
             type: 'success',
             text: `✨ Categoría renombrada: "${oldCat}" ahora es "${newCat}" (${targetItems.length} elementos actualizados en el mapa).`,
@@ -464,6 +479,20 @@ export function useMapIaController({
             }
             if (execRes.addedPaths.length > 0) {
               setLocalPaths((prev) => [...execRes.addedPaths, ...prev]);
+            }
+
+            if (execRes.addedPoints.length > 0 || execRes.addedPaths.length > 0) {
+              setUndoStack((prev) => [
+                ...prev,
+                {
+                  description: `Importación "${geoAtt.name}"`,
+                  reverts: [
+                    ...execRes.addedPoints.map((p) => ({ type: 'DELETE_POINT', target_id: p.id })),
+                    ...execRes.addedPaths.map((p) => ({ type: 'DELETE_PATH', target_id: p.id })),
+                  ],
+                  timestamp: Date.now(),
+                },
+              ]);
             }
 
             setIaFeedback({
@@ -798,6 +827,51 @@ export function useMapIaController({
       if (job.result?.rawText) {
         const uCmds = job.result.unifiedCommands || parseAllStructuredCommands(job.result.rawText);
 
+        result = result || { actions: [] };
+        result.actions = result.actions || [];
+
+        // Integrar puntos estructurados
+        (uCmds.points || []).forEach((p) => {
+          if (!result.actions.some((a) => (a.type === 'ADD_POINT' || a.type === 'REGISTRAR_PUNTO') && (a.data?.name === p.name || a.name === p.name))) {
+            result.actions.push({ type: 'ADD_POINT', data: p });
+          }
+        });
+
+        // Integrar trazados estructurados
+        (uCmds.paths || []).forEach((pth) => {
+          if (!result.actions.some((a) => (a.type === 'ADD_PATH' || a.type === 'REGISTRAR_CAMINO') && (a.data?.name === pth.name || a.name === pth.name))) {
+            result.actions.push({ type: 'ADD_PATH', data: pth });
+          }
+        });
+
+        // Integrar modificaciones de puntos
+        (uCmds.pointUpdates || []).forEach((u) => {
+          if (!result.actions.some((a) => (a.type === 'UPDATE_POINT' || a.type === 'EDITAR_PUNTO') && String(a.target_id || a.id) === String(u.target_id || u.id))) {
+            result.actions.push({ type: 'UPDATE_POINT', target_id: u.target_id || u.id, data: u });
+          }
+        });
+
+        // Integrar borrados de puntos
+        (uCmds.pointDeletions || []).forEach((d) => {
+          if (!result.actions.some((a) => (a.type === 'DELETE_POINT' || a.type === 'BORRAR_PUNTO') && (a.target_id === d.target_id || a.query === d.query))) {
+            result.actions.push({ type: 'DELETE_POINT', target_id: d.target_id || d.id, query: d.query || d.name });
+          }
+        });
+
+        // Integrar modificaciones de trazados
+        (uCmds.pathUpdates || []).forEach((u) => {
+          if (!result.actions.some((a) => (a.type === 'UPDATE_PATH' || a.type === 'EDITAR_CAMINO') && String(a.target_id || a.id) === String(u.target_id || u.id))) {
+            result.actions.push({ type: 'UPDATE_PATH', target_id: u.target_id || u.id, data: u });
+          }
+        });
+
+        // Integrar borrados de trazados
+        (uCmds.pathDeletions || []).forEach((d) => {
+          if (!result.actions.some((a) => (a.type === 'DELETE_PATH' || a.type === 'BORRAR_CAMINO') && (a.target_id === d.target_id || a.query === d.query))) {
+            result.actions.push({ type: 'DELETE_PATH', target_id: d.target_id || d.id, query: d.query || d.name });
+          }
+        });
+
         // Si uCmds trajo categorías o subcategorías, integrarlas en result.actions si no estaban ya
         if (
           (uCmds.categories && uCmds.categories.length > 0) ||
@@ -805,8 +879,6 @@ export function useMapIaController({
           (uCmds.categoryDeletions && uCmds.categoryDeletions.length > 0) ||
           (uCmds.subcategoryDeletions && uCmds.subcategoryDeletions.length > 0)
         ) {
-          result = result || { actions: [] };
-          result.actions = result.actions || [];
           (uCmds.categories || []).forEach((cat) => {
             if (!result.actions.some((a) => (a.type === 'CREATE_CATEGORY' || a.type === 'CREAR_CATEGORIA') && (a.data?.name === cat.name || a.name === cat.name))) {
               result.actions.push({ type: 'CREATE_CATEGORY', data: cat });
@@ -890,6 +962,22 @@ export function useMapIaController({
 
           await updateFarmPath(targetSnap.id, updatePayload);
           markJobActionsApplied(job.jobId);
+
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Actualizado ${targetSnap.title}`,
+              reverts: [
+                {
+                  type: 'UPDATE_PATH',
+                  target_id: targetSnap.id,
+                  prevData: { notes: prevPath?.notes || '' },
+                },
+              ],
+              timestamp: Date.now(),
+            },
+          ]);
+
           setSelectedTarget((prev) => (prev ? { ...prev, ...updatePayload } : prev));
           setLocalPaths((prev) =>
             prev.map((p) => (String(p.id) === String(targetSnap.id) ? { ...p, ...updatePayload } : p))
@@ -962,6 +1050,14 @@ export function useMapIaController({
           const inserted = await insertFarmInventoryItem(newItem);
           markJobActionsApplied(job.jobId);
           if (inserted) {
+            setUndoStack((prev) => [
+              ...prev,
+              {
+                description: `Registrado en inventario: ${inserted.name}`,
+                reverts: [{ type: 'DELETE_POINT', target_id: inserted.id }],
+                timestamp: Date.now(),
+              },
+            ]);
             setSelectedTarget({
               type: 'point',
               id: inserted.id,
@@ -1109,12 +1205,27 @@ export function useMapIaController({
         }
       }
 
-      if (execResult.reverts.length > 0) {
+      const allReverts = [...(execResult.reverts || [])];
+
+      // Fallbacks si hubo cambios pero no se generaron reverts explícitos
+      if (allReverts.length === 0) {
+        (execResult.addedItems || []).forEach((it) => {
+          allReverts.push({ type: 'DELETE_POINT', target_id: it.id });
+        });
+        (execResult.addedPaths || []).forEach((pth) => {
+          allReverts.push({ type: 'DELETE_PATH', target_id: pth.id });
+        });
+        (execResult.addedCategories || []).forEach((cat) => {
+          allReverts.push({ type: 'DELETE_CATEGORY', name: cat.name || cat });
+        });
+      }
+
+      if (allReverts.length > 0) {
         setUndoStack((prev) => [
           ...prev,
           {
             description: result.description || 'Cambios en el mapa',
-            reverts: execResult.reverts,
+            reverts: allReverts,
             timestamp: Date.now(),
           },
         ]);
@@ -1201,6 +1312,39 @@ export function useMapIaController({
         } else if (rev.type === 'DELETE_PATH') {
           setLocalPaths((prev) => prev.filter((p) => String(p.id) !== String(rev.target_id)));
           await deleteFarmPath(rev.target_id);
+        } else if (rev.type === 'DELETE_CATEGORY') {
+          await deleteFarmCategory({ name: rev.name, deleteItems: false });
+          if (setVisibleCategories) {
+            setVisibleCategories((prev) => {
+              const next = new Set(prev);
+              next.delete(rev.name);
+              return next;
+            });
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('farm-categories-updated'));
+          }
+        } else if (rev.type === 'RESTORE_CATEGORY') {
+          createFarmCategory({ name: rev.name || rev.categoryData?.name });
+          if (setVisibleCategories) {
+            setVisibleCategories((prev) => new Set([...prev, rev.name || rev.categoryData?.name]));
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('farm-categories-updated'));
+          }
+        } else if (rev.type === 'RENAME_CATEGORY') {
+          await renameFarmCategory({ oldName: rev.oldName, newName: rev.newName });
+          if (setVisibleCategories) {
+            setVisibleCategories((prev) => {
+              const next = new Set(prev);
+              next.delete(rev.oldName);
+              next.add(rev.newName);
+              return next;
+            });
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('farm-categories-updated'));
+          }
         }
       }
 

@@ -28,6 +28,7 @@ const DRIVE_FOLDER_NAME = 'APP CAMPITO JOROX';
 const IMAGES_SUBFOLDER_NAME = 'Comprobantes';
 const CODE_SUBFOLDER_NAME = 'Codigo Fuente';
 const CHAT_SUBFOLDER_NAME = 'Chat IA Files';
+const FARM_DOCS_SUBFOLDER_NAME = 'Documentos Finca';
 
 // ─── MENÚ EN GOOGLE SHEETS ───────────────────────────────────────────────────
 function onOpen() {
@@ -37,6 +38,7 @@ function onOpen() {
     .addItem('📦 Respaldar código de la app (ZIP) ahora', 'respaldarCodigoGitHubMenu')
     .addItem('🖼️ Respaldar imágenes de contabilidad solamente', 'respaldarImagenes')
     .addItem('💬 Respaldar Chat IA (Conversaciones + Archivos)', 'respaldarChatIAMenu')
+    .addItem('📄 Sincronizar Documentos Finca (KML, KMZ, PDF) a Drive', 'respaldarDocumentosFincaMenu')
     .addItem('🧠 Sincronizar Memoria de Finca (Aprendizaje IA)', 'respaldarMemoriaMenu')
     .addItem('🗺️ Sincronizar Inventario y Catastro GPS', 'respaldarInventarioMenu')
     .addSeparator()
@@ -321,6 +323,27 @@ function actualizarCampitoJorox() {
     Logger.log('Aviso al respaldar archivos de Chat IA: ' + chatFilesErr.message);
   }
 
+  // 5c. DESCARGAR DOCUMENTOS CARTOGRÁFICOS Y DE FINCA A 'Documentos Finca'
+  let fincaDocsGuardados = 0;
+  try {
+    Logger.log('Descargando documentos de finca a Google Drive...');
+    const docUrl = SUPABASE_CONFIG.url + '/rest/v1/farm_documents?select=*&is_active=eq.true&order=created_at.desc';
+    const docRes = UrlFetchApp.fetch(docUrl, {
+      method: 'get',
+      headers: {
+        'apikey': SUPABASE_CONFIG.serviceKey,
+        'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+      },
+      muteHttpExceptions: true
+    });
+    if (docRes.getResponseCode() === 200) {
+      const farmDocs = JSON.parse(docRes.getContentText());
+      fincaDocsGuardados = respaldarDocumentosFincaInterno(farmDocs);
+    }
+  } catch (docErr) {
+    Logger.log('Aviso al respaldar documentos de finca: ' + docErr.message);
+  }
+
   // 6. RESPALDAR CÓDIGO FUENTE DE GITHUB TAMBIÉN
   try {
     respaldarCodigoGitHub();
@@ -336,6 +359,7 @@ function actualizarCampitoJorox() {
     '• ' + inventoryItems.length + ' elementos georreferenciados (Inventario GPS)\n' +
     '• ' + imagenesGuardadas + ' comprobantes en Drive\n' +
     '• ' + chatArchivosGuardados + ' archivos en "Chat IA Files/"\n' +
+    '• ' + fincaDocsGuardados + ' documentos en "Documentos Finca/"\n' +
     '• Código fuente respaldado en "Codigo Fuente/"';
   Logger.log(msg);
 
@@ -614,6 +638,76 @@ function respaldarArchivosChatIAInterno(chatMessages) {
       count++;
     } catch (err) {
       Logger.log('Error descargando archivo de chat ' + item.id + ': ' + err.message);
+    }
+  }
+
+  return count;
+}
+
+// ─── RESPALDO DE DOCUMENTOS CARTOGRÁFICOS Y DE FINCA A GOOGLE DRIVE ──────────
+function respaldarDocumentosFincaMenu() {
+  const docUrl = SUPABASE_CONFIG.url + '/rest/v1/farm_documents?select=*&is_active=eq.true&order=created_at.desc';
+  const docRes = UrlFetchApp.fetch(docUrl, {
+    method: 'get',
+    headers: {
+      'apikey': SUPABASE_CONFIG.serviceKey,
+      'Authorization': 'Bearer ' + SUPABASE_CONFIG.serviceKey
+    },
+    muteHttpExceptions: true
+  });
+
+  if (docRes.getResponseCode() !== 200) {
+    SpreadsheetApp.getUi().alert('❌ Error al conectar con Documentos en Supabase: ' + docRes.getContentText());
+    return;
+  }
+
+  const farmDocs = JSON.parse(docRes.getContentText());
+  const count = respaldarDocumentosFincaInterno(farmDocs);
+
+  SpreadsheetApp.getUi().alert(
+    '📄 Respaldo de Documentos de Finca completado:\n\n' +
+    '• ' + farmDocs.length + ' documentos registrados en Supabase\n' +
+    '• ' + count + ' archivos nuevos guardados en Google Drive:\n' +
+    'Mi unidad / ' + DRIVE_FOLDER_NAME + ' / ' + FARM_DOCS_SUBFOLDER_NAME + '/'
+  );
+}
+
+function respaldarDocumentosFincaInterno(farmDocs) {
+  if (!farmDocs || farmDocs.length === 0) return 0;
+
+  const rootFolders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
+  if (!rootFolders.hasNext()) {
+    Logger.log('❌ No se encontró la carpeta "' + DRIVE_FOLDER_NAME + '" en Google Drive.');
+    return 0;
+  }
+  const rootFolder = rootFolders.next();
+  const docsFolder = obtenerOCrearSubcarpeta(rootFolder, FARM_DOCS_SUBFOLDER_NAME);
+
+  let count = 0;
+
+  for (let i = 0; i < farmDocs.length; i++) {
+    const item = farmDocs[i];
+    const fileUrl = item.public_url || item.file_url;
+    if (!fileUrl || !fileUrl.startsWith('https://')) continue;
+
+    try {
+      const fileName = item.name || ('doc-' + item.id + '.' + (item.file_type || 'bin'));
+
+      // Si ya existe en Drive, saltar
+      const existing = docsFolder.getFilesByName(fileName);
+      if (existing.hasNext()) {
+        continue;
+      }
+
+      const fileRes = UrlFetchApp.fetch(fileUrl, { muteHttpExceptions: true });
+      if (fileRes.getResponseCode() !== 200) continue;
+
+      const contentType = fileRes.getHeaders()['Content-Type'] || 'application/octet-stream';
+      const blob = fileRes.getBlob().setName(fileName).setContentType(contentType);
+      docsFolder.createFile(blob);
+      count++;
+    } catch (err) {
+      Logger.log('Error descargando documento ' + item.id + ': ' + err.message);
     }
   }
 

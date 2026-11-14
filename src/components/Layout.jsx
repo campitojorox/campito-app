@@ -353,29 +353,36 @@ export default function Layout({ session }) {
                     </>
                   )}
                 </button>
-                <span style={{ textAlign: 'center', fontSize: '0.78rem', color: '#b0b0b0' }}>
-                  Versión {appVersion}
-                </span>
                 <div style={{
                   fontSize: '0.70rem',
                   color: '#b0b0b0',
-                  lineHeight: '1.38',
+                  lineHeight: '1.4',
                   backgroundColor: 'rgba(255, 255, 255, 0.03)',
                   border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '6px',
-                  padding: '7px 9px',
-                  marginTop: '2px',
+                  borderRadius: '7px',
+                  padding: '8px 10px',
+                  marginTop: '4px',
                   textAlign: 'left'
                 }}>
-                  <div style={{ fontWeight: 600, marginBottom: '4px', textAlign: 'center', color: '#b0b0b0' }}>
-                    Mejoras v{appVersion}:
+                  <div style={{
+                    fontWeight: 700,
+                    marginBottom: '5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                    paddingBottom: '4px'
+                  }}>
+                    <span style={{ color: '#00979d', fontSize: '0.75rem' }}>Versión {appVersion}</span>
+                    <span style={{ fontSize: '0.65rem', color: '#888888', fontWeight: 500 }}>Novedades</span>
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: '14px', display: 'flex', flexDirection: 'column', gap: '3px', color: '#b0b0b0' }}>
+                  <ul style={{ margin: 0, paddingLeft: '14px', display: 'flex', flexDirection: 'column', gap: '3px', color: '#cbd5e1' }}>
+                    <li>Archivos del Chat IA centralizados (visibles y descargables en móvil y PC).</li>
+                    <li>Almacenamiento universal en Supabase con respaldo y copia en Google Drive.</li>
+                    <li>Sincronización en tiempo real del historial de chat entre dispositivos.</li>
                     <li>Fichas unificadas en mapas (puntos, nodos y polilíneas).</li>
                     <li>Categorías y subcategorías armónicas en gama de color.</li>
-                    <li>Icono de borrado unificado con confirmación previa.</li>
                     <li>Trazado rápido de polilíneas con métricas y guardado directo.</li>
-                    <li>Filtros dinámicos de caminos (Caminos, Ríos, Riego, etc.).</li>
                   </ul>
                 </div>
               </div>

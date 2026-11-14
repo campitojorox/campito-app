@@ -1,6 +1,6 @@
 // src/components/map/MapDrawingCard.jsx
-import { useState } from 'react';
-import { Undo2, Trash2, Check, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Trash2, Check, X } from 'lucide-react';
 import {
   getCategoryColor,
   getSubcategoryColor,
@@ -18,38 +18,41 @@ export default function MapDrawingCard({
   onSaveDrawnPath,
   allCategories = [],
   drawSubcategories = [],
-  activeDrawCategory = 'Caminos y Trazados',
+  activeDrawCategory = 'Trazados',
   localInventory = [],
 }) {
   const [isSaving, setIsSaving] = useState(false);
-  const resolvedCategory = newPathData.category || activeDrawCategory || 'Caminos y Trazados';
+  const resolvedCategory = 'Trazados';
   const categoryColor = getCategoryColor(resolvedCategory);
-  const subcategoriesList =
-    drawSubcategories && drawSubcategories.length > 0
-      ? drawSubcategories
-      : getSubcategoriesForParent(localInventory, resolvedCategory);
-  const subcategoryColor = getSubcategoryColor(resolvedCategory, newPathData.path_type || '');
 
-  const handleCategoryChange = (e) => {
-    const cat = e.target.value;
-    const validSubs = getSubcategoriesForParent(localInventory, cat);
-    const stillValid = validSubs.some(
-      (s) => s.toLowerCase() === (newPathData.path_type || '').trim().toLowerCase()
-    );
-    const nextSub = stillValid ? newPathData.path_type : '';
-    setNewPathData((prev) => ({
-      ...prev,
-      category: cat,
-      path_type: nextSub,
-      color: nextSub ? getSubcategoryColor(cat, nextSub) : getCategoryColor(cat),
-    }));
-  };
+  const subcategoriesList = useMemo(() => {
+    const fromInventory =
+      drawSubcategories && drawSubcategories.length > 0
+        ? drawSubcategories
+        : getSubcategoriesForParent(localInventory, 'Trazados');
+    const defaultSubs = [
+      'Sendero',
+      'Camino',
+      'Carril',
+      'Pista',
+      'Vereda',
+      'Acequia',
+      'Línea de Riego',
+      'Senda',
+      'Linde',
+    ];
+    const set = new Set([...fromInventory, ...defaultSubs]);
+    return Array.from(set).filter(Boolean);
+  }, [drawSubcategories, localInventory]);
+
+  const subcategoryColor = getSubcategoryColor(resolvedCategory, newPathData.path_type || '');
 
   const handleSubcategoryChange = (e) => {
     const pt = e.target.value;
-    const subColor = pt ? getSubcategoryColor(resolvedCategory, pt) : getCategoryColor(resolvedCategory);
+    const subColor = pt ? getSubcategoryColor('Trazados', pt) : getCategoryColor('Trazados');
     setNewPathData((prev) => ({
       ...prev,
+      category: 'Trazados',
       path_type: pt,
       color: subColor,
     }));
@@ -75,13 +78,21 @@ export default function MapDrawingCard({
   return (
     <div style={styles.cleanTargetCard}>
       {/* ──────────────────────────────────────────────────────────────────────────
-          LÍNEA 1: CATEGORÍA | SUBCATEGORÍA | 4 BOTONES ACCIÓN
-          Orden: Deshacer (activo en polilíneas), Borrar, Guardar (solo Check), Cerrar
+          LÍNEA 1: CATEGORÍA RAÍZ ("Trazados" fija) | SUBCATEGORÍA | ACCIONES
           ────────────────────────────────────────────────────────────────────────── */}
       <div style={styles.cardHeaderRow}>
-        {/* Selector de Categoría (Izquierda) */}
-        <div style={{ position: 'relative', flex: 1, minWidth: 100 }}>
-          <div style={styles.cardInputPill}>
+        {/* Categoría Raíz Fija: "Trazados" (sin opción de cambiar) */}
+        <div style={{ position: 'relative', flex: 1, minWidth: 95 }}>
+          <div
+            style={{
+              ...styles.cardInputPill,
+              backgroundColor: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              cursor: 'default',
+              userSelect: 'none',
+            }}
+            title="Categoría raíz fija: Trazados"
+          >
             <span
               style={{
                 width: 10,
@@ -91,38 +102,23 @@ export default function MapDrawingCard({
                 flexShrink: 0,
               }}
             />
-            <select
-              value={resolvedCategory}
-              onChange={handleCategoryChange}
-              style={styles.cardHeaderSelect}
+            <span
+              style={{
+                fontSize: '0.80rem',
+                fontWeight: 600,
+                color: '#1e293b',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
             >
-              <option value="Caminos y Trazados">Caminos y Trazados</option>
-              <option value="Líneas de Riego">Líneas de Riego</option>
-              <option value="Lindes y Límites">Lindes y Límites</option>
-              {(allCategories || [])
-                .filter(
-                  (c) =>
-                    c &&
-                    ![
-                      'Caminos y Trazados',
-                      'Líneas de Riego',
-                      'Lindes y Límites',
-                      'Sin clasificar',
-                      'Sin categoría',
-                      'Otros',
-                    ].includes(c)
-                )
-                .map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-            </select>
+              Trazados
+            </span>
           </div>
         </div>
 
         {/* Selector de Subcategoría (Centro) */}
-        <div style={{ position: 'relative', flex: 1, minWidth: 100 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 110 }}>
           <div style={styles.cardInputPill}>
             <span
               style={{
@@ -149,22 +145,9 @@ export default function MapDrawingCard({
           </div>
         </div>
 
-        {/* Grupo de 4 botones circulares verdes con icono blanco */}
+        {/* Grupo de botones de acción: Borrar a la izquierda y Cerrar a la derecha */}
         <div style={styles.cardActionGroup}>
-          {/* 1. Deshacer (activo en polilíneas) */}
-          <button
-            type="button"
-            className="map-circle-btn"
-            style={drawPoints.length === 0 ? styles.circleBtnDisabled : styles.circleBtn}
-            disabled={drawPoints.length === 0}
-            onClick={() => setDrawPoints((prev) => prev.slice(0, -1))}
-            title="Deshacer último vértice"
-            aria-label="Deshacer último vértice"
-          >
-            <Undo2 size={15} color="#ffffff" strokeWidth={2.2} />
-          </button>
-
-          {/* 2. Borrar */}
+          {/* 1. Borrar */}
           <button
             type="button"
             className="map-circle-btn"
@@ -176,35 +159,7 @@ export default function MapDrawingCard({
             <Trash2 size={15} color="#ffffff" strokeWidth={2.2} />
           </button>
 
-          {/* 3. Guardar (icono CHECK solamente - pasa a color claro al guardar) */}
-          <button
-            type="button"
-            className={`map-circle-btn ${drawPoints.length >= 2 && isSaving ? 'map-circle-btn--light' : ''}`}
-            style={
-              drawPoints.length < 2
-                ? styles.circleBtnDisabled
-                : isSaving
-                  ? styles.circleBtnLight
-                  : styles.circleBtn
-            }
-            disabled={drawPoints.length < 2 || isSaving}
-            onClick={async () => {
-              if (onSaveDrawnPath && !isSaving) {
-                setIsSaving(true);
-                try {
-                  await onSaveDrawnPath();
-                } finally {
-                  setIsSaving(false);
-                }
-              }
-            }}
-            title={drawPoints.length < 2 ? 'Traza al menos 2 vértices' : isSaving ? 'Guardando...' : 'Guardar recorrido trazado'}
-            aria-label="Guardar recorrido trazado"
-          >
-            <Check size={16} color="#ffffff" strokeWidth={2.6} />
-          </button>
-
-          {/* 4. Cerrar */}
+          {/* 2. Cerrar */}
           <button
             type="button"
             className="map-circle-btn"
@@ -236,15 +191,47 @@ export default function MapDrawingCard({
       </div>
 
       {/* ──────────────────────────────────────────────────────────────────────────
-          LÍNEA 3: DESCRIPCIÓN O NOTAS DEL TRAZADO
+          LÍNEA 3: DESCRIPCIÓN O NOTAS (Izquierda) + BOTÓN GUARDAR (Esquina derecha abajo)
           ────────────────────────────────────────────────────────────────────────── */}
-      <textarea
-        rows={2}
-        value={newPathData.notes || ''}
-        onChange={(e) => setNewPathData((prev) => ({ ...prev, notes: e.target.value }))}
-        placeholder="Descripción..."
-        style={styles.cleanFieldTextarea}
-      />
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, width: '100%' }}>
+        <textarea
+          rows={2}
+          value={newPathData.notes || ''}
+          onChange={(e) => setNewPathData((prev) => ({ ...prev, notes: e.target.value }))}
+          placeholder="Descripción..."
+          style={{ ...styles.cleanFieldTextarea, flex: 1, minWidth: 0, margin: 0 }}
+        />
+
+        {/* Guardar (icono CHECK solamente - pasa a color claro al guardar) */}
+        <button
+          type="button"
+          className={`map-circle-btn map-circle-btn--save ${drawPoints.length >= 2 && isSaving ? 'map-circle-btn--light' : ''}`}
+          style={{
+            ...(drawPoints.length < 2
+              ? styles.circleBtnSaveDisabled
+              : isSaving
+                ? styles.circleBtnSaveLight
+                : styles.circleBtnSave),
+            flexShrink: 0,
+            marginBottom: 2,
+          }}
+          disabled={drawPoints.length < 2 || isSaving}
+          onClick={async () => {
+            if (onSaveDrawnPath && !isSaving) {
+              setIsSaving(true);
+              try {
+                await onSaveDrawnPath();
+              } finally {
+                setIsSaving(false);
+              }
+            }
+          }}
+          title={drawPoints.length < 2 ? 'Traza al menos 2 vértices' : isSaving ? 'Guardando...' : 'Guardar recorrido trazado'}
+          aria-label="Guardar recorrido trazado"
+        >
+          <Check size={20} color="#ffffff" strokeWidth={2.6} />
+        </button>
+      </div>
     </div>
   );
 }

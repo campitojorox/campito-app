@@ -128,7 +128,11 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
           ? true
           : selectedFilter === 'geo'
             ? ['kml', 'kmz', 'geojson', 'gpx'].includes(doc.file_type?.toLowerCase())
-            : doc.file_type?.toLowerCase() === selectedFilter;
+            : selectedFilter === 'chat'
+              ? doc.section_origin === 'chat-ia' || doc.category === 'chat'
+              : selectedFilter === 'biblioteca'
+                ? doc.section_origin !== 'chat-ia' && doc.category !== 'chat'
+                : doc.file_type?.toLowerCase() === selectedFilter;
       return matchQ && matchType;
     });
   }, [documents, searchQuery, selectedFilter]);
@@ -338,7 +342,7 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
             }}
           >
             <Folder size={15} />
-            Archivos Cartográficos y Documentos ({documents.length})
+            Archivos Centralizados ({documents.length})
           </button>
           <button
             onClick={() => setActiveTab('test_search')}
@@ -359,6 +363,29 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
             <Sparkles size={15} />
             Búsqueda Vectorial RAG
           </button>
+        </div>
+
+        {/* Banner Informativo de Almacenamiento Centralizado y Drive */}
+        <div
+          style={{
+            padding: '7px 16px',
+            backgroundColor: '#f0fdf4',
+            borderBottom: '1px solid #bbf7d0',
+            fontSize: '0.72rem',
+            color: '#166534',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 6,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>☁️</span>
+            <span>
+              <strong>Almacenamiento Centralizado:</strong> Los archivos se guardan en Supabase Storage (CDN global de alta velocidad) y se respaldan en Google Drive (<i>Mi unidad / APP CAMPITO JOROX / Chat IA Files</i> y <i>Documentos Finca</i>) para verse desde cualquier dispositivo.
+            </span>
+          </div>
         </div>
 
         {/* Contenido de la Pestaña */}
@@ -416,9 +443,11 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {[
                   { id: 'all', label: 'Todos' },
-                  { id: 'geo', label: '🗺️ KML / KMZ / GeoJSON' },
+                  { id: 'chat', label: '💬 Chat IA' },
+                  { id: 'biblioteca', label: '📚 Documentos Finca' },
+                  { id: 'geo', label: '🗺️ KML / Geo' },
                   { id: 'pdf', label: '📄 PDF' },
-                  { id: 'csv', label: '📊 CSV / Excel' },
+                  { id: 'csv', label: '📊 Tablas / Excel' },
                 ].map((f) => (
                   <button
                     key={f.id}

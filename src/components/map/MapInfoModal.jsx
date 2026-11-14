@@ -90,13 +90,13 @@ export default function MapInfoModal({ isOpen, onClose }) {
           <div style={styles.infoBlock}>
             <div style={styles.infoBlockTitle}>
               <Layers size={15} color="#00979d" />
-              <span>Herramientas del Visor</span>
+              <span>Herramientas del Visor (Menú Superior Derecho)</span>
             </div>
             <ul style={styles.infoList}>
-              <li><b>🔍 Buscador:</b> Localiza al instante cualquier árbol, arqueta, llave o nota técnica.</li>
-              <li><b>⚙️ Filtros:</b> Activa o desactiva categorías completas, subcategorías, trazados y el catastro oficial.</li>
-              <li><b>📑 Capas:</b> Activa o desactiva la leyenda y referencias, así como los controles de navegación y centrado GPS.</li>
-              <li><b>🖨️ PDF:</b> Genera un informe descargable e imprimible con exactamente lo que tienes visible en pantalla.</li>
+              <li><b>⚙️ Filtros:</b> Activa o desactiva la visibilidad por categorías raíz, subcategorías botánicas y tipos de trazados.</li>
+              <li><b>🛣️ Trazados:</b> Inicia el trazado interactivo sobre el mapa. La categoría raíz es fija (<b>Trazados</b>) y permite seleccionar la subcategoría deseada (Sendero, Camino, Carril, Pista, Acequia, Línea de Riego, etc.).</li>
+              <li><b>📑 Capas del Mapa:</b> Controla la visualización de referencias y leyendas, cotas de altura (20m), lindes catastrales y controles de navegación GPS. Mientras tengas abierto un formulario de creación o edición, las capas se ocultan automáticamente para despejar el satélite y se restauran al cerrar.</li>
+              <li><b>ℹ️ Información:</b> Consulta esta guía rápida sobre el funcionamiento del mapa y sus herramientas.</li>
             </ul>
           </div>
         </div>

@@ -32,7 +32,7 @@ export default function MapIaBottomBar({
   setNewPathData,
   onSaveDrawnPath,
   drawSubcategories = [],
-  activeDrawCategory = 'Caminos y Trazados',
+  activeDrawCategory = 'Trazados',
   localInventory = [],
   localPaths,
   allCategories = [],
