@@ -30,9 +30,30 @@ export default function MapSelectionCard({
 }) {
   const [isCatMenuOpen, setIsCatMenuOpen] = useState(false);
   const [isSubcatMenuOpen, setIsSubcatMenuOpen] = useState(false);
+  const catContainerRef = useRef(null);
+  const subcatContainerRef = useRef(null);
   const [isSaved, setIsSaved] = useState(() => !selectedTarget?.isNew);
   const [isSaving, setIsSaving] = useState(false);
   const prevTargetIdRef = useRef(selectedTarget?.id);
+
+  // Cerrar menús desplegables al hacer clic fuera del contenedor
+  useEffect(() => {
+    if (!isCatMenuOpen && !isSubcatMenuOpen) return;
+    const handleClickOutside = (e) => {
+      if (isCatMenuOpen && catContainerRef.current && !catContainerRef.current.contains(e.target)) {
+        setIsCatMenuOpen(false);
+      }
+      if (isSubcatMenuOpen && subcatContainerRef.current && !subcatContainerRef.current.contains(e.target)) {
+        setIsSubcatMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isCatMenuOpen, isSubcatMenuOpen]);
 
   useEffect(() => {
     if (selectedTarget?.id !== prevTargetIdRef.current) {
@@ -292,7 +313,15 @@ export default function MapSelectionCard({
           ────────────────────────────────────────────────────────────────────────── */}
       <div style={styles.cardHeaderRow}>
         {/* Input Categoría Raíz (Izquierda) */}
-        <div style={{ position: 'relative', flex: 1, minWidth: 110 }}>
+        <div
+          ref={catContainerRef}
+          style={{
+            position: 'relative',
+            flex: 1,
+            minWidth: 105,
+            zIndex: isCatMenuOpen ? 80 : 2,
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -319,8 +348,21 @@ export default function MapSelectionCard({
               type="text"
               value={currentCategory}
               readOnly={!isEditable}
-              onFocus={() => isEditable && setIsCatMenuOpen(true)}
-              onBlur={() => setTimeout(() => setIsCatMenuOpen(false), 160)}
+              onFocus={() => {
+                if (isEditable) {
+                  setIsCatMenuOpen(true);
+                  setIsSubcatMenuOpen(false);
+                }
+              }}
+              onClick={() => {
+                if (isEditable && !isCatMenuOpen) {
+                  setIsCatMenuOpen(true);
+                  setIsSubcatMenuOpen(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setIsCatMenuOpen(false);
+              }}
               onChange={(e) => {
                 if (isEditable) {
                   handleCategoryChange(e.target.value);
@@ -347,19 +389,27 @@ export default function MapSelectionCard({
           {/* Menú desplegable de categorías raíz al hacer foco / escribir */}
           {isCatMenuOpen && filteredCategorySuggestions.length > 0 && (
             <div
+              onMouseDown={(e) => {
+                // Previene perder el foco y cerrar el menú al hacer clic en el scrollbar o dentro del contenedor
+                e.stopPropagation();
+              }}
               style={{
                 position: 'absolute',
-                top: 'calc(100% + 4px)',
+                top: 'calc(100% + 3px)',
                 left: 0,
                 right: 0,
                 backgroundColor: '#ffffff',
                 border: '1px solid #cbd5e1',
                 borderRadius: 8,
-                boxShadow: '0 8px 22px rgba(15, 23, 42, 0.16)',
-                zIndex: 70,
-                maxHeight: 160,
+                boxShadow: '0 6px 18px rgba(15, 23, 42, 0.16)',
+                zIndex: 120,
+                maxHeight: 105,
                 overflowY: 'auto',
-                padding: 4,
+                overscrollBehavior: 'contain',
+                WebkitOverflowScrolling: 'touch',
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#94a3b8 #f1f5f9',
+                padding: '3px 4px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 2,
@@ -374,33 +424,43 @@ export default function MapSelectionCard({
                     onMouseDown={(e) => {
                       e.preventDefault();
                       handleCategoryChange(cat, true);
+                      setIsCatMenuOpen(false);
                     }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 7,
+                      gap: 6,
                       width: '100%',
-                      padding: '5px 8px',
+                      padding: '4px 6px',
                       border: 'none',
                       borderRadius: 6,
                       backgroundColor: isCurrent ? 'rgba(0, 151, 157, 0.12)' : 'transparent',
                       color: isCurrent ? '#0f766e' : '#1e293b',
-                      fontSize: '0.78rem',
+                      fontSize: '0.76rem',
                       fontWeight: isCurrent ? 700 : 500,
                       cursor: 'pointer',
                       textAlign: 'left',
+                      flexShrink: 0,
                     }}
                   >
                     <span
                       style={{
-                        width: 8,
-                        height: 8,
+                        width: 7,
+                        height: 7,
                         borderRadius: '50%',
                         backgroundColor: getCategoryColor(cat),
                         flexShrink: 0,
                       }}
                     />
-                    <span>{cat}</span>
+                    <span
+                      style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {cat}
+                    </span>
                   </button>
                 );
               })}
@@ -409,7 +469,15 @@ export default function MapSelectionCard({
         </div>
 
         {/* Input Subcategoría (En la misma línea a la derecha, misma arquitectura) */}
-        <div style={{ position: 'relative', flex: 1, minWidth: 110 }}>
+        <div
+          ref={subcatContainerRef}
+          style={{
+            position: 'relative',
+            flex: 1,
+            minWidth: 105,
+            zIndex: isSubcatMenuOpen ? 80 : 2,
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -437,8 +505,21 @@ export default function MapSelectionCard({
               type="text"
               value={currentSubcategory}
               readOnly={!isEditable}
-              onFocus={() => isEditable && setIsSubcatMenuOpen(true)}
-              onBlur={() => setTimeout(() => setIsSubcatMenuOpen(false), 160)}
+              onFocus={() => {
+                if (isEditable) {
+                  setIsSubcatMenuOpen(true);
+                  setIsCatMenuOpen(false);
+                }
+              }}
+              onClick={() => {
+                if (isEditable && !isSubcatMenuOpen) {
+                  setIsSubcatMenuOpen(true);
+                  setIsCatMenuOpen(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setIsSubcatMenuOpen(false);
+              }}
               onChange={(e) => {
                 if (isEditable) {
                   handleSubcategoryChange(e.target.value);
@@ -465,19 +546,27 @@ export default function MapSelectionCard({
           {/* Menú desplegable de subcategorías estrictamente filtradas por la categoría raíz */}
           {isSubcatMenuOpen && filteredSubcatSuggestions.length > 0 && (
             <div
+              onMouseDown={(e) => {
+                // Previene perder el foco y cerrar el menú al hacer clic en el scrollbar o dentro del contenedor
+                e.stopPropagation();
+              }}
               style={{
                 position: 'absolute',
-                top: 'calc(100% + 4px)',
+                top: 'calc(100% + 3px)',
                 left: 0,
                 right: 0,
                 backgroundColor: '#ffffff',
                 border: '1px solid #cbd5e1',
                 borderRadius: 8,
-                boxShadow: '0 8px 22px rgba(15, 23, 42, 0.16)',
-                zIndex: 70,
-                maxHeight: 160,
+                boxShadow: '0 6px 18px rgba(15, 23, 42, 0.16)',
+                zIndex: 120,
+                maxHeight: 105,
                 overflowY: 'auto',
-                padding: 4,
+                overscrollBehavior: 'contain',
+                WebkitOverflowScrolling: 'touch',
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#94a3b8 #f1f5f9',
+                padding: '3px 4px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 2,
@@ -493,34 +582,44 @@ export default function MapSelectionCard({
                     onMouseDown={(e) => {
                       e.preventDefault();
                       handleSubcategoryChange(sub, true);
+                      setIsSubcatMenuOpen(false);
                     }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 7,
+                      gap: 6,
                       width: '100%',
-                      padding: '5px 8px',
+                      padding: '4px 6px',
                       border: 'none',
                       borderRadius: 6,
                       backgroundColor: isCurrent ? 'rgba(0, 151, 157, 0.12)' : 'transparent',
                       color: isCurrent ? '#0f766e' : '#1e293b',
-                      fontSize: '0.78rem',
+                      fontSize: '0.76rem',
                       fontWeight: isCurrent ? 700 : 500,
                       cursor: 'pointer',
                       textAlign: 'left',
+                      flexShrink: 0,
                     }}
                   >
                     <span
                       style={{
-                        width: 8,
-                        height: 8,
+                        width: 7,
+                        height: 7,
                         borderRadius: '50%',
                         backgroundColor: subColor,
                         flexShrink: 0,
                         boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.08)',
                       }}
                     />
-                    <span>{sub}</span>
+                    <span
+                      style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {sub}
+                    </span>
                   </button>
                 );
               })}

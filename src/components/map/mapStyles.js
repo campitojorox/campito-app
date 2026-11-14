@@ -763,6 +763,7 @@ export const styles = {
     margin: '0 12px 10px 12px',
     gap: 8,
     boxSizing: 'border-box',
+    minHeight: 175,
     maxHeight: '45vh',
     overflowY: 'auto',
   },
@@ -772,6 +773,8 @@ export const styles = {
     justifyContent: 'space-between',
     width: '100%',
     gap: 10,
+    position: 'relative',
+    zIndex: 25,
   },
   cardTitleInput: {
     fontWeight: 700,

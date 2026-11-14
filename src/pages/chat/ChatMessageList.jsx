@@ -69,9 +69,10 @@ export default function ChatMessageList({
   messagesEndRef,
   setInventoryModalTab,
   setIsInventoryMapOpen,
+  style,
 }) {
   return (
-    <div style={styles.messagesArea}>
+    <div style={{ ...styles.messagesArea, ...style }}>
       {isSearchOpen && outletSearchQuery.trim() && displayedMessages.length === 0 && (
         <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
           🔍 No se encontraron mensajes con "{outletSearchQuery.trim()}".

@@ -229,6 +229,11 @@ export default function ChatIA() {
   const hasText = input.trim().length > 0 || pendingAttachments.length > 0 || pendingAudio !== null;
   const currentBadgeServer = activeServer || GEMINI_SERVERS[selectedServerIndex] || GEMINI_SERVERS[0];
 
+  const handleSendMessage = (text, attachments, audio, skipAudioPlayback) => {
+    setIsRagExplorerOpen(false);
+    sendMessage(text, attachments, audio, skipAudioPlayback);
+  };
+
   return (
     <div style={styles.page}>
       <div style={styles.header}>
@@ -239,23 +244,27 @@ export default function ChatIA() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
             <p style={styles.headerTitle}>CHAT IA</p>
             <button
-              onClick={() => setIsRagExplorerOpen(true)}
+              onClick={() => setIsRagExplorerOpen((prev) => !prev)}
               style={{
-                background: 'none',
-                border: 'none',
-                padding: '2px',
+                background: isRagExplorerOpen ? 'rgba(0, 151, 157, 0.14)' : 'none',
+                border: isRagExplorerOpen ? '1px solid rgba(0, 151, 157, 0.35)' : 'none',
+                padding: isRagExplorerOpen ? '2px 7px' : '2px',
+                borderRadius: isRagExplorerOpen ? '12px' : '50%',
                 display: 'flex',
                 alignItems: 'center',
+                gap: 4,
                 cursor: 'pointer',
                 color: '#00979d',
-                borderRadius: '50%',
-                transition: 'color 0.15s, transform 0.15s',
+                transition: 'all 0.15s ease',
                 flexShrink: 0,
               }}
-              title="Explorador de Archivos y Memoria Vectorial (RAG: KML, KMZ, PDF, CSV)"
-              aria-label="Explorador de Archivos Vectorial RAG"
+              title={isRagExplorerOpen ? 'Volver a la conversación del chat' : 'Explorador de Archivos de la Finca'}
+              aria-label="Explorador de Archivos"
             >
               <FolderOpen size={16} />
+              {isRagExplorerOpen && (
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#00979d' }}>Archivos</span>
+              )}
             </button>
             <button
               onClick={() => setIsInfoModalOpen(true)}
@@ -349,11 +358,6 @@ export default function ChatIA() {
         setAutoFallback={setAutoFallback}
       />
 
-      <RagFileExplorerModal
-        isOpen={isRagExplorerOpen}
-        onClose={() => setIsRagExplorerOpen(false)}
-      />
-
       <ChatInfoModal
         isOpen={isInfoModalOpen}
         onClose={() => setIsInfoModalOpen(false)}
@@ -387,6 +391,15 @@ export default function ChatIA() {
         </Suspense>
       )}
 
+      {/* Vista de Archivos integrada dentro del chat (como contenido, no div flotante) */}
+      {isRagExplorerOpen && (
+        <RagFileExplorerModal
+          isOpen={true}
+          inline={true}
+          onClose={() => setIsRagExplorerOpen(false)}
+        />
+      )}
+
       <ChatMessageList
         isSearchOpen={isSearchOpen}
         outletSearchQuery={outletSearchQuery}
@@ -396,6 +409,7 @@ export default function ChatIA() {
         messagesEndRef={messagesEndRef}
         setInventoryModalTab={setInventoryModalTab}
         setIsInventoryMapOpen={setIsInventoryMapOpen}
+        style={{ display: isRagExplorerOpen ? 'none' : 'flex' }}
       />
 
       <ChatInputBar
@@ -435,7 +449,7 @@ export default function ChatIA() {
         handleKeyDown={handleKeyDown}
         isLoading={isLoading}
         hasText={hasText}
-        sendMessage={sendMessage}
+        sendMessage={handleSendMessage}
       />
     </div>
   );

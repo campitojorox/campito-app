@@ -157,22 +157,21 @@ export default function Layout({ session }) {
         >
           <MenuIcon size={24} />
           {needRefresh && (
-            <span style={{
-              position: 'absolute',
-              top: '-2px',
-              right: '-2px',
-              backgroundColor: '#ef4444',
-              color: 'white',
-              borderRadius: '50%',
-              width: '14px',
-              height: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '10px',
-              fontWeight: 'bold',
-              border: '2px solid var(--bg-color)'
-            }}>!</span>
+            <span
+              title="Actualización disponible"
+              style={{
+                position: 'absolute',
+                top: '3px',
+                right: '2px',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: '#00b4bb',
+                border: '1.5px solid #181818',
+                animation: 'pulse-color 1.4s ease-in-out infinite',
+                pointerEvents: 'none',
+              }}
+            />
           )}
         </button>
 

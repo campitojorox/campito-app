@@ -50,7 +50,7 @@ function getFileFormatIcon(fileType, fileName = '') {
   return <FileText size={16} color="#64748b" />;
 }
 
-export default function RagFileExplorerModal({ isOpen, onClose }) {
+export default function RagFileExplorerModal({ isOpen, onClose, inline = false }) {
   const [documents, setDocuments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -145,21 +145,21 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  return (
+  const content = (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.75)',
-        backdropFilter: 'blur(3px)',
-        zIndex: 9999,
+        width: '100%',
+        maxWidth: inline ? '100%' : '720px',
+        maxHeight: inline ? '100%' : '88vh',
+        height: inline ? '100%' : undefined,
+        backgroundColor: '#ffffff',
+        borderRadius: inline ? 0 : '12px',
+        boxShadow: inline ? 'none' : '0 20px 40px rgba(0, 0, 0, 0.25)',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '12px',
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        flexDirection: 'column',
+        overflow: 'hidden',
+        border: inline ? 'none' : '1px solid #e2e8f0',
+        flex: inline ? 1 : undefined,
       }}
     >
       <input
@@ -170,21 +170,6 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
         accept=".kml,.kmz,.geojson,.gpx,.pdf,.csv,.xlsx,.xls,.txt,.md,.xml,image/*"
         style={{ display: 'none' }}
       />
-
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '720px',
-          maxHeight: '88vh',
-          backgroundColor: '#ffffff',
-          borderRadius: '12px',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.25)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          border: '1px solid #e2e8f0',
-        }}
-      >
         {/* Cabecera compacta: Título con icono pequeño a la izquierda, buscador a la derecha */}
         <div
           style={{
@@ -365,7 +350,7 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
               <RefreshCw size={13} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
             </button>
 
-            {/* Cerrar */}
+            {/* Cerrar / Volver al chat */}
             <button
               onClick={onClose}
               style={{
@@ -376,8 +361,9 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
                 padding: '5px',
                 borderRadius: '6px',
                 display: 'flex',
+                alignItems: 'center',
               }}
-              title="Cerrar"
+              title={inline ? "Volver a la conversación del chat" : "Cerrar"}
             >
               <X size={15} />
             </button>
@@ -557,6 +543,60 @@ export default function RagFileExplorerModal({ isOpen, onClose }) {
             })
           )}
         </div>
+      </div>
+  );
+
+  if (inline) {
+    return (
+      <div
+        style={{
+          flex: 1,
+          width: '100%',
+          height: '100%',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: '#ffffff',
+          overflow: 'hidden',
+        }}
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(15, 23, 42, 0.75)',
+        backdropFilter: 'blur(3px)',
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '12px',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '720px',
+          maxHeight: '88vh',
+          backgroundColor: '#ffffff',
+          borderRadius: '12px',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.25)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          border: '1px solid #e2e8f0',
+        }}
+      >
+        {content}
       </div>
     </div>
   );
