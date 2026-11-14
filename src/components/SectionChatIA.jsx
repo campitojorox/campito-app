@@ -675,8 +675,10 @@ export default function SectionChatIA({
               }}
               placeholder={
                 section === 'calendario'
-                  ? 'Pregunta fechas, agenda un riego o dicta con voz...'
-                  : 'Apunta un gasto, consulta saldos o sube tickets...'
+                  ? 'Agenda, eventos, historial...'
+                  : section === 'mapas'
+                    ? 'Registra, edita, clasifica...'
+                    : 'Apunta, consulta, saldos...'
               }
               style={styles.chatIaTextInput}
               disabled={isProcessingIa}

@@ -99,14 +99,14 @@ export default function ChatInfoModal({
 **3. 🎙️ Dictado de Campo con GPS:**
 - Graba notas de voz caminando por la finca con telemetría GPS continua para georreferenciar árboles y arquetas al vuelo.
 
-**4. 🗺️ Control Total del Mapa:**
-- Crea puntos, traza senderos, mide distancias y gestiona categorías botánicas por lenguaje natural.
+**4. 🗺️ Mapas:**
+- Registra, edita, clasifica puntos, recorridos y categorías botánicas por lenguaje natural o dictado.
 
-**5. 📅 Calendario y Riego en Vivo:**
-- Consulta y agenda turnos de riego (*La Nana*, *El Moro*) y labores de cultivo en tiempo real.
+**5. 📅 Calendario:**
+- Agenda, eventos, historial y turnos de riego (*La Nana*, *El Moro*) en tiempo real.
 
-**6. 💰 Finanzas y Balances Reales:**
-- Registra gastos o ventas al vuelo (*"Apunta 35€ de abono"*), calcula saldos y cuentas de cada socio.
+**6. 💰 Economía:**
+- Apunta, consulta, saldos, gastos, ventas y balances entre socios de la finca.
 
 **7. 👁️ Diagnóstico Botánico y OCR:**
 - Análisis visual de fotos de hojas con plagas o clorosis, y OCR de facturas y contadores de agua.
@@ -293,8 +293,8 @@ export default function ChatInfoModal({
             <div style={featureBoxStyle}>
               <Map size={15} color="#059669" style={{ flexShrink: 0, marginTop: 2 }} />
               <div>
-                <b style={featureTitleStyle}>🗺️ Control del Mapa Interactivo por Lenguaje Natural</b>
-                <p style={featureDescStyle}>Crea puntos de inventario, traza senderos, calcula metros y renombra o asigna categorías botánicas directamente conversando con el chat.</p>
+                <b style={featureTitleStyle}>🗺️ Mapas: Registra, edita, clasifica...</b>
+                <p style={featureDescStyle}>Crea y sitúa puntos de inventario, traza senderos con métricas y renombra o asigna categorías botánicas directamente por voz o texto.</p>
               </div>
             </div>
 
@@ -302,8 +302,8 @@ export default function ChatInfoModal({
             <div style={featureBoxStyle}>
               <Calendar size={15} color="#0d9488" style={{ flexShrink: 0, marginTop: 2 }} />
               <div>
-                <b style={featureTitleStyle}>📅 Calendario y Riego Agrícola en Vivo</b>
-                <p style={featureDescStyle}>Consulta turnos de riego (*La Nana*, *El Moro*), fechas, horarios y responsables en tiempo real, o programa nuevas tareas agrícolas.</p>
+                <b style={featureTitleStyle}>📅 Calendario: Agenda, eventos, historial...</b>
+                <p style={featureDescStyle}>Consulta y agenda turnos de riego (*La Nana*, *El Moro*), fechas de labores y registro histórico de actividades agrícolas.</p>
               </div>
             </div>
 
@@ -311,8 +311,8 @@ export default function ChatInfoModal({
             <div style={featureBoxStyle}>
               <DollarSign size={15} color="#16a34a" style={{ flexShrink: 0, marginTop: 2 }} />
               <div>
-                <b style={featureTitleStyle}>💰 Contabilidad y Liquidaciones al Vuelo</b>
-                <p style={featureDescStyle}>Apunta gastos o ventas por voz o texto (*"Apunta 45€ de abono foliar"*). Consulta balances netos y liquidaciones individuales de socios.</p>
+                <b style={featureTitleStyle}>💰 Economía: Apunta, consulta, saldos...</b>
+                <p style={featureDescStyle}>Apunta gastos o ventas al vuelo, consulta saldos netos y cuentas entre socios de la finca.</p>
               </div>
             </div>
 

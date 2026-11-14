@@ -307,11 +307,7 @@ export default function MapIaBottomBar({
                   handleSendMapIaOrder();
                 }
               }}
-              placeholder={
-                selectedTarget
-                  ? `Orden para ${selectedTarget.title || 'elemento'}...`
-                  : 'Toca el mapa, dicta o escribe una orden...'
-              }
+              placeholder="Registra, edita, clasifica..."
               style={styles.chatIaTextInput}
               disabled={isProcessingIa}
               autoComplete="off"
