@@ -6,6 +6,9 @@ import L from 'leaflet';
 import {
   PATH_TYPE_COLORS,
   getItemCategory,
+  getPathCategory,
+  getPathSubcategory,
+  getCategoryColor,
   updateFarmPath,
 } from '../services/farmInventoryStorage';
 import catastroJorox from '../data/catastroJorox.json';
@@ -120,13 +123,19 @@ export function useLeafletMapLayers({
       const lat = Number(e.latlng.lat.toFixed(6));
       const lng = Number(e.latlng.lng.toFixed(6));
       setSelectedTarget({
-        type: 'coord',
-        id: `coord-${lat}-${lng}`,
-        title: 'Coordenada satelital / linde',
-        subtitle: `Punto satelital en (${lat}, ${lng})`,
+        type: 'point',
+        isNew: true,
+        id: `new-${Date.now()}`,
+        name: '',
+        title: '',
+        category: '',
+        variety_type: '',
         lat,
         lng,
+        latitude: lat,
+        longitude: lng,
         notes: '',
+        status: 'saludable',
       });
     });
 
@@ -168,7 +177,7 @@ export function useLeafletMapLayers({
     }
   }, [isFullScreen, mapInstanceRef]);
 
-  // 1b. Anillo pulsante de realce sobre el elemento seleccionado
+  // 1b. Anillo pulsante de realce sobre el elemento seleccionado o pin en creación
   useEffect(() => {
     const layer = highlightLayerRef.current;
     if (!layer) return;
@@ -176,21 +185,55 @@ export function useLeafletMapLayers({
 
     if (!selectedTarget) return;
 
-    if (selectedTarget.type === 'coord' && selectedTarget.lat && selectedTarget.lng) {
-      L.marker([selectedTarget.lat, selectedTarget.lng], {
+    const isNewPoint = Boolean(
+      selectedTarget.isNew ||
+      selectedTarget.type === 'coord' ||
+      (selectedTarget.type === 'point' && (selectedTarget.isNew || String(selectedTarget.id).startsWith('new-')))
+    );
+
+    if (isNewPoint && selectedTarget.lat && selectedTarget.lng) {
+      const pinColor = selectedTarget.category ? getCategoryColor(selectedTarget.category) : '#00979d';
+      const marker = L.marker([selectedTarget.lat, selectedTarget.lng], {
         icon: L.divIcon({
           className: 'farm-pin-div-wrapper',
           html: `
             <div class="farm-pin-container is-selected">
               <div class="farm-pin">
-                <div class="farm-pin__halo" style="background-color: #00979d;"></div>
-                <div class="farm-pin__body" style="background-color: #00979d;"></div>
+                <div class="farm-pin__halo" style="background-color: ${pinColor};"></div>
+                <div class="farm-pin__body" style="background-color: ${pinColor};"></div>
               </div>
             </div>
           `,
           iconSize: [28, 28],
           iconAnchor: [14, 14],
         }),
+        pane: 'inventoryMarkersPane',
+        zIndexOffset: 3000,
+        draggable: true,
+      });
+
+      marker.on('dragend', (e) => {
+        const newPos = e.target.getLatLng();
+        const lat = Number(newPos.lat.toFixed(6));
+        const lng = Number(newPos.lng.toFixed(6));
+        setSelectedTarget((prev) => (prev ? {
+          ...prev,
+          lat,
+          lng,
+          latitude: lat,
+          longitude: lng,
+        } : prev));
+      });
+
+      marker.addTo(layer);
+    } else if (selectedTarget.type === 'node' && selectedTarget.lat && selectedTarget.lng) {
+      L.circleMarker([selectedTarget.lat, selectedTarget.lng], {
+        radius: 12,
+        color: '#00d1da',
+        weight: 3,
+        opacity: 0.85,
+        fillColor: '#00d1da',
+        fillOpacity: 0.25,
         pane: 'highlightPane',
         interactive: false,
       }).addTo(layer);
@@ -206,7 +249,7 @@ export function useLeafletMapLayers({
         }).addTo(layer);
       }
     }
-  }, [selectedTarget, highlightLayerRef]);
+  }, [selectedTarget, highlightLayerRef, setSelectedTarget]);
 
   // 2. Cursor en modo dibujo
   useEffect(() => {
@@ -324,17 +367,23 @@ export function useLeafletMapLayers({
       if (latlngs.length < 2) return;
 
       const isLinde = path.path_type === 'linde';
-      const lineColor = path.color || PATH_TYPE_COLORS[path.path_type] || '#f97316';
+      const resolvedPathCat = path.category || getPathCategory(path);
+      const isUnclassifiedPath = resolvedPathCat === 'Sin clasificar' || resolvedPathCat === 'Sin categoría';
+      const lineColor = isUnclassifiedPath
+        ? '#00979d'
+        : (path.color || (path.category ? getCategoryColor(path.category) : PATH_TYPE_COLORS[path.path_type]) || '#f97316');
       const poly = L.polyline(latlngs, {
         color: lineColor,
         weight: isLinde ? 1.5 : Number(path.stroke_width) || 4,
-        opacity: 0.9,
+        opacity: isUnclassifiedPath ? 0.8 : 0.9,
         dashArray:
-          path.path_type === 'linea_riego'
-            ? '8, 6'
-            : path.path_type === 'acequia'
-              ? '4, 4'
-              : null,
+          isUnclassifiedPath
+            ? '6, 6'
+            : path.path_type === 'linea_riego'
+              ? '8, 6'
+              : path.path_type === 'acequia'
+                ? '4, 4'
+                : null,
       });
 
       poly.on('click', (e) => {
@@ -345,10 +394,17 @@ export function useLeafletMapLayers({
         }
         lastLayerClickedTimeRef.current = Date.now();
 
+        const pathCat = path.category || getPathCategory(path);
+        const pathSub = path.variety_type || path.subcategory || getPathSubcategory(path) || '';
+
         setSelectedTarget({
           type: 'path',
           id: path.id,
-          title: path.name || 'Camino / Trazado',
+          name: path.name || path.title || 'Camino / Trazado',
+          title: path.name || path.title || 'Camino / Trazado',
+          category: pathCat,
+          variety_type: pathSub,
+          subcategory: pathSub,
           path_type: path.path_type || 'sendero',
           color: path.color || PATH_TYPE_COLORS[path.path_type] || '#f97316',
           length_meters: path.length_meters,
@@ -384,7 +440,8 @@ export function useLeafletMapLayers({
     if (selectedTarget.type === 'path') {
       activePath = localPaths.find((p) => String(p.id) === String(selectedTarget.id)) || selectedTarget.raw;
     } else if (selectedTarget.type === 'node') {
-      activePath = localPaths.find((p) => String(p.id) === String(selectedTarget.pathId)) || selectedTarget.raw;
+      const resolvedPathId = selectedTarget.pathId ?? (selectedTarget.id ? String(selectedTarget.id).split('-node-')[0] : null);
+      activePath = localPaths.find((p) => String(p.id) === String(resolvedPathId)) || selectedTarget.raw;
       selectedNodeIdx = selectedTarget.nodeIndex;
     }
 
@@ -397,14 +454,19 @@ export function useLeafletMapLayers({
       .filter(Boolean);
     if (coords.length < 2) return;
 
-    const pathColor = activePath.color || PATH_TYPE_COLORS[activePath.path_type] || '#f97316';
+    const resolvedActiveCat = activePath.category || getPathCategory(activePath);
+    const isUnclassifiedPath = resolvedActiveCat === 'Sin clasificar' || resolvedActiveCat === 'Sin categoría';
+    const pathColor = isUnclassifiedPath
+      ? '#00979d'
+      : (activePath.color || (activePath.category ? getCategoryColor(activePath.category) : PATH_TYPE_COLORS[activePath.path_type]) || '#f97316');
 
     coords.forEach((coord, idx) => {
       const isLindePath = activePath.path_type === 'linde';
       const isSelected = selectedNodeIdx === idx;
       const nodeSize = isLindePath ? (isSelected ? 8 : 6) : (isSelected ? 20 : 14);
+      const unclassifiedNodeClass = isUnclassifiedPath ? 'is-unclassified-node' : '';
       const nodeIcon = L.divIcon({
-        className: 'farm-path-node-marker farm-pin-div-wrapper',
+        className: `farm-path-node-marker farm-pin-div-wrapper ${unclassifiedNodeClass}`,
         html: `
           <div class="farm-pin-container ${isSelected ? 'is-selected' : ''}" style="width: ${nodeSize}px; height: ${nodeSize}px;">
             ${isSelected ? `<div class="farm-pin__halo" style="background-color: ${pathColor}; top: ${isLindePath ? -10 : -4}px; left: ${isLindePath ? -10 : -4}px; width: 28px; height: 28px;"></div>` : ''}
@@ -413,14 +475,14 @@ export function useLeafletMapLayers({
               width: ${nodeSize}px;
               height: ${nodeSize}px;
               border-radius: 50%;
-              background-color: ${isLindePath ? pathColor : isSelected ? '#00979d' : '#ffffff'};
+              background-color: ${isLindePath ? pathColor : isSelected ? '#00979d' : isUnclassifiedPath ? '#00979d' : '#ffffff'};
               border: ${isLindePath ? 'none' : `2.5px solid ${pathColor}`};
               box-shadow: ${isLindePath ? 'none' : '0 1px 6px rgba(0,0,0,0.4)'};
               cursor: grab;
               display: flex;
               align-items: center;
               justify-content: center;
-              color: ${isSelected ? '#ffffff' : '#475569'};
+              color: ${isSelected || isUnclassifiedPath ? '#ffffff' : '#475569'};
               font-size: 8px;
               font-weight: 700;
               user-select: none;
@@ -442,17 +504,27 @@ export function useLeafletMapLayers({
         L.DomEvent.stopPropagation(e);
         if (e.originalEvent) e.originalEvent.stopPropagation();
         lastLayerClickedTimeRef.current = Date.now();
+        const nodeCat = activePath.category || getPathCategory(activePath);
+        const nodeSub = activePath.variety_type || activePath.subcategory || getPathSubcategory(activePath) || '';
+
         setSelectedTarget({
           type: 'node',
           id: `${activePath.id}-node-${idx}`,
           pathId: activePath.id,
+          name: activePath.name || 'Recorrido',
           pathName: activePath.name || 'Recorrido',
+          title: activePath.name || 'Recorrido',
+          category: nodeCat,
+          variety_type: nodeSub,
+          subcategory: nodeSub,
           pathType: activePath.path_type || 'sendero',
+          path_type: activePath.path_type || 'sendero',
           nodeIndex: idx,
           totalNodes: coords.length,
           lat: coord.lat,
           lng: coord.lng,
           color: pathColor,
+          notes: activePath.notes || '',
           raw: activePath,
         });
       });

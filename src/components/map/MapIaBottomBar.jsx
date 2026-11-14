@@ -17,16 +17,29 @@ import { formatAudioTime } from '../../hooks/useAudioRecorder';
 import { ACCEPTED_CHAT_FILE_TYPES } from '../../utils/attachmentUtils';
 import PendingAttachmentsList from '../PendingAttachmentsList';
 import MapSelectionCard from './MapSelectionCard';
+import MapDrawingCard from './MapDrawingCard';
 import { styles } from './mapStyles';
 
 export default function MapIaBottomBar({
   selectedTarget,
   setSelectedTarget,
+  isDrawing = false,
+  setIsDrawing,
+  drawPoints = [],
+  setDrawPoints,
+  liveDrawDistance = 0,
+  newPathData,
+  setNewPathData,
+  onSaveDrawnPath,
+  drawSubcategories = [],
+  activeDrawCategory = 'Caminos y Trazados',
+  localInventory = [],
   localPaths,
   allCategories = [],
   handleDirectFieldUpdate,
   handleDeleteTarget,
   handleDeleteNode,
+  handleSaveTarget,
   pendingAttachments = [],
   setPendingAttachments,
   iaFeedback,
@@ -64,17 +77,38 @@ export default function MapIaBottomBar({
   undoStack = [],
   handleUndoMapAction,
 }) {
+  const canUndo = Array.isArray(undoStack) && undoStack.length > 0;
+
   return (
     <div style={styles.fixedBottomChatWrapper}>
-      <MapSelectionCard
-        selectedTarget={selectedTarget}
-        setSelectedTarget={setSelectedTarget}
-        localPaths={localPaths}
-        allCategories={allCategories}
-        handleDirectFieldUpdate={handleDirectFieldUpdate}
-        handleDeleteTarget={handleDeleteTarget}
-        handleDeleteNode={handleDeleteNode}
-      />
+      {isDrawing ? (
+        <MapDrawingCard
+          drawPoints={drawPoints}
+          setDrawPoints={setDrawPoints}
+          liveDrawDistance={liveDrawDistance}
+          newPathData={newPathData}
+          setNewPathData={setNewPathData}
+          setIsDrawing={setIsDrawing}
+          onSaveDrawnPath={onSaveDrawnPath}
+          allCategories={allCategories}
+          drawSubcategories={drawSubcategories}
+          activeDrawCategory={activeDrawCategory}
+          localInventory={localInventory}
+        />
+      ) : (
+        <MapSelectionCard
+          selectedTarget={selectedTarget}
+          setSelectedTarget={setSelectedTarget}
+          localPaths={localPaths}
+          allCategories={allCategories}
+          handleDirectFieldUpdate={handleDirectFieldUpdate}
+          handleDeleteTarget={handleDeleteTarget}
+          handleDeleteNode={handleDeleteNode}
+          handleSaveTarget={handleSaveTarget}
+          undoStack={undoStack}
+          handleUndoMapAction={handleUndoMapAction}
+        />
+      )}
 
       <PendingAttachmentsList
         attachments={pendingAttachments}
@@ -353,18 +387,21 @@ export default function MapIaBottomBar({
           </button>
         )}
 
-        {Array.isArray(undoStack) && undoStack.length > 0 && (
-          <button
-            type="button"
-            onClick={handleUndoMapAction}
-            disabled={isProcessingIa}
-            style={styles.chatIaUndoBtn}
-            title={`Retroceder cambios: ${undoStack[undoStack.length - 1]?.description || 'Cambios previos'}`}
-            aria-label="Retroceder cambios en el mapa"
-          >
-            <Undo2 size={17} />
-          </button>
-        )}
+        {/* Botón Deshacer del chat en mapas: siempre presente en la barra, claro/deshabilitado si no hay cambios que revertir */}
+        <button
+          type="button"
+          onClick={handleUndoMapAction}
+          disabled={!canUndo || isProcessingIa}
+          style={canUndo && !isProcessingIa ? styles.chatIaUndoBtn : styles.chatIaUndoBtnDisabled}
+          title={
+            canUndo
+              ? `Deshacer cambios: ${undoStack[undoStack.length - 1]?.description || 'Cambios previos'}`
+              : 'Sin acciones que deshacer'
+          }
+          aria-label="Deshacer cambios en el mapa"
+        >
+          <Undo2 size={17} color={canUndo && !isProcessingIa ? '#ffffff' : '#94a3b8'} />
+        </button>
       </div>
     </div>
   );

@@ -155,6 +155,9 @@ export function getPinFamilySlug(item) {
       return 'riego';
     case 'Hitos':
       return 'hito';
+    case 'Sin clasificar':
+    case 'Sin categoría':
+    case 'Otros':
     default:
       return 'otros';
   }
@@ -173,16 +176,18 @@ export function getPinStatusSlug(item) {
  */
 export function createFamilyPinIcon({ item, isSelected = false, hasWarning = false }) {
   const parentCat = getItemCategory(item);
-  const catColor = getCategoryColor(parentCat);
-  const familySlug = getPinFamilySlug(item);
+  const isUnclassified = parentCat === 'Sin clasificar' || parentCat === 'Sin categoría' || !parentCat;
+  const catColor = isUnclassified ? '#00979d' : getCategoryColor(parentCat);
+  const familySlug = isUnclassified ? 'otros' : getPinFamilySlug(item);
   const statusSlug = getPinStatusSlug(item);
   const selectedClass = isSelected ? 'is-selected' : '';
   const warningClass = hasWarning ? 'has-warning' : '';
+  const unclassifiedClass = isUnclassified ? 'is-unclassified' : '';
 
   return L.divIcon({
     className: 'farm-pin-div-wrapper',
     html: `
-      <div class="farm-pin-container ${selectedClass} ${warningClass}">
+      <div class="farm-pin-container ${selectedClass} ${warningClass} ${unclassifiedClass}">
         <div class="farm-pin farm-pin--family-${familySlug} farm-pin--status-${statusSlug}">
           <div class="farm-pin__halo" style="background-color: ${catColor};"></div>
           <div class="farm-pin__body" style="background-color: ${catColor};"></div>

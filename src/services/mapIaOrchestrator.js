@@ -18,9 +18,13 @@ import {
   getItemCategory,
   createFarmCategory,
   deleteFarmCategory,
+  renameFarmCategory,
+  integrateCategoryIntoParent,
   createFarmSubcategory,
   deleteFarmSubcategory,
   ensureCategoryExistsForElement,
+  updateAllFarmCategories,
+  extractCategoriesFromText,
 } from './farmInventoryStorage';
 import {
   interpolateGpsAtAudioTime,
@@ -165,7 +169,16 @@ export function parseStructuredCommands(rawText) {
     else if (payload && typeof payload === 'object') updates.push(payload);
   }
 
-  for (const payload of extractTagPayloads(rawText, ['CREAR_CATEGORIA', 'REGISTRAR_CATEGORIA'])) {
+  for (const payload of extractTagPayloads(rawText, [
+    'CREAR_CATEGORIA',
+    'REGISTRAR_CATEGORIA',
+    'ACTUALIZAR_CATEGORIAS',
+    'ACTUALIZAR_CATEGORIA',
+    'REEMPLAZAR_CATEGORIAS',
+    'GUARDAR_CATEGORIAS',
+    'SINCRONIZAR_TAXONOMIA',
+    'SINCRONIZAR_CATEGORIAS',
+  ])) {
     if (Array.isArray(payload)) categories.push(...payload.filter((c) => c && typeof c === 'object'));
     else if (payload && typeof payload === 'object') categories.push(payload);
   }
@@ -477,7 +490,7 @@ export function parseMapGeminiRawText(rawText, audio = null) {
   if (cmdActions.length > 0) {
     const cleanDescription = rawText
       .replace(
-        /\[\[(?:REGISTRAR_PUNTOS|REGISTRAR_PUNTO|BORRAR_PUNTO|ELIMINAR_PUNTO|REGISTRAR_CAMINO|CREAR_CAMINO|EDITAR_PUNTO|ACTUALIZAR_PUNTO|CREAR_CATEGORIA|REGISTRAR_CATEGORIA|BORRAR_CATEGORIA|ELIMINAR_CATEGORIA|CREAR_SUBCATEGORIA|BORRAR_SUBCATEGORIA):[\s\S]*?\]\]/gi,
+        /\[\[(?:REGISTRAR_PUNTOS|REGISTRAR_PUNTO|BORRAR_PUNTO|ELIMINAR_PUNTO|REGISTRAR_CAMINO|CREAR_CAMINO|EDITAR_PUNTO|ACTUALIZAR_PUNTO|CREAR_CATEGORIA|REGISTRAR_CATEGORIA|ACTUALIZAR_CATEGORIAS|ACTUALIZAR_CATEGORIA|REEMPLAZAR_CATEGORIAS|GUARDAR_CATEGORIAS|SINCRONIZAR_TAXONOMIA|SINCRONIZAR_CATEGORIAS|BORRAR_CATEGORIA|ELIMINAR_CATEGORIA|CREAR_SUBCATEGORIA|BORRAR_SUBCATEGORIA):[\s\S]*?\]\]/gi,
         ''
       )
       .trim();
@@ -644,8 +657,20 @@ export async function executeInventoryActions({
   const ADD_PATH_TYPES = new Set(['ADD_PATH', 'CREATE_PATH', 'INSERT_PATH', 'REGISTRAR_CAMINO', 'CREAR_CAMINO', 'DRAW_PATH']);
   const UPDATE_PATH_TYPES = new Set(['UPDATE_PATH', 'EDIT_PATH', 'EDITAR_CAMINO']);
   const DELETE_PATH_TYPES = new Set(['DELETE_PATH', 'REMOVE_PATH', 'BORRAR_CAMINO', 'ELIMINAR_CAMINO']);
-  const CREATE_CATEGORY_TYPES = new Set(['CREATE_CATEGORY', 'CREAR_CATEGORIA', 'REGISTRAR_CATEGORIA']);
+  const CREATE_CATEGORY_TYPES = new Set([
+    'CREATE_CATEGORY',
+    'CREAR_CATEGORIA',
+    'REGISTRAR_CATEGORIA',
+    'ACTUALIZAR_CATEGORIAS',
+    'ACTUALIZAR_CATEGORIA',
+    'REEMPLAZAR_CATEGORIAS',
+    'GUARDAR_CATEGORIAS',
+    'SINCRONIZAR_TAXONOMIA',
+    'SINCRONIZAR_CATEGORIAS',
+  ]);
   const DELETE_CATEGORY_TYPES = new Set(['DELETE_CATEGORY', 'BORRAR_CATEGORIA', 'ELIMINAR_CATEGORIA']);
+  const RENAME_CATEGORY_TYPES = new Set(['RENAME_CATEGORY', 'RENOMBRAR_CATEGORIA']);
+  const MERGE_CATEGORY_TYPES = new Set(['MERGE_CATEGORY', 'INTEGRAR_CATEGORIA', 'FUSIONAR_CATEGORIA']);
   const CREATE_SUBCATEGORY_TYPES = new Set(['CREATE_SUBCATEGORY', 'CREAR_SUBCATEGORIA', 'REGISTRAR_SUBCATEGORIA']);
   const DELETE_SUBCATEGORY_TYPES = new Set(['DELETE_SUBCATEGORY', 'BORRAR_SUBCATEGORIA', 'ELIMINAR_SUBCATEGORIA']);
 
@@ -933,25 +958,54 @@ export async function executeInventoryActions({
       }
     }
 
-    // ── CREAR CATEGORÍA ───────────────────────────────────────────────────────
+    // ── CREAR / ACTUALIZAR CATEGORÍA ──────────────────────────────────────────
     else if (CREATE_CATEGORY_TYPES.has(actType)) {
-      const cat = createFarmCategory({
-        name: actData.name || actData.category || actData.categoria,
-        subcategories: actData.subcategories || actData.subcategorias || (actData.subcategory ? [actData.subcategory] : []),
-        color: actData.color || null,
-        icon: actData.icon || null,
-      });
-      if (cat) result.addedCategories.push(cat);
+      if (Array.isArray(actData)) {
+        const cats = updateAllFarmCategories(actData);
+        if (cats && cats.length > 0) result.addedCategories.push(...cats);
+      } else if (actData && Array.isArray(actData.categories || actData.categorias)) {
+        const cats = updateAllFarmCategories(actData.categories || actData.categorias);
+        if (cats && cats.length > 0) result.addedCategories.push(...cats);
+      } else {
+        const cat = createFarmCategory({
+          name: actData.name || actData.category || actData.categoria,
+          subcategories: actData.subcategories || actData.subcategorias || (actData.subcategory ? [actData.subcategory] : []),
+          color: actData.color || null,
+          icon: actData.icon || null,
+        });
+        if (cat) result.addedCategories.push(cat);
+      }
     }
 
-    // ── BORRAR CATEGORÍA ──────────────────────────────────────────────────────
+    // ── BORRAR CATEGORÍA (NUNCA BORRAR ELEMENTOS NI NODOS) ───────────────────
     else if (DELETE_CATEGORY_TYPES.has(actType)) {
       const res = await deleteFarmCategory({
         name: actData.name || actData.category || actData.categoria || actData.query,
-        deleteItems: actData.delete_items !== false,
-        reassignTo: actData.reassign_to || 'Otros',
+        deleteItems: false,
+        reassignTo: actData.reassign_to || 'Sin categoría',
       });
       if (res?.success) result.deletedCategories.push(res);
+    }
+
+    // ── RENOMBRAR CATEGORÍA ──────────────────────────────────────────────────
+    else if (RENAME_CATEGORY_TYPES.has(actType)) {
+      const res = await renameFarmCategory({
+        oldName: actData.old_name || actData.oldName || actData.origen || actData.source,
+        newName: actData.new_name || actData.newName || actData.destino || actData.target,
+        subcategories: actData.subcategories || actData.subcategorias,
+      });
+      if (res?.success) result.addedCategories.push({ name: res.newName });
+    }
+
+    // ── INTEGRAR / FUSIONAR CATEGORÍA ─────────────────────────────────────────
+    else if (MERGE_CATEGORY_TYPES.has(actType)) {
+      const res = await integrateCategoryIntoParent({
+        sourceCategory: actData.source || actData.sourceCategory || actData.origen,
+        targetParentCategory: actData.target || actData.targetParent || actData.targetParentCategory || actData.destino || actData.target_parent,
+        subcategoriesToKeep: actData.subcategories || actData.subcategoriesToKeep,
+        subcategoriesToRemove: actData.delete_subcategories || actData.subcategoriesToRemove,
+      });
+      if (res?.success) result.addedCategories.push({ name: res.targetParent });
     }
 
     // ── CREAR SUBCATEGORÍA ────────────────────────────────────────────────────

@@ -389,6 +389,45 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.6), 0 2px 7px rgba(0, 0, 0, 0.45);
 }
 
+/* ─── ELEMENTOS SIN CLASIFICAR (PINES Y NODOS DESCLASIFICADOS) ─────────────── */
+.farm-pin-container.is-unclassified .farm-pin__body {
+  background-color: #00979d !important;
+  border-color: #ffffff !important;
+  animation: farmPinUnclassifiedPulse 1.6s infinite ease-in-out;
+}
+
+/* REGLA ESTRICTA: Sin animación de aura / halo si no está seleccionado */
+.farm-pin-container.is-unclassified:not(.is-selected) .farm-pin__halo {
+  display: none !important;
+  animation: none !important;
+}
+
+/* Nodos de recorridos desclasificados */
+.farm-path-node-marker.is-unclassified-node .farm-pin-container > div:last-child {
+  animation: farmPinUnclassifiedPulse 1.6s infinite ease-in-out;
+  background-color: #00979d !important;
+  color: #ffffff !important;
+  border-color: #ffffff !important;
+}
+
+.farm-path-node-marker.is-unclassified-node:not(.is-selected) .farm-pin__halo {
+  display: none !important;
+  animation: none !important;
+}
+
+@keyframes farmPinUnclassifiedPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.85);
+    box-shadow: 0 0 10px rgba(0, 151, 157, 0.85);
+  }
+}
+
 /* ─── COLORES POR FAMILIA ARQUITECTÓNICA (CSS) ────────────────────────────── */
 .farm-pin--family-arbol .farm-pin__body {
   background-color: #16a34a; /* Árboles frutales (aguacate, limonero, etc.) */
@@ -443,6 +482,51 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 
 .farm-pin--status-poda_requerida .farm-pin__body {
   background-color: #ea580c !important; /* Naranja poda requerida */
+}
+
+/* ─── BOTONES CIRCULARES VERDES MAPA (UNIFICADOS) ────────────────────────── */
+.map-circle-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: #16a34a;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: background-color 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+
+.map-circle-btn:hover:not(:disabled) {
+  background-color: #15803d;
+  transform: scale(1.06);
+}
+
+.map-circle-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.map-circle-btn--light {
+  background-color: #16a34a !important;
+  opacity: 0.35 !important;
+  box-shadow: none !important;
+}
+
+.map-circle-btn--light:hover:not(:disabled) {
+  background-color: #16a34a !important;
+  opacity: 0.65 !important;
+}
+
+.map-circle-btn:disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 /* ─── TOOLTIP MODERNO Y ESTANDARIZADO DE MAPA ─────────────────────────────── */

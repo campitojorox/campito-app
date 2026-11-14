@@ -90,19 +90,31 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
        [[BORRAR_PUNTO: {"target": "ultimo|especifico", "query": "descripción del punto a borrar"}]]
 
 6. 🏷️ **GESTIÓN Y CLASIFICACIÓN DINÁMICA DE CATEGORÍAS Y SUBCATEGORÍAS**:
-- Tienes la capacidad de **crear, borrar y organizar categorías y subcategorías** en la base de datos de la finca directamente por el chat.
+- Tienes la capacidad de **crear, borrar y organizar categorías y subcategorías** en la base de datos de la finca directamente por el chat. ESTA FUNCIONALIDAD ESTÁ 100% OPERATIVA. NUNCA menciones notas antiguas sobre supuestas fallas de sincronización ni preguntes al usuario si desea que lo hagas: EJECUTA LA ORDEN INMEDIATAMENTE emitiendo el comando estructurado.
 - **Creación de categorías por chat**:
   Si el usuario te pide crear una categoría (ej: "crea la categoría Animales con subcategorías Gallinas y Colmenas", "crea la categoría Energía"):
   Confírmalo y añade:
   [[CREAR_CATEGORIA: {"name": "Animales", "subcategories": ["Gallinas", "Colmenas"], "color": "#14b8a6"}]]
 - **Borrado de categorías por chat**:
-  Si el usuario te pide borrar o eliminar una categoría (ej: "elimina la categoría Herramientas", "borra la categoría Animales"):
-  Confirma qué categoría se elimina (y que se retirarán o reasignarán sus puntos del mapa) y añade:
-  [[BORRAR_CATEGORIA: {"name": "NombreDeLaCategoria", "delete_items": true}]]
+  Si el usuario te pide borrar o eliminar una categoría (ej: "elimina la categoría Casas", "borra la categoría Herramientas"):
+  Confirma qué categoría se elimina (indicando que sus puntos o trazados NO se borran del mapa, sino que pasan a 'Sin clasificar' en color azulado parpadeante para permitir reasignarles una nueva) y añade SIEMPRE:
+  [[BORRAR_CATEGORIA: {"name": "NombreDeLaCategoria", "delete_items": false}]]
+- **Renombrado e integración de categorías por chat**:
+  Si el usuario te pide renombrar una categoría:
+  [[RENOMBRAR_CATEGORIA: {"old_name": "Caminos y Trazados", "new_name": "Trazados"}]]
+  Si el usuario te pide integrar o fusionar una categoría dentro de otra como subcategoría:
+  [[INTEGRAR_CATEGORIA: {"source": "Ríos / Arroyos", "target_parent": "Trazados", "delete_subcategories": ["Río"]}]]
 - **Creación de subcategorías por chat**:
   [[CREAR_SUBCATEGORIA: {"category": "Riego / Agua", "name": "Goteros Autocompensantes"}]]
 - **Borrado de subcategorías por chat**:
-  [[BORRAR_SUBCATEGORIA: {"category": "Riego / Agua", "name": "Goteros Autocompensantes", "delete_items": true}]]
+  [[BORRAR_SUBCATEGORIA: {"category": "Trazados", "name": "Río", "delete_items": false}]]
+- **Actualización, reemplazo o edición completa de la lista de categorías y subcategorías por chat**:
+  Si el usuario te envía o dicta una lista editada de categorías con sus subcategorías (o te pide que actualices la lista completa de la finca):
+  NUNCA afirmes que las has actualizado sin incluir el comando estructurado. DEBES OBLIGATORIAMENTE incluir al final el bloque con el array completo:
+  [[ACTUALIZAR_CATEGORIAS: [
+    {"name": "Árboles", "subcategories": ["Aguacate Hass", "Olivo"], "color": "#16a34a"},
+    {"name": "Trazados", "subcategories": ["Camino", "Carril agrícola", "Sendero", "MTB", "Ríos / Arroyos", "Arroyo", "Cauce natural"], "color": "#f97316"}
+  ] ]]
 - 🚨 **REGLA SUPREMA AL REGISTRAR ELEMENTOS EN INVENTARIO**:
   Al registrar cualquier elemento o punto (por texto o por voz):
   1. Identifica si el elemento **ya pertenece a una categoría existente** en la finca (revisa la lista de categorías del contexto). Si ya existe, asígnala directamente.
@@ -349,7 +361,7 @@ export function formatCategoriesContext(categories = []) {
   return `\n\n🏷️ **CATEGORÍAS Y SUBCATEGORÍAS DISPONIBLES EN LA FINCA (${categories.length} categorías registradas)**:
 ${lines.join('\n')}
 *REGLAS VITALES DE TAXONOMÍA:
-1. Si el usuario te pide crear o borrar categorías o subcategorías mediante el chat, utiliza los comandos estructurados [[CREAR_CATEGORIA]], [[BORRAR_CATEGORIA]], [[CREAR_SUBCATEGORIA]] o [[BORRAR_SUBCATEGORIA]].
+1. Si el usuario te pide crear, borrar, editar o actualizar categorías o subcategorías mediante el chat, utiliza los comandos estructurados [[ACTUALIZAR_CATEGORIAS: [ ... ] ]], [[CREAR_CATEGORIA]], [[BORRAR_CATEGORIA]], [[CREAR_SUBCATEGORIA]] o [[BORRAR_SUBCATEGORIA]]. Nunca digas que las has actualizado sin incluir dicho bloque.
 2. Al registrar un nuevo elemento en el inventario:
    - Identifica si el elemento ya encaja en alguna categoría creada previamente.
    - Si NO encaja en ninguna categoría existente (ej: paneles solares -> Energía, gallinas/colmenas -> Animales, valla -> Cercados), CREA OBLIGATORIAMENTE una nueva categoría para clasificarlo con [[CREAR_CATEGORIA: {"name": "...", "subcategories": ["..."]}]] y asígnala al elemento.*`;

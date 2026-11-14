@@ -10,6 +10,7 @@ import {
   parseAllStructuredCommands,
   saveNewCustomTool,
 } from './unifiedAiBrain';
+import { extractCategoriesFromText, updateAllFarmCategories } from './farmInventoryStorage';
 
 /**
  * Ejecuta comandos estructurados devueltos por Gemini (inventario, caminos, calendario,
@@ -80,10 +81,19 @@ export async function processChatResponseActions({
     .replace(/\[\[CREAR_TRANSACCION:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[REGISTRAR_HERRAMIENTA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[CREAR_HERRAMIENTA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-    .replace(/\[\[CREAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
-    .replace(/\[\[REGISTRAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[CREAR_CATEGORIA:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
+    .replace(/\[\[REGISTRAR_CATEGORIA:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
+    .replace(/\[\[ACTUALIZAR_CATEGORIAS:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
+    .replace(/\[\[ACTUALIZAR_CATEGORIA:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
+    .replace(/\[\[REEMPLAZAR_CATEGORIAS:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
+    .replace(/\[\[GUARDAR_CATEGORIAS:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
+    .replace(/\[\[SINCRONIZAR_TAXONOMIA:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
+    .replace(/\[\[SINCRONIZAR_CATEGORIAS:\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*\]\]/gi, '')
     .replace(/\[\[BORRAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[ELIMINAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[RENOMBRAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[INTEGRAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[FUSIONAR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[CREAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[REGISTRAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[BORRAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
@@ -102,6 +112,78 @@ export async function processChatResponseActions({
     ...(structured.subcategories || uCmds.subcategories || []).map((s) => ({ type: 'CREATE_SUBCATEGORY', data: s })),
     ...(structured.subcategoryDeletions || uCmds.subcategoryDeletions || []).map((s) => ({ type: 'DELETE_SUBCATEGORY', data: s })),
   ];
+
+  // Detección tolerante de órdenes de renombrar / integrar categorías en lenguaje natural
+  if (userText) {
+    const uLower = userText.toLowerCase();
+
+    // Renombrar categoría (ej: "Renombrada 'Caminos y Trazados' a 'Trazados'")
+    if (uLower.includes('renombr') && (uLower.includes(' a ') || uLower.includes(' por '))) {
+      const match = userText.match(/renombr(?:ar|ada|ado|a)?\s*["'«]?([^"'»\n,]+)["'»]?\s*(?:a|por)\s*["'«]?([^"'»\n,.]+)/i);
+      if (match) {
+        actionsToExecute.push({
+          type: 'RENAME_CATEGORY',
+          data: { old_name: match[1].trim(), new_name: match[2].trim() },
+        });
+      }
+    }
+
+    // Integrar categoría (ej: "Integrada 'Ríos / Arroyos' como subcategoría dentro de 'Trazados'")
+    if (uLower.includes('integr') || uLower.includes('fusion')) {
+      const match = userText.match(/integr(?:ar|ada|ado|a)?\s*["'«]?([^"'»\n,]+)["'»]?.*?(?:en|dentro de|a)\s*["'«]?([^"'»\n,.]+)/i);
+      if (match) {
+        actionsToExecute.push({
+          type: 'MERGE_CATEGORY',
+          data: {
+            source: match[1].trim(),
+            target: match[2].trim(),
+            delete_subcategories: uLower.includes('elimin') || uLower.includes('borr') ? ['Río', 'Rio'] : [],
+          },
+        });
+      }
+    }
+
+    // Eliminar subcategoría (ej: "Eliminada la subcategoría 'Río'")
+    if ((uLower.includes('elimin') || uLower.includes('borr')) && uLower.includes('subcategor')) {
+      const match = userText.match(/(?:elimin(?:ar|ada|ado|a)?|borr(?:ar|ada|ado|a)?)\s+(?:la\s+)?subcategor[ií]a\s*["'«]?([^"'»\n,.]+)/i);
+      if (match) {
+        actionsToExecute.push({
+          type: 'DELETE_SUBCATEGORY',
+          data: { parentCategory: 'Trazados', name: match[1].trim() },
+        });
+      }
+    }
+
+    // Eliminar o borrar categoría (ej: "elimina la categoría Casas", "borra la categoría Casas")
+    if ((uLower.includes('elimin') || uLower.includes('borr')) && (uLower.includes('categor') || uLower.includes('casas')) && !uLower.includes('subcategor')) {
+      const match = userText.match(/(?:elimin(?:ar|ada|ado|a)?|borr(?:ar|ada|ado|a)?)\s+(?:la\s+)?categor[ií]a\s*["'«]?([^"'»\n,.]+)/i);
+      const catToDelete = match ? match[1].trim() : (uLower.includes('casas') ? 'Casas' : null);
+      if (catToDelete) {
+        actionsToExecute.push({
+          type: 'DELETE_CATEGORY',
+          data: { name: catToDelete, delete_items: false, reassign_to: 'Sin categoría' },
+        });
+      }
+    }
+  }
+
+  // Si el usuario pidió actualizar/sincronizar categorías pero Gemini no emitió la etiqueta estructurada,
+  // extraer de forma resiliente la lista de categorías y subcategorías presentes en el texto del usuario o la respuesta.
+  if (actionsToExecute.filter((a) => a.type === 'CREATE_CATEGORY' || a.type === 'RENAME_CATEGORY' || a.type === 'MERGE_CATEGORY').length === 0 && userText) {
+    const uLower = userText.toLowerCase();
+    const isCategoryRequest =
+      (uLower.includes('categor') || uLower.includes('subcategor') || uLower.includes('taxonom')) &&
+      (uLower.includes('actualiz') || uLower.includes('cambi') || uLower.includes('edit') || uLower.includes('guard') || uLower.includes('reemplaz') || uLower.includes('sincroniz'));
+
+    if (isCategoryRequest) {
+      const extractedFromUser = extractCategoriesFromText(userText);
+      const extractedFromAi = extractCategoriesFromText(successResult);
+      const toApply = extractedFromUser.length > 0 ? extractedFromUser : (extractedFromAi.length > 0 ? extractedFromAi : []);
+      if (toApply.length > 0) {
+        actionsToExecute.push({ type: 'CREATE_CATEGORY', data: toApply });
+      }
+    }
+  }
 
   if (userText && actionsToExecute.filter((a) => a.type === 'DELETE_POINT').length === 0) {
     const lower = userText.toLowerCase().trim();

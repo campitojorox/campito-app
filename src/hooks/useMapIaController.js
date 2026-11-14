@@ -12,6 +12,7 @@ import {
   insertFarmPath,
   updateFarmPath,
   deleteFarmPath,
+  deleteFarmCategory,
   getItemCategory,
 } from '../services/farmInventoryStorage';
 import {
@@ -261,6 +262,64 @@ export function useMapIaController({
           if (onReloadInventory) await onReloadInventory();
         } catch (err) {
           setIaFeedback({ type: 'error', text: `Error renombrando categoría: ${err.message}` });
+        } finally {
+          setIsProcessingIa(false);
+        }
+        return;
+      }
+    }
+
+    // ── 1b. DETECCIÓN DIRECTA DE BORRADO DE CATEGORÍAS ──
+    const isCategoryDelete =
+      (lowerOrder.includes('borr') || lowerOrder.includes('elimin')) &&
+      (lowerOrder.includes('categor') || lowerOrder.includes('casas')) &&
+      !lowerOrder.includes('subcategor');
+
+    if (isCategoryDelete) {
+      let targetCat = null;
+      const matchQuotes = textOrder.match(/(?:borr(?:ar|ada|ado|a)?|elimin(?:ar|ada|ado|a)?)\s+(?:la\s+)?categor[ií]a\s*["'«“]?([^"'»”\n,.]+)/i);
+      if (matchQuotes) {
+        targetCat = matchQuotes[1].trim();
+      } else if (lowerOrder.includes('casas')) {
+        targetCat = 'Casas';
+      }
+
+      if (targetCat) {
+        setMapIaInput('');
+        syncTextareaHeight(mapIaTextareaRef.current, '');
+        setPendingVoiceAudio(null);
+        setPendingAttachments([]);
+        setIsProcessingIa(true);
+        setIaFeedback({ type: 'info', text: `🗑️ Eliminando categoría "${targetCat}"...` });
+
+        try {
+          await deleteFarmCategory({ name: targetCat, deleteItems: false, reassignTo: 'Sin categoría' });
+          if (setVisibleCategories) {
+            setVisibleCategories((prev) => {
+              const next = new Set(prev);
+              next.delete(targetCat);
+              next.add('Sin categoría');
+              return next;
+            });
+          }
+          if (onReloadInventory) await onReloadInventory();
+          if (onReloadPaths) await onReloadPaths();
+
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              type: 'DELETE_CATEGORY',
+              description: `Eliminada categoría "${targetCat}"`,
+              reverts: [{ type: 'RESTORE_CATEGORY', name: targetCat }],
+            },
+          ]);
+
+          setIaFeedback({
+            type: 'success',
+            text: `✨ Categoría "${targetCat}" eliminada correctamente. Sus puntos y trazados continúan en el mapa como "Sin clasificar" (en color azulado parpadeante) para asignarles una nueva.`,
+          });
+        } catch (err) {
+          setIaFeedback({ type: 'error', text: `Error al eliminar categoría: ${err.message}` });
         } finally {
           setIsProcessingIa(false);
         }

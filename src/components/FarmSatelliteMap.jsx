@@ -8,6 +8,7 @@ import { supabase } from '../supabaseClient';
 import {
   getLocalInventory,
   getLocalPaths,
+  insertFarmInventoryItem,
   updateFarmInventoryItem,
   deleteFarmInventoryItem,
   insertFarmPath,
@@ -17,12 +18,14 @@ import {
   PATH_TYPE_COLORS,
   getItemCategory,
   getFarmCategories,
+  getDeletedCategories,
   getCategoryColor,
   getSubcategoryColor,
   getSubcategoriesForParent,
   getPathCategory,
   getPathSubcategory,
   saveFarmCategory,
+  sanitizeSubcategory,
 } from '../services/farmInventoryStorage';
 import { generateCustomPDF } from '../utils/exportTools';
 import { syncTextareaHeight } from '../utils/helpers';
@@ -218,28 +221,61 @@ export default function FarmSatelliteMap({
 
   const allCategories = useMemo(() => {
     if (categoriesVersion < 0) return [];
-    const activeCats = getFarmCategories().map((c) => c.name).filter((n) => n !== 'Otros');
+    const deleted = getDeletedCategories();
+    const activeCats = getFarmCategories()
+      .map((c) => c.name)
+      .filter((n) => n && n !== 'Otros' && !deleted.has(n) && !deleted.has(n.toLowerCase()));
+
     const found = new Set(activeCats);
     (localInventory || []).forEach((item) => {
       const cat = getItemCategory(item);
-      if (cat && cat !== 'Otros') found.add(cat);
+      if (
+        cat &&
+        cat !== 'Otros' &&
+        cat !== 'Sin categoría' &&
+        cat !== 'Sin clasificar' &&
+        !deleted.has(cat) &&
+        !deleted.has(cat.toLowerCase())
+      ) {
+        found.add(cat);
+      }
     });
     (localPaths || []).forEach((path) => {
       const cat = getPathCategory(path);
-      if (cat && cat !== 'Otros') found.add(cat);
+      if (
+        cat &&
+        cat !== 'Otros' &&
+        cat !== 'Sin categoría' &&
+        cat !== 'Sin clasificar' &&
+        !deleted.has(cat) &&
+        !deleted.has(cat.toLowerCase())
+      ) {
+        found.add(cat);
+      }
     });
-    found.add('Otros');
+    found.add('Sin clasificar');
     return Array.from(found);
   }, [localInventory, localPaths, categoriesVersion]);
 
   const allPathCategories = useMemo(() => {
+    const deleted = getDeletedCategories();
     const cats = new Set();
     (localPaths || []).forEach((p) => {
       if ((p.path_type || '') !== 'linde') {
-        cats.add(getPathCategory(p));
+        const cat = getPathCategory(p);
+        if (
+          cat &&
+          cat !== 'Sin categoría' &&
+          cat !== 'Sin clasificar' &&
+          !deleted.has(cat) &&
+          !deleted.has(cat.toLowerCase())
+        ) {
+          cats.add(cat);
+        }
       }
     });
-    if (cats.size === 0) cats.add('Caminos y Trazados');
+    if (cats.size === 0) cats.add('Trazados');
+    cats.add('Sin clasificar');
     return Array.from(cats);
   }, [localPaths]);
 
@@ -275,22 +311,29 @@ export default function FarmSatelliteMap({
   const searchQuery = propSearchQuery !== undefined ? propSearchQuery : '';
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [visibleCategories, setVisibleCategories] = useState(() => {
-    const base = new Set(Object.keys(BASE_CATEGORY_MAP));
+    const deleted = getDeletedCategories();
+    const activeFarmCats = getFarmCategories()
+      .map((c) => c.name)
+      .filter((n) => n && n !== 'Otros' && !deleted.has(n) && !deleted.has(n.toLowerCase()));
+
+    const base = new Set(['Sin clasificar', 'Sin categoría', ...activeFarmCats]);
     if (initialMapSettings?.visibleCategories && Array.isArray(initialMapSettings.visibleCategories)) {
-      const saved = new Set(initialMapSettings.visibleCategories);
-      if (saved.has('Edificios') || saved.has('Casas / Edificios')) {
-        saved.delete('Edificios');
-        saved.delete('Casas / Edificios');
-        saved.add('Casas');
-      }
+      const saved = new Set();
+      initialMapSettings.visibleCategories.forEach((cat) => {
+        if (!deleted.has(cat) && !deleted.has(cat.toLowerCase())) {
+          saved.add(cat);
+        }
+      });
+      saved.add('Sin clasificar');
+      saved.add('Sin categoría');
       allCategories.forEach((cat) => {
-        if (!Object.prototype.hasOwnProperty.call(BASE_CATEGORY_MAP, cat) && cat !== 'Otros') {
+        if (!deleted.has(cat) && !deleted.has(cat.toLowerCase())) {
           saved.add(cat);
         }
       });
       return saved;
     }
-    return new Set([...base, ...allCategories]);
+    return new Set([...base, ...allCategories, 'Sin clasificar', 'Sin categoría']);
   });
   const [visibleSubcats, setVisibleSubcats] = useState(() =>
     initialMapSettings?.visibleSubcats && Array.isArray(initialMapSettings.visibleSubcats)
@@ -301,10 +344,25 @@ export default function FarmSatelliteMap({
 
   // Filtro de categorías y subcategorías para polilíneas y trazados
   const [visiblePathCategories, setVisiblePathCategories] = useState(() => {
+    const deleted = getDeletedCategories();
+    const base = new Set(['Sin clasificar', 'Sin categoría', 'Trazados']);
     if (initialMapSettings?.visiblePathCategories && Array.isArray(initialMapSettings.visiblePathCategories)) {
-      return new Set(initialMapSettings.visiblePathCategories);
+      const saved = new Set();
+      initialMapSettings.visiblePathCategories.forEach((cat) => {
+        if (!deleted.has(cat) && !deleted.has(cat.toLowerCase())) {
+          saved.add(cat);
+        }
+      });
+      saved.add('Sin clasificar');
+      saved.add('Sin categoría');
+      allPathCategories.forEach((cat) => {
+        if (!deleted.has(cat) && !deleted.has(cat.toLowerCase())) {
+          saved.add(cat);
+        }
+      });
+      return saved;
     }
-    return new Set(['Caminos y Trazados', 'Ríos / Arroyos', 'Rios / Arroyos', 'Líneas de Riego', 'Lindes y Límites', ...Object.keys(BASE_CATEGORY_MAP)]);
+    return new Set([...base, ...allPathCategories, 'Sin clasificar', 'Sin categoría']);
   });
   const [visiblePathSubcats, setVisiblePathSubcats] = useState(() =>
     initialMapSettings?.visiblePathSubcats && Array.isArray(initialMapSettings.visiblePathSubcats)
@@ -317,6 +375,23 @@ export default function FarmSatelliteMap({
       ? new Set(initialMapSettings.visiblePathTypes)
       : new Set(PATH_TYPES)
   );
+
+  // Sincronizar automáticamente cualquier nueva categoría detectada para que esté visible por defecto
+  useEffect(() => {
+    if (allPathCategories.length > 0) {
+      setVisiblePathCategories((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        allPathCategories.forEach((cat) => {
+          if (!next.has(cat)) {
+            next.add(cat);
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [allPathCategories]);
 
   useEffect(() => {
     try {
@@ -410,6 +485,11 @@ export default function FarmSatelliteMap({
   );
 
   const liveDrawDistance = useMemo(() => calculatePathMeters(drawPoints), [drawPoints]);
+  const activeDrawCategory = newPathData?.category || 'Caminos y Trazados';
+  const drawSubcategories = useMemo(
+    () => getSubcategoriesForParent(localInventory, activeDrawCategory),
+    [localInventory, activeDrawCategory]
+  );
 
   // ─── Filtrado y auto-enfoque por búsqueda ──────────────────────────────────
   const filteredInventory = useMemo(() => {
@@ -425,8 +505,8 @@ export default function FarmSatelliteMap({
       const parent = getItemCategory(item);
       if (!visibleCategories.has(parent)) return false;
       if (visibleSubcats !== null) {
-        const rawSub = item.variety_type || item.category || item.tipo || '';
-        if (!visibleSubcats.has(rawSub)) return false;
+        const cleanSub = sanitizeSubcategory(item.variety_type || item.variety || item.category || item.tipo || '', parent);
+        if (cleanSub && !visibleSubcats.has(cleanSub) && !visibleSubcats.has(item.variety_type)) return false;
       }
       return true;
     });
@@ -762,8 +842,20 @@ export default function FarmSatelliteMap({
     };
   }, []);
 
-  const handleDirectFieldUpdate = async (field, value) => {
+  const handleDirectFieldUpdate = (field, value) => {
     if (!selectedTarget) return;
+
+    if (selectedTarget.isNew || selectedTarget.type === 'coord') {
+      const updateObj = {};
+      if (field === 'title' || field === 'name') updateObj.name = value;
+      else if (field === 'category') updateObj.category = value;
+      else if (field === 'variety_type' || field === 'variety' || field === 'subcategory' || field === 'subcategoria') updateObj.variety_type = value;
+      else if (field === 'status') updateObj.status = value;
+      else if (field === 'notes' || field === 'description') updateObj.notes = value;
+
+      setSelectedTarget((prev) => (prev ? { ...prev, ...updateObj } : prev));
+      return;
+    }
 
     if (selectedTarget.type === 'point') {
       const targetId = selectedTarget.id;
@@ -796,37 +888,10 @@ export default function FarmSatelliteMap({
       setLocalInventory((prev) =>
         prev.map((item) => (String(item.id) === String(targetId) ? { ...item, ...updateObj } : item))
       );
-
-      const saveKey = `point:${targetId}`;
-      directSavePendingRef.current[saveKey] = {
-        ...(directSavePendingRef.current[saveKey] || {}),
-        ...updateObj,
-      };
-      if (directSaveTimersRef.current[saveKey]) {
-        clearTimeout(directSaveTimersRef.current[saveKey]);
-      }
-
-      const flushPoint = async () => {
-        const payload = directSavePendingRef.current[saveKey];
-        if (!payload) return;
-        delete directSavePendingRef.current[saveKey];
-        try {
-          await updateFarmInventoryItem(targetId, payload);
-          window.dispatchEvent(
-            new CustomEvent('farm-inventory-updated', { detail: { id: targetId, ...payload } })
-          );
-        } catch (err) {
-          console.warn('Error guardando cambio directo en inventario:', err);
-        }
-      };
-
-      if (field === 'status') {
-        await flushPoint();
-      } else {
-        directSaveTimersRef.current[saveKey] = setTimeout(flushPoint, 450);
-      }
     } else if (selectedTarget.type === 'path' || selectedTarget.type === 'node') {
-      const targetId = selectedTarget.type === 'node' ? selectedTarget.pathId : selectedTarget.id;
+      const targetId = selectedTarget.type === 'node'
+        ? (selectedTarget.pathId ?? (selectedTarget.id ? String(selectedTarget.id).split('-node-')[0] : null))
+        : selectedTarget.id;
       const updateObj = {};
       const parentCat = selectedTarget.category || selectedTarget.raw?.category || 'Caminos y Trazados';
 
@@ -835,15 +900,15 @@ export default function FarmSatelliteMap({
       } else if (field === 'category') {
         updateObj.category = value;
         const validSubs = getSubcategoriesForParent(localInventory, value);
-        const curSub = selectedTarget.path_type || selectedTarget.variety_type || selectedTarget.raw?.path_type || '';
+        const curSub = selectedTarget.variety_type || selectedTarget.subcategory || selectedTarget.path_type || selectedTarget.raw?.variety_type || '';
         if (curSub && !validSubs.some((s) => s.toLowerCase() === curSub.trim().toLowerCase())) {
-          updateObj.path_type = '';
           updateObj.variety_type = '';
+          updateObj.subcategory = '';
         }
         updateObj.color = getCategoryColor(value);
       } else if (field === 'path_type' || field === 'variety_type' || field === 'subcategory' || field === 'subcategoria') {
-        updateObj.path_type = value;
         updateObj.variety_type = value;
+        updateObj.subcategory = value;
         updateObj.color = value ? getSubcategoryColor(parentCat, value) : getCategoryColor(parentCat);
       } else if (field === 'color') {
         updateObj.color = value;
@@ -858,16 +923,21 @@ export default function FarmSatelliteMap({
             ...prev,
             ...updateObj,
             ...('name' in updateObj ? { title: updateObj.name } : {}),
-            ...('variety_type' in updateObj ? { variety: updateObj.variety_type } : {}),
+            ...('variety_type' in updateObj ? { variety: updateObj.variety_type, variety_type: updateObj.variety_type, subcategory: updateObj.variety_type } : {}),
           };
         }
-        if (prev.type === 'node' && String(prev.pathId) === String(targetId)) {
+        const prevPathId = prev.pathId ?? (prev.id ? String(prev.id).split('-node-')[0] : null);
+        if (prev.type === 'node' && String(prevPathId) === String(targetId)) {
           return {
             ...prev,
             ...updateObj,
+            name: 'name' in updateObj ? updateObj.name : prev.name,
             pathName: 'name' in updateObj ? updateObj.name : prev.pathName,
-            pathType: 'path_type' in updateObj ? updateObj.path_type : prev.pathType,
+            title: 'name' in updateObj ? updateObj.name : prev.title,
             category: 'category' in updateObj ? updateObj.category : prev.category,
+            variety_type: 'variety_type' in updateObj ? updateObj.variety_type : prev.variety_type,
+            subcategory: 'variety_type' in updateObj ? updateObj.variety_type : prev.subcategory,
+            notes: 'notes' in updateObj ? updateObj.notes : prev.notes,
             raw: {
               ...(prev.raw || {}),
               ...updateObj,
@@ -880,32 +950,6 @@ export default function FarmSatelliteMap({
       setLocalPaths((prev) =>
         prev.map((p) => (String(p.id) === String(targetId) ? { ...p, ...updateObj } : p))
       );
-
-      const saveKey = `path:${targetId}`;
-      directSavePendingRef.current[saveKey] = {
-        ...(directSavePendingRef.current[saveKey] || {}),
-        ...updateObj,
-      };
-      if (directSaveTimersRef.current[saveKey]) {
-        clearTimeout(directSaveTimersRef.current[saveKey]);
-      }
-
-      const flushPath = async () => {
-        const payload = directSavePendingRef.current[saveKey];
-        if (!payload) return;
-        delete directSavePendingRef.current[saveKey];
-        try {
-          await updateFarmPath(targetId, payload);
-        } catch (err) {
-          console.warn('Error guardando cambio directo en camino:', err);
-        }
-      };
-
-      if (field === 'path_type' || field === 'category' || field === 'color') {
-        await flushPath();
-      } else {
-        directSaveTimersRef.current[saveKey] = setTimeout(flushPath, 450);
-      }
     }
   };
 
@@ -949,6 +993,174 @@ export default function FarmSatelliteMap({
     });
     setIaFeedback({ type: 'success', text: `🗑️ Nodo ${nodeIndex + 1} eliminado de ${path.name}` });
     if (onReloadPaths) onReloadPaths();
+  };
+
+  const handleSaveTarget = async () => {
+    if (!selectedTarget) return;
+
+    // Si es un nuevo punto o coordenada marcada sobre el mapa
+    if (selectedTarget.isNew || selectedTarget.type === 'coord') {
+      const name = (selectedTarget.name || selectedTarget.title || '').trim() || 'Nuevo punto';
+      const category = selectedTarget.category || 'Otros';
+      const payload = {
+        name,
+        category,
+        variety_type: selectedTarget.variety_type || '',
+        status: selectedTarget.status || 'saludable',
+        notes: (selectedTarget.notes || '').trim() || null,
+        latitude: selectedTarget.lat,
+        longitude: selectedTarget.lng,
+        coordinates: { lat: selectedTarget.lat, lng: selectedTarget.lng },
+      };
+
+      try {
+        const newItem = await insertFarmInventoryItem(payload);
+        const itemObj = newItem || { ...payload, id: `item-${Date.now()}` };
+        setLocalInventory((prev) => [...prev, itemObj]);
+        setSelectedTarget({
+          type: 'point',
+          id: itemObj.id,
+          name: itemObj.name,
+          title: itemObj.name,
+          category: itemObj.category,
+          variety_type: itemObj.variety_type,
+          lat: selectedTarget.lat,
+          lng: selectedTarget.lng,
+          notes: itemObj.notes,
+          status: itemObj.status,
+          raw: itemObj,
+        });
+        setIaFeedback({ type: 'success', text: `✨ Punto guardado: ${name}` });
+        if (onReloadInventory) onReloadInventory();
+      } catch (err) {
+        console.error('Error guardando nuevo punto:', err);
+        setIaFeedback({ type: 'error', text: `Error al guardar: ${err.message}` });
+      }
+      return;
+    }
+
+    // Forzar guardado inmediato cancelando cualquier temporizador de debounce
+    const timers = directSaveTimersRef.current;
+    Object.keys(timers).forEach((key) => {
+      clearTimeout(timers[key]);
+      delete timers[key];
+    });
+
+    try {
+      if (selectedTarget.type === 'path') {
+        const pathId = selectedTarget.id;
+        const currentPath = localPaths.find((p) => String(p.id) === String(pathId)) || selectedTarget;
+        const cat = selectedTarget.category || currentPath.category || 'Caminos y Trazados';
+        const sub = selectedTarget.variety_type !== undefined
+          ? selectedTarget.variety_type
+          : (selectedTarget.subcategory !== undefined
+              ? selectedTarget.subcategory
+              : (currentPath.variety_type || currentPath.subcategory || ''));
+
+        const savePayload = {
+          name: (selectedTarget.name || selectedTarget.title || currentPath.name || 'Recorrido').trim(),
+          category: cat,
+          variety_type: sub,
+          color: selectedTarget.color || currentPath.color,
+          notes: selectedTarget.notes ?? currentPath.notes ?? '',
+        };
+        delete directSavePendingRef.current[`path:${pathId}`];
+        if (cat && sub) {
+          saveFarmCategory(cat, [sub]);
+        }
+        await updateFarmPath(pathId, savePayload);
+        setSelectedTarget((prev) => (prev ? {
+          ...prev,
+          name: savePayload.name,
+          title: savePayload.name,
+          category: cat,
+          variety_type: sub,
+          subcategory: sub,
+          color: savePayload.color,
+          notes: savePayload.notes,
+          raw: { ...(prev.raw || {}), ...savePayload },
+        } : prev));
+        if (onReloadPaths) onReloadPaths();
+      } else if (selectedTarget.type === 'node') {
+        const pathId = selectedTarget.pathId ?? (selectedTarget.id ? String(selectedTarget.id).split('-node-')[0] : null);
+        const currentPath = localPaths.find((p) => String(p.id) === String(pathId)) || selectedTarget.raw || {};
+        const cat = selectedTarget.category || currentPath.category || 'Caminos y Trazados';
+        const sub = selectedTarget.variety_type !== undefined
+          ? selectedTarget.variety_type
+          : (selectedTarget.subcategory !== undefined
+              ? selectedTarget.subcategory
+              : (currentPath.variety_type || currentPath.subcategory || ''));
+
+        const savePayload = {
+          name: (selectedTarget.name || selectedTarget.pathName || selectedTarget.title || currentPath.name || 'Recorrido').trim(),
+          category: cat,
+          variety_type: sub,
+          color: selectedTarget.color || currentPath.color,
+          notes: selectedTarget.notes ?? currentPath.notes ?? '',
+        };
+        delete directSavePendingRef.current[`path:${pathId}`];
+        if (cat && sub) {
+          saveFarmCategory(cat, [sub]);
+        }
+        await updateFarmPath(pathId, savePayload);
+        setSelectedTarget((prev) => (prev ? {
+          ...prev,
+          name: savePayload.name,
+          pathName: savePayload.name,
+          title: savePayload.name,
+          category: cat,
+          variety_type: sub,
+          subcategory: sub,
+          color: savePayload.color,
+          notes: savePayload.notes,
+          raw: { ...(prev.raw || {}), ...savePayload },
+        } : prev));
+        if (onReloadPaths) onReloadPaths();
+      } else if (selectedTarget.type === 'point') {
+        const pointId = selectedTarget.id;
+        const currentPoint = localInventory.find((p) => String(p.id) === String(pointId)) || selectedTarget;
+        const cat = selectedTarget.category || currentPoint.category || 'Otros';
+        const sub = selectedTarget.variety_type || selectedTarget.variety || currentPoint.variety_type || '';
+        const savePayload = {
+          name: (selectedTarget.name || selectedTarget.title || currentPoint.name || 'Punto').trim(),
+          category: cat,
+          variety_type: sub,
+          status: selectedTarget.status || currentPoint.status || 'saludable',
+          notes: selectedTarget.notes ?? currentPoint.notes ?? '',
+        };
+        delete directSavePendingRef.current[`point:${pointId}`];
+        if (cat && sub) {
+          saveFarmCategory(cat, [sub]);
+        }
+        await updateFarmInventoryItem(pointId, savePayload);
+        setSelectedTarget((prev) => (prev ? {
+          ...prev,
+          name: savePayload.name,
+          title: savePayload.name,
+          category: cat,
+          variety_type: sub,
+          status: savePayload.status,
+          notes: savePayload.notes,
+          raw: { ...(prev.raw || {}), ...savePayload },
+        } : prev));
+        window.dispatchEvent(
+          new CustomEvent('farm-inventory-updated', { detail: { id: pointId, ...savePayload } })
+        );
+        if (onReloadInventory) onReloadInventory();
+      }
+
+      const title = selectedTarget.name || selectedTarget.title || selectedTarget.pathName || 'elemento';
+      setIaFeedback({
+        type: 'success',
+        text: `✨ Guardado: ${title}`,
+      });
+    } catch (err) {
+      console.error('Error guardando target:', err);
+      setIaFeedback({
+        type: 'error',
+        text: `Error al guardar: ${err.message}`,
+      });
+    }
   };
 
   // ─── Controlador IA integrado (voz, cámara, archivos, fondo, deshacer) ─────
@@ -1012,14 +1224,6 @@ export default function FarmSatelliteMap({
 
         <MapOverlays
           isDrawing={isDrawing}
-          drawPoints={drawPoints}
-          setDrawPoints={setDrawPoints}
-          liveDrawDistance={liveDrawDistance}
-          newPathData={newPathData}
-          setNewPathData={setNewPathData}
-          setIsDrawing={setIsDrawing}
-          setShowSaveModal={setShowSaveModal}
-          onSaveDrawnPath={handleSaveDrawnPath}
           showLegend={showLegend}
           selectedTarget={selectedTarget}
           allCategories={allCategories}
@@ -1072,11 +1276,23 @@ export default function FarmSatelliteMap({
         <MapIaBottomBar
           selectedTarget={selectedTarget}
           setSelectedTarget={setSelectedTarget}
+          isDrawing={isDrawing}
+          setIsDrawing={setIsDrawing}
+          drawPoints={drawPoints}
+          setDrawPoints={setDrawPoints}
+          liveDrawDistance={liveDrawDistance}
+          newPathData={newPathData}
+          setNewPathData={setNewPathData}
+          onSaveDrawnPath={handleSaveDrawnPath}
+          drawSubcategories={drawSubcategories}
+          activeDrawCategory={activeDrawCategory}
+          localInventory={localInventory}
           localPaths={localPaths}
           allCategories={allCategories}
           handleDirectFieldUpdate={handleDirectFieldUpdate}
           handleDeleteTarget={handleDeleteTarget}
           handleDeleteNode={handleDeleteNode}
+          handleSaveTarget={handleSaveTarget}
           pendingAttachments={pendingAttachments}
           setPendingAttachments={setPendingAttachments}
           iaFeedback={iaFeedback}

@@ -9,6 +9,7 @@ import {
   getSubcategoriesForParent,
   getPathCategory,
   getPathSubcategory,
+  sanitizeSubcategory,
 } from '../../services/farmInventoryStorage';
 
 export default function MapFilterDrawer({
@@ -46,9 +47,11 @@ export default function MapFilterDrawer({
         const subcats = getSubcategoriesForParent(localInventory || [], parent)
           .map((sub) => ({
             sub,
-            subCount: (localInventory || []).filter(
-              (i) => getItemCategory(i) === parent && (i.variety_type || i.category || i.tipo) === sub
-            ).length,
+            subCount: (localInventory || []).filter((i) => {
+              if (getItemCategory(i) !== parent) return false;
+              const itemSub = sanitizeSubcategory(i.variety_type || i.variety || i.category || i.tipo || '', parent);
+              return itemSub.toLowerCase() === sub.toLowerCase();
+            }).length,
           }))
           .filter((s) => s.subCount > 0);
         return { parent, count, subcats };
@@ -90,8 +93,8 @@ export default function MapFilterDrawer({
     const parent = getItemCategory(item);
     if (!visibleCategories.has(parent)) return false;
     if (visibleSubcats !== null) {
-      const rawSub = item.variety_type || item.category || item.tipo || '';
-      if (!visibleSubcats.has(rawSub)) return false;
+      const cleanSub = sanitizeSubcategory(item.variety_type || item.variety || item.category || item.tipo || '', parent);
+      if (cleanSub && !visibleSubcats.has(cleanSub) && !visibleSubcats.has(item.variety_type)) return false;
     }
     return true;
   }).length;
@@ -215,10 +218,10 @@ export default function MapFilterDrawer({
         </div>
       )}
 
-      {/* SECCIÓN 2: CAMINOS Y TRAZADOS (POLILÍNEAS) */}
+      {/* SECCIÓN 2: TRAZADOS (POLILÍNEAS) */}
       {nonLindePaths.length > 0 && (
         <div id="map-filter-section-paths">
-          <span className="filter-drawer-section-label">Caminos y trazados</span>
+          <span className="filter-drawer-section-label">Trazados</span>
           <div className="filter-drawer-list">
             {/* Master checkbox: Todos los trazados */}
             <label className={`filter-drawer-option ${showPaths && visiblePathCategories.size > 0 ? 'is-active' : ''}`}>
@@ -239,7 +242,7 @@ export default function MapFilterDrawer({
                   style={{ accentColor: '#f97316' }}
                 />
                 <span style={{ width: 14, height: 4, borderRadius: 2, backgroundColor: '#f97316', flexShrink: 0 }} />
-                <span>Todos los caminos</span>
+                <span>Todos los trazados</span>
               </span>
               <span className="filter-drawer-badge">{nonLindePaths.length}</span>
             </label>

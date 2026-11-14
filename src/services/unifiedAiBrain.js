@@ -14,9 +14,12 @@ import {
   deleteFarmPath,
   createFarmCategory,
   deleteFarmCategory,
+  renameFarmCategory,
+  integrateCategoryIntoParent,
   createFarmSubcategory,
   deleteFarmSubcategory,
   ensureCategoryExistsForElement,
+  updateAllFarmCategories,
 } from './farmInventoryStorage';
 import {
   interpolateGpsAtAudioTime,
@@ -374,7 +377,16 @@ export function parseAllStructuredCommands(rawText) {
   const customTools = extractPayloads(rawText, ['REGISTRAR_HERRAMIENTA', 'CREAR_HERRAMIENTA']);
   const exportFiles = extractPayloads(rawText, ['EXPORTAR_ARCHIVO']);
 
-  const categories = extractPayloads(rawText, ['CREAR_CATEGORIA', 'REGISTRAR_CATEGORIA']);
+  const categories = extractPayloads(rawText, [
+    'CREAR_CATEGORIA',
+    'REGISTRAR_CATEGORIA',
+    'ACTUALIZAR_CATEGORIAS',
+    'ACTUALIZAR_CATEGORIA',
+    'REEMPLAZAR_CATEGORIAS',
+    'GUARDAR_CATEGORIAS',
+    'SINCRONIZAR_TAXONOMIA',
+    'SINCRONIZAR_CATEGORIAS',
+  ]);
   const categoryDeletions = extractPayloads(rawText, ['BORRAR_CATEGORIA', 'ELIMINAR_CATEGORIA']);
   const subcategories = extractPayloads(rawText, ['CREAR_SUBCATEGORIA', 'REGISTRAR_SUBCATEGORIA']);
   const subcategoryDeletions = extractPayloads(rawText, ['BORRAR_SUBCATEGORIA', 'ELIMINAR_SUBCATEGORIA']);
@@ -767,29 +779,68 @@ export async function executeUnifiedActions({
     }
   }
 
-  // 11. CATEGORÍAS: CREAR Y BORRAR
+  // 11. CATEGORÍAS: CREAR, ACTUALIZAR Y BORRAR
   for (const cat of parsedCommands.categories || []) {
-    const created = createFarmCategory({
-      name: cat.name || cat.category || cat.categoria,
-      subcategories: cat.subcategories || cat.subcategorias || (cat.subcategory ? [cat.subcategory] : []),
-      color: cat.color || null,
-      icon: cat.icon || null,
-    });
-    if (created) {
-      result.addedCategories = result.addedCategories || [];
-      result.addedCategories.push(created);
+    if (Array.isArray(cat)) {
+      const createdList = updateAllFarmCategories(cat);
+      if (createdList && createdList.length > 0) {
+        result.addedCategories = result.addedCategories || [];
+        result.addedCategories.push(...createdList);
+      }
+    } else if (cat && Array.isArray(cat.categories || cat.categorias)) {
+      const createdList = updateAllFarmCategories(cat.categories || cat.categorias);
+      if (createdList && createdList.length > 0) {
+        result.addedCategories = result.addedCategories || [];
+        result.addedCategories.push(...createdList);
+      }
+    } else {
+      const created = createFarmCategory({
+        name: cat.name || cat.category || cat.categoria,
+        subcategories: cat.subcategories || cat.subcategorias || (cat.subcategory ? [cat.subcategory] : []),
+        color: cat.color || null,
+        icon: cat.icon || null,
+      });
+      if (created) {
+        result.addedCategories = result.addedCategories || [];
+        result.addedCategories.push(created);
+      }
     }
   }
 
   for (const del of parsedCommands.categoryDeletions || []) {
     const res = await deleteFarmCategory({
       name: del.name || del.category || del.categoria || del.query,
-      deleteItems: del.delete_items !== false,
-      reassignTo: del.reassign_to || 'Otros',
+      deleteItems: false,
+      reassignTo: del.reassign_to || 'Sin categoría',
     });
     if (res?.success) {
       result.deletedCategories = result.deletedCategories || [];
       result.deletedCategories.push(res);
+    }
+  }
+
+  for (const ren of parsedCommands.categoryRenames || []) {
+    const res = await renameFarmCategory({
+      oldName: ren.old_name || ren.oldName || ren.origen,
+      newName: ren.new_name || ren.newName || ren.destino,
+      subcategories: ren.subcategories,
+    });
+    if (res?.success) {
+      result.addedCategories = result.addedCategories || [];
+      result.addedCategories.push({ name: res.newName });
+    }
+  }
+
+  for (const mrg of parsedCommands.categoryMerges || []) {
+    const res = await integrateCategoryIntoParent({
+      sourceCategory: mrg.source || mrg.sourceCategory,
+      targetParentCategory: mrg.target || mrg.targetParent || mrg.target_parent,
+      subcategoriesToKeep: mrg.subcategories,
+      subcategoriesToRemove: mrg.delete_subcategories,
+    });
+    if (res?.success) {
+      result.addedCategories = result.addedCategories || [];
+      result.addedCategories.push({ name: res.targetParent });
     }
   }
 

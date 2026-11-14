@@ -1,14 +1,17 @@
 // src/components/map/MapSelectionCard.jsx
-import { useState, useMemo } from 'react';
-import { X, Trash2 } from 'lucide-react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { Undo2, Trash2, Check, X } from 'lucide-react';
 import {
   getItemCategory,
+  getPathCategory,
   getCategoryColor,
   getSubcategoryColor,
-  BASE_CATEGORY_MAP,
   getFarmCategories,
+  getDeletedCategories,
   getLocalInventory,
   getSubcategoriesForParent,
+  saveFarmCategory,
+  sanitizeSubcategory,
 } from '../../services/farmInventoryStorage';
 import { PATH_TYPE_LABELS } from './mapUtils';
 import { styles } from './mapStyles';
@@ -21,21 +24,48 @@ export default function MapSelectionCard({
   handleDirectFieldUpdate,
   handleDeleteTarget,
   handleDeleteNode,
+  handleSaveTarget,
+  undoStack = [],
+  handleUndoMapAction,
 }) {
   const [isCatMenuOpen, setIsCatMenuOpen] = useState(false);
   const [isSubcatMenuOpen, setIsSubcatMenuOpen] = useState(false);
+  const [isSaved, setIsSaved] = useState(() => !selectedTarget?.isNew);
+  const [isSaving, setIsSaving] = useState(false);
+  const prevTargetIdRef = useRef(selectedTarget?.id);
 
-  // 1. Sugerencias de categorías raíz
+  useEffect(() => {
+    if (selectedTarget?.id !== prevTargetIdRef.current) {
+      prevTargetIdRef.current = selectedTarget?.id;
+      setIsSaved(!selectedTarget?.isNew);
+      setIsSaving(false);
+    }
+  }, [selectedTarget?.id, selectedTarget?.isNew]);
+
+  // 1. Sugerencias de categorías raíz activas (estrictamente filtradas contra eliminadas)
   const categorySuggestions = useMemo(() => {
-    const fromFarm = getFarmCategories().map((c) => c.name);
-    const merged = new Set([
-      ...Object.keys(BASE_CATEGORY_MAP),
-      ...(fromFarm || []),
-      ...(allCategories || []),
-      'Caminos y Trazados',
-      'Líneas de Riego',
-      'Lindes y Límites',
-    ]);
+    const deleted = getDeletedCategories();
+    const fromFarm = getFarmCategories()
+      .map((c) => c.name)
+      .filter((n) => n && n !== 'Otros' && !deleted.has(n) && !deleted.has(n.toLowerCase()));
+
+    const merged = new Set(fromFarm);
+
+    (allCategories || []).forEach((c) => {
+      const clean = String(c || '').trim();
+      const lower = clean.toLowerCase();
+      if (
+        clean &&
+        clean !== 'Otros' &&
+        clean !== 'Sin categoría' &&
+        clean !== 'Sin clasificar' &&
+        !deleted.has(clean) &&
+        !deleted.has(lower)
+      ) {
+        merged.add(clean);
+      }
+    });
+
     return Array.from(merged).filter(Boolean);
   }, [allCategories]);
 
@@ -44,20 +74,37 @@ export default function MapSelectionCard({
   const isNode = selectedTarget?.type === 'node';
   const isCatastro = selectedTarget?.type === 'catastro';
   const isCoord = selectedTarget?.type === 'coord';
-  const isEditable = isPoint || isPath || isNode;
+  const isNew = Boolean(selectedTarget?.isNew || isCoord);
+  const isEditable = isPoint || isPath || isNode || isCoord || isNew;
+
+  const isUnclassified = (cat) => {
+    if (!cat) return true;
+    const l = String(cat).trim().toLowerCase();
+    return l === 'sin categoría' || l === 'sin categoria' || l === 'sin clasificar' || l === 'otros' || l === 'otro';
+  };
 
   // Categoría raíz resuelta según tipo
-  const resolvedRootCategory = isPoint
-    ? (selectedTarget?.category || getItemCategory(selectedTarget) || 'Otros')
-    : isPath
-      ? (selectedTarget?.category || 'Caminos y Trazados')
-      : isNode
-        ? (selectedTarget?.category || selectedTarget?.raw?.category || 'Caminos y Trazados')
-        : isCatastro
-          ? 'Catastro Oficial'
-          : 'Punto Satelital';
+  const resolvedRootCategory = isNew
+    ? (selectedTarget?.category || '')
+    : isPoint
+      ? (isUnclassified(selectedTarget?.category)
+          ? (isUnclassified(getItemCategory(selectedTarget)) ? '' : getItemCategory(selectedTarget))
+          : selectedTarget?.category)
+      : isPath
+        ? (isUnclassified(selectedTarget?.category)
+            ? (isUnclassified(getPathCategory(selectedTarget)) ? '' : getPathCategory(selectedTarget))
+            : selectedTarget?.category)
+        : isNode
+          ? (isUnclassified(selectedTarget?.category)
+              ? (isUnclassified(selectedTarget?.raw?.category)
+                  ? (isUnclassified(getPathCategory(selectedTarget)) ? '' : getPathCategory(selectedTarget))
+                  : selectedTarget?.raw?.category)
+              : selectedTarget?.category)
+          : isCatastro
+            ? 'Catastro Oficial'
+            : (selectedTarget?.category || '');
 
-  const currentCategory = String(resolvedRootCategory || 'Otros');
+  const currentCategory = String(resolvedRootCategory || '');
 
   // 2. Sugerencias de subcategorías estrictamente pertenecientes a la categoría raíz actual
   const subcategorySuggestions = useMemo(() => {
@@ -90,14 +137,13 @@ export default function MapSelectionCard({
           )
         : '';
 
-  const isValidSubForCat = subcategorySuggestions.some(
-    (s) => s.toLowerCase() === rawSubcategory.trim().toLowerCase()
-  );
-  const currentSubcategory = isValidSubForCat ? rawSubcategory.trim() : '';
+  const currentSubcategory = sanitizeSubcategory(rawSubcategory, currentCategory);
 
   // 4. Colores oficiales: Categoría raíz + Subcategoría en la misma gama de color (tono pastel más claro)
-  const categoryDotColor = getCategoryColor(currentCategory);
-  const subcategoryDotColor = getSubcategoryColor(currentCategory, currentSubcategory);
+  const categoryDotColor = currentCategory ? getCategoryColor(currentCategory) : '#00979d';
+  const subcategoryDotColor = (currentCategory && currentSubcategory)
+    ? getSubcategoryColor(currentCategory, currentSubcategory)
+    : '#cbd5e1';
 
   const showBotanicalStatus =
     isPoint && (currentCategory === 'Árboles' || currentCategory === 'Plantas');
@@ -119,36 +165,55 @@ export default function MapSelectionCard({
       : subcategorySuggestions.filter((s) => String(s).toLowerCase().includes(trimmedSub));
 
   // Manejador al seleccionar o cambiar categoría
-  const handleCategoryChange = (newCat) => {
+  const handleCategoryChange = (newCat, closeMenu = false) => {
     if (!isEditable) return;
+    setIsSaved(false);
     const validSubs = getSubcategoriesForParent(getLocalInventory(), newCat);
     const stillValid = validSubs.some(
       (s) => s.toLowerCase() === (currentSubcategory || '').trim().toLowerCase()
     );
 
     handleDirectFieldUpdate('category', newCat);
-    if (!stillValid) {
-      if (isPoint) {
-        handleDirectFieldUpdate('variety_type', '');
-      } else {
-        handleDirectFieldUpdate('path_type', '');
-        handleDirectFieldUpdate('variety_type', '');
-      }
+    if (!stillValid && currentSubcategory) {
+      handleDirectFieldUpdate('variety_type', '');
+      handleDirectFieldUpdate('subcategory', '');
     }
-    setIsCatMenuOpen(false);
+    if (closeMenu) {
+      setIsCatMenuOpen(false);
+    }
   };
 
-  // Manejador al seleccionar o cambiar subcategoría
-  const handleSubcategoryChange = (newSub) => {
+  // Manejador al seleccionar o cambiar subcategoría en el formulario (sin guardado automático al escribir)
+  const handleSubcategoryChange = (newSub, closeMenu = false) => {
     if (!isEditable) return;
+    setIsSaved(false);
     if (isPoint) {
       handleDirectFieldUpdate('variety_type', newSub);
     } else {
-      handleDirectFieldUpdate('path_type', newSub);
       handleDirectFieldUpdate('variety_type', newSub);
+      handleDirectFieldUpdate('subcategory', newSub);
       handleDirectFieldUpdate('color', getSubcategoryColor(currentCategory, newSub));
     }
-    setIsSubcatMenuOpen(false);
+    if (closeMenu) {
+      setIsSubcatMenuOpen(false);
+    }
+  };
+
+  // Guardar cambios forzando transición a color claro (acción explícita del usuario)
+  const onSaveClick = async () => {
+    if (!handleSaveTarget || isSaving) return;
+    setIsSaving(true);
+    try {
+      if (currentCategory && currentSubcategory) {
+        saveFarmCategory(currentCategory, [currentSubcategory]);
+      }
+      await handleSaveTarget();
+      setIsSaved(true);
+    } catch (err) {
+      console.error('Error guardando cambios:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Manejador de borrado unificado con confirmación para Nodos, Polilíneas y Pines
@@ -158,6 +223,11 @@ export default function MapSelectionCard({
       e.preventDefault?.();
     }
     if (!selectedTarget) return;
+
+    if (isNew) {
+      setSelectedTarget(null);
+      return;
+    }
 
     if (isNode) {
       const nodeNum = (Number(selectedTarget.nodeIndex) || 0) + 1;
@@ -197,9 +267,11 @@ export default function MapSelectionCard({
   };
 
   // Título e información del elemento para la segunda línea
-  const itemTitle = isNode
-    ? (selectedTarget.pathName ?? selectedTarget.name ?? selectedTarget.title ?? 'Recorrido')
-    : (selectedTarget.name ?? selectedTarget.title ?? '');
+  const itemTitle = isNew
+    ? (selectedTarget.name ?? '')
+    : isNode
+      ? (selectedTarget.pathName ?? selectedTarget.name ?? selectedTarget.title ?? 'Recorrido')
+      : (selectedTarget.name ?? selectedTarget.title ?? '');
 
   const coordAndLengthText = isPoint
     ? `📍 ${Number(selectedTarget.lat || 0).toFixed(5)}, ${Number(selectedTarget.lng || 0).toFixed(5)}${selectedTarget.accuracy ? ` · ±${Number(selectedTarget.accuracy || 0).toFixed(1)}m` : ''}`
@@ -255,7 +327,7 @@ export default function MapSelectionCard({
                   setIsCatMenuOpen(true);
                 }
               }}
-              placeholder="Categoría..."
+              placeholder="Categoría"
               style={{
                 border: 'none',
                 outline: 'none',
@@ -301,7 +373,7 @@ export default function MapSelectionCard({
                     type="button"
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      handleCategoryChange(cat);
+                      handleCategoryChange(cat, true);
                     }}
                     style={{
                       display: 'flex',
@@ -373,7 +445,7 @@ export default function MapSelectionCard({
                   setIsSubcatMenuOpen(true);
                 }
               }}
-              placeholder="Subcategoría..."
+              placeholder="Subcategoría"
               style={{
                 border: 'none',
                 outline: 'none',
@@ -420,7 +492,7 @@ export default function MapSelectionCard({
                     type="button"
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      handleSubcategoryChange(sub);
+                      handleSubcategoryChange(sub, true);
                     }}
                     style={{
                       display: 'flex',
@@ -456,51 +528,80 @@ export default function MapSelectionCard({
           )}
         </div>
 
-        {/* Grupo de Acciones: Borrar (a la izquierda de cerrar) + Espacio + Cerrar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 2 }}>
-          {isEditable && (
-            <button
-              type="button"
-              onClick={handleDeleteWithConfirm}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '3px 4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#94a3b8',
-                borderRadius: 6,
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
-              title={
-                isNode
+        {/* Grupo de 4 botones circulares verdes con icono blanco */}
+        {/* Orden: Deshacer (activo en polilíneas), Borrar, Guardar (solo Check), Cerrar */}
+        <div style={styles.cardActionGroup}>
+          {/* 1. Deshacer (activo en polilíneas) */}
+          <button
+            type="button"
+            className="map-circle-btn"
+            style={(isPath || isNode) && undoStack && undoStack.length > 0 ? styles.circleBtn : styles.circleBtnDisabled}
+            disabled={!((isPath || isNode) && undoStack && undoStack.length > 0)}
+            onClick={() => {
+              if (handleUndoMapAction) handleUndoMapAction();
+            }}
+            title={
+              isPath || isNode
+                ? undoStack && undoStack.length > 0
+                  ? 'Deshacer último cambio de polilínea'
+                  : 'Sin cambios que deshacer en polilínea'
+                : 'Deshacer disponible en polilíneas'
+            }
+            aria-label="Deshacer"
+          >
+            <Undo2 size={15} color="#ffffff" strokeWidth={2.2} />
+          </button>
+
+          {/* 2. Borrar */}
+          <button
+            type="button"
+            className="map-circle-btn"
+            style={isEditable ? styles.circleBtn : styles.circleBtnDisabled}
+            disabled={!isEditable}
+            onClick={handleDeleteWithConfirm}
+            title={
+              isNew
+                ? 'Descartar nuevo punto'
+                : isNode
                   ? `Eliminar vértice ${(Number(selectedTarget.nodeIndex) || 0) + 1}`
                   : isPath
                     ? 'Eliminar este trazado'
                     : 'Eliminar este elemento'
-              }
-            >
-              <Trash2 size={16} />
-            </button>
-          )}
+            }
+            aria-label="Borrar"
+          >
+            <Trash2 size={15} color="#ffffff" strokeWidth={2.2} />
+          </button>
 
-          {/* Botón Cerrar ficha */}
+          {/* 3. Guardar (icono CHECK solamente - pasa a color claro si está guardado) */}
           <button
             type="button"
-            onClick={() => setSelectedTarget(null)}
-            style={{
-              ...styles.cardCloseBtn,
-              padding: '3px 4px',
-              borderRadius: 6,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#1e293b')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
-            title="Cerrar ficha"
+            className={`map-circle-btn ${isSaved ? 'map-circle-btn--light' : ''}`}
+            style={
+              !isEditable
+                ? styles.circleBtnDisabled
+                : isSaved
+                  ? styles.circleBtnLight
+                  : styles.circleBtn
+            }
+            disabled={!isEditable || isSaving}
+            onClick={onSaveClick}
+            title={isSaved ? 'Guardado (sin cambios pendientes)' : 'Guardar cambios'}
+            aria-label={isSaved ? 'Guardado' : 'Guardar cambios'}
           >
-            <X size={16} />
+            <Check size={16} color="#ffffff" strokeWidth={2.6} />
+          </button>
+
+          {/* 4. Cerrar */}
+          <button
+            type="button"
+            className="map-circle-btn"
+            style={styles.circleBtn}
+            onClick={() => setSelectedTarget(null)}
+            title="Cerrar ficha"
+            aria-label="Cerrar ficha"
+          >
+            <X size={16} color="#ffffff" strokeWidth={2.2} />
           </button>
         </div>
       </div>
@@ -514,33 +615,16 @@ export default function MapSelectionCard({
           value={itemTitle}
           readOnly={!isEditable}
           onChange={(e) => {
-            if (isEditable) handleDirectFieldUpdate('name', e.target.value);
+            if (isEditable) {
+              handleDirectFieldUpdate('name', e.target.value);
+              setIsSaved(false);
+            }
           }}
-          placeholder="Título del elemento..."
-          style={{
-            ...styles.cardTitleInput,
-            flex: 1,
-            minWidth: 120,
-          }}
+          placeholder="Título"
+          style={styles.cardTitleInput}
         />
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '6px 10px',
-            borderRadius: 8,
-            backgroundColor: '#f1f5f9',
-            border: '1px solid #e2e8f0',
-            color: '#475569',
-            fontSize: '0.74rem',
-            fontWeight: 600,
-            whiteSpace: 'nowrap',
-            flexShrink: 0,
-            boxSizing: 'border-box',
-          }}
-        >
+        <div style={styles.cardBadge}>
           {coordAndLengthText}
         </div>
       </div>
@@ -553,9 +637,12 @@ export default function MapSelectionCard({
         value={itemNotes}
         readOnly={!isEditable}
         onChange={(e) => {
-          if (isEditable) handleDirectFieldUpdate('notes', e.target.value);
+          if (isEditable) {
+            handleDirectFieldUpdate('notes', e.target.value);
+            setIsSaved(false);
+          }
         }}
-        placeholder="Descripción, contenido o notas de inventario..."
+        placeholder="Descripción..."
         style={styles.cleanFieldTextarea}
       />
 
@@ -570,7 +657,10 @@ export default function MapSelectionCard({
                 <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>Estado:</span>
                 <select
                   value={selectedTarget.status || 'saludable'}
-                  onChange={(e) => handleDirectFieldUpdate('status', e.target.value)}
+                  onChange={(e) => {
+                    handleDirectFieldUpdate('status', e.target.value);
+                    setIsSaved(false);
+                  }}
                   style={{ ...styles.cleanFieldSelect, padding: '3px 6px', fontSize: '0.74rem' }}
                 >
                   <option value="saludable">🟢 Saludable</option>

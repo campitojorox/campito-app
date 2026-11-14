@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import FarmSatelliteMap from '../components/FarmSatelliteMap';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { loadFarmInventory, loadFarmPaths } from '../services/farmInventoryStorage';
+import { loadFarmInventory, loadFarmPaths, loadFarmCategories } from '../services/farmInventoryStorage';
 
 export default function MapaFinca() {
   const { searchQuery = '', isSearchOpen = false } = useOutletContext() || {};
@@ -42,7 +42,7 @@ export default function MapaFinca() {
       setLoading(true);
       setError(null);
       try {
-        await Promise.all([loadInventory(), loadPaths()]);
+        await Promise.all([loadFarmCategories(), loadInventory(), loadPaths()]);
       } catch {
         setError('Error cargando datos del mapa.');
       } finally {
