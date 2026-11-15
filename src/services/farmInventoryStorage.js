@@ -899,6 +899,29 @@ export async function loadFarmPaths() {
       );
       const merged = [...cleanRemote, ...trulyPendingLocals];
 
+      // Auto-aprender y sincronizar colores de subcategorías a partir de los caminos existentes en la base de datos
+      const subColorsCache = getSubcategoryColorsCache();
+      let subCacheUpdated = false;
+      merged.forEach((p) => {
+        const cat = p.category || getPathCategory(p);
+        const sub = p.variety_type || p.subcategory || getPathSubcategory(p);
+        if (cat && sub && p.color && p.color !== '#00979d' && p.color !== '#f97316') {
+          const key = `${cat.toLowerCase()}:${sub.toLowerCase()}`;
+          const cleanSubKey = sub.toLowerCase();
+          if (!subColorsCache[key] && !subColorsCache[cleanSubKey]) {
+            subColorsCache[key] = p.color;
+            subColorsCache[cleanSubKey] = p.color;
+            subCacheUpdated = true;
+          }
+        }
+      });
+      if (subCacheUpdated) {
+        setSubcategoryColorsCache(subColorsCache);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('farm-categories-updated'));
+        }
+      }
+
       if (trulyPendingLocals.length > 0) {
         syncPendingPathsToRemote(trulyPendingLocals);
       }
@@ -1628,6 +1651,22 @@ export function getFarmCategories() {
     }
   });
 
+  // Asegurar que subcategoryColors refleje también cualquier color explícito en subColorsCache
+  const subColorsCache = getSubcategoryColorsCache();
+  map.forEach((catObj, catKey) => {
+    const subColors = { ...(catObj.subcategoryColors || {}) };
+    (catObj.subcategories || []).forEach((sub) => {
+      const specificKey = `${catKey}:${sub.toLowerCase()}`;
+      const generalKey = sub.toLowerCase();
+      if (subColorsCache[specificKey]) {
+        subColors[sub] = subColorsCache[specificKey];
+      } else if (subColorsCache[generalKey]) {
+        subColors[sub] = subColorsCache[generalKey];
+      }
+    });
+    catObj.subcategoryColors = subColors;
+  });
+
   return Array.from(map.values());
 }
 
@@ -1637,6 +1676,9 @@ export function getFarmCategories() {
  */
 export async function loadFarmCategories() {
   const deleted = getDeletedCategories();
+  let categoriesFromDb = null;
+
+  // 1. Intentar leer desde la tabla nativa farm_categories si existe
   try {
     const { data, error } = await supabase
       .from('farm_categories')
@@ -1644,7 +1686,7 @@ export async function loadFarmCategories() {
       .order('is_default', { ascending: false });
 
     if (!error && Array.isArray(data) && data.length > 0) {
-      const activeFromDb = data
+      categoriesFromDb = data
         .filter((d) => d.is_active !== false && !deleted.has(d.name) && !deleted.has((d.name || '').toLowerCase()))
         .map((d) => ({
           id: d.id,
@@ -1655,60 +1697,61 @@ export async function loadFarmCategories() {
           icon: d.icon || null,
           isDefault: Boolean(d.is_default),
         }));
-
-      // Rellenar caché de colores
-      const subColorsCache = getSubcategoryColorsCache();
-      const catColorsCache = getCategoryColorsCache();
-      activeFromDb.forEach((c) => {
-        if (c.color) catColorsCache[c.name.toLowerCase()] = c.color;
-        if (c.subcategoryColors && typeof c.subcategoryColors === 'object') {
-          Object.entries(c.subcategoryColors).forEach(([sub, col]) => {
-            if (col) {
-              subColorsCache[`${c.name.toLowerCase()}:${sub.toLowerCase()}`] = col;
-              subColorsCache[sub.toLowerCase()] = col;
-            }
-          });
-        }
-      });
-      setCategoryColorsCache(catColorsCache);
-      setSubcategoryColorsCache(subColorsCache);
-
-      // Conservar categorías personalizadas y sobreescrituras de las por defecto
-      const customToKeep = activeFromDb.filter((c) => !c.isDefault || c.color || Object.keys(c.subcategoryColors || {}).length > 0);
-      setCustomCategories(customToKeep);
-      return getFarmCategories();
     }
   } catch (err) {
-    // Si la tabla farm_categories aún no existe en Supabase, intentar leer farm_knowledge
+    console.warn('[InventoryStorage] farm_categories no accesible:', err);
+  }
+
+  // 2. Fallback garantizado: si farm_categories no existe o no tiene datos, leer farm_knowledge
+  if (!categoriesFromDb || categoriesFromDb.length === 0) {
     try {
-      const { data: knowData } = await supabase
+      const { data: knowData, error: knowErr } = await supabase
         .from('farm_knowledge')
         .select('content')
         .eq('title', 'TAXONOMIA_CATEGORIAS_CAMPITO')
-        .single();
-      if (knowData?.content) {
+        .maybeSingle();
+
+      if (!knowErr && knowData?.content) {
         const parsed = JSON.parse(knowData.content);
-        if (Array.isArray(parsed)) {
-          const subColorsCache = getSubcategoryColorsCache();
-          const catColorsCache = getCategoryColorsCache();
-          parsed.forEach((c) => {
-            if (c.color) catColorsCache[c.name.toLowerCase()] = c.color;
-            if ((c.subcategoryColors || c.subcategory_colors) && typeof (c.subcategoryColors || c.subcategory_colors) === 'object') {
-              Object.entries(c.subcategoryColors || c.subcategory_colors).forEach(([sub, col]) => {
-                if (col) {
-                  subColorsCache[`${c.name.toLowerCase()}:${sub.toLowerCase()}`] = col;
-                  subColorsCache[sub.toLowerCase()] = col;
-                }
-              });
-            }
-          });
-          setCategoryColorsCache(catColorsCache);
-          setSubcategoryColorsCache(subColorsCache);
-          setCustomCategories(parsed.filter((c) => !deleted.has(c.name) && !deleted.has((c.name || '').toLowerCase())));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          categoriesFromDb = parsed
+            .filter((c) => !deleted.has(c.name) && !deleted.has((c.name || '').toLowerCase()))
+            .map((c) => ({
+              ...c,
+              subcategories: pruneSubcategoryPrefixes(Array.isArray(c.subcategories) ? c.subcategories : []),
+              color: c.color || getCategoryColor(c.name),
+              subcategoryColors: c.subcategoryColors || c.subcategory_colors || {},
+            }));
         }
       }
-    } catch {}
+    } catch (knowErr) {
+      console.warn('[InventoryStorage] farm_knowledge no accesible para taxonomía:', knowErr);
+    }
   }
+
+  // 3. Si se recuperaron categorías de la nube, actualizar cachés y catálogo local
+  if (Array.isArray(categoriesFromDb) && categoriesFromDb.length > 0) {
+    const subColorsCache = getSubcategoryColorsCache();
+    const catColorsCache = getCategoryColorsCache();
+    categoriesFromDb.forEach((c) => {
+      if (c.color) catColorsCache[c.name.toLowerCase()] = c.color;
+      const subColors = c.subcategoryColors || c.subcategory_colors;
+      if (subColors && typeof subColors === 'object') {
+        Object.entries(subColors).forEach(([sub, col]) => {
+          if (col) {
+            subColorsCache[`${c.name.toLowerCase()}:${sub.toLowerCase()}`] = col;
+            subColorsCache[sub.toLowerCase()] = col;
+          }
+        });
+      }
+    });
+    setCategoryColorsCache(catColorsCache);
+    setSubcategoryColorsCache(subColorsCache);
+
+    const customToKeep = categoriesFromDb.filter((c) => !c.isDefault || c.color || Object.keys(c.subcategoryColors || c.subcategory_colors || {}).length > 0);
+    setCustomCategories(customToKeep);
+  }
+
   return getFarmCategories();
 }
 
@@ -2423,15 +2466,35 @@ async function syncCategoriesToSupabase(categoriesList) {
       } catch {}
     }
 
-    // 2. Respaldo en farm_knowledge con estructura completa JSON
-    const payload = {
-      category: 'general',
-      title: 'TAXONOMIA_CATEGORIAS_CAMPITO',
-      content: JSON.stringify(categoriesList),
-      metadata: { updated_at: new Date().toISOString(), version: 2 },
-      is_active: true,
-    };
-    await supabase.from('farm_knowledge').upsert([payload], { onConflict: 'title' });
+    // 2. Respaldo garantizado en farm_knowledge para sincronización en tiempo real multi-dispositivo
+    try {
+      const { data: existing } = await supabase
+        .from('farm_knowledge')
+        .select('id')
+        .eq('title', 'TAXONOMIA_CATEGORIAS_CAMPITO')
+        .maybeSingle();
+
+      const payload = {
+        category: 'general',
+        title: 'TAXONOMIA_CATEGORIAS_CAMPITO',
+        content: JSON.stringify(categoriesList),
+        source: 'app',
+        is_active: true,
+      };
+
+      if (existing?.id) {
+        await supabase
+          .from('farm_knowledge')
+          .update({ ...payload, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('farm_knowledge')
+          .insert(payload);
+      }
+    } catch (knowErr) {
+      console.warn('[InventoryStorage] Error sincronizando taxonomía en farm_knowledge:', knowErr);
+    }
   } catch {
     // Silencioso si no hay red o tabla
   }
@@ -2524,15 +2587,11 @@ export function hslToHex(h, s, l) {
 }
 
 /**
- * Obtiene el color para una subcategoría.
- * Si tiene un color personalizado asignado, devuelve dicho color directamente (las subcategorías
- * pueden tener colores totalmente independientes de la categoría padre).
- * Si no tiene color asignado, genera un tono armónico más claro/pastel en la gama de su categoría raíz.
+ * Obtiene el color explícito personalizado de una subcategoría si fue configurado por el usuario o IA.
+ * Retorna null si la subcategoría no tiene un color explícito asignado (para no forzar el fallback armónico).
  */
-export function getSubcategoryColor(parentCategory, subcategoryName) {
-  if (!subcategoryName) {
-    return getCategoryColor(parentCategory);
-  }
+export function getExplicitSubcategoryColor(parentCategory, subcategoryName) {
+  if (!subcategoryName) return null;
 
   const cleanSub = String(subcategoryName).trim();
   const subLower = cleanSub.toLowerCase();
@@ -2561,7 +2620,32 @@ export function getSubcategoryColor(parentCategory, subcategoryName) {
     }
   }
 
-  // 3. Fallback: Calcular color determinista armónico derivado de la categoría raíz
+  return null;
+}
+
+/**
+ * Obtiene el color para una subcategoría.
+ * Si tiene un color personalizado asignado, devuelve dicho color directamente (las subcategorías
+ * pueden tener colores totalmente independientes de la categoría padre).
+ * Si no tiene color asignado, genera un tono armónico más claro/pastel en la gama de su categoría raíz.
+ */
+export function getSubcategoryColor(parentCategory, subcategoryName) {
+  if (!subcategoryName) {
+    return getCategoryColor(parentCategory);
+  }
+
+  const explicit = getExplicitSubcategoryColor(parentCategory, subcategoryName);
+  if (explicit) return explicit;
+
+  const cleanSub = String(subcategoryName).trim();
+  const subLower = cleanSub.toLowerCase();
+  const parentLower = String(parentCategory || '').trim().toLowerCase();
+  const activeCats = getFarmCategories();
+  const matchCat = parentLower
+    ? activeCats.find((c) => c.name.toLowerCase() === parentLower)
+    : activeCats.find((c) => (c.subcategories || []).some((s) => s.toLowerCase() === subLower));
+
+  // Fallback: Calcular color determinista armónico derivado de la categoría raíz
   const rootColor = getCategoryColor(parentCategory || matchCat?.name);
   const [h, s] = hexToHsl(rootColor);
 

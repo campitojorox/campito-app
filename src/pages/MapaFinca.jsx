@@ -93,11 +93,13 @@ export default function MapaFinca() {
     // se consulta Supabase en segundo plano sin interrumpir la visualización.
     const handleVisibilitySync = () => {
       if (!document.hidden) {
+        loadFarmCategories();
         loadInventory();
         loadPaths();
       }
     };
     const handleFocusSync = () => {
+      loadFarmCategories();
       loadInventory();
       loadPaths();
     };
@@ -107,6 +109,7 @@ export default function MapaFinca() {
 
     const heartbeat = setInterval(() => {
       if (!document.hidden) {
+        loadFarmCategories();
         loadInventory();
         loadPaths();
       }

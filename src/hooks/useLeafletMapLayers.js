@@ -10,6 +10,7 @@ import {
   getPathSubcategory,
   getCategoryColor,
   getSubcategoryColor,
+  getExplicitSubcategoryColor,
   updateFarmPath,
 } from '../services/farmInventoryStorage';
 import catastroJorox from '../data/catastroJorox.json';
@@ -195,8 +196,9 @@ export function useLeafletMapLayers({
 
     if (isNewPoint && selectedTarget.lat && selectedTarget.lng) {
       const targetSub = selectedTarget.variety || selectedTarget.subcategory || (selectedTarget.raw && (selectedTarget.raw.variety_type || selectedTarget.raw.subcategory));
+      const explicitPinSub = targetSub && selectedTarget.category ? getExplicitSubcategoryColor(selectedTarget.category, targetSub) : null;
       const pinColor = selectedTarget.category
-        ? (targetSub ? getSubcategoryColor(selectedTarget.category, targetSub) : getCategoryColor(selectedTarget.category))
+        ? (explicitPinSub || selectedTarget.color || (targetSub ? getSubcategoryColor(selectedTarget.category, targetSub) : getCategoryColor(selectedTarget.category)))
         : '#00979d';
       const marker = L.marker([selectedTarget.lat, selectedTarget.lng], {
         icon: L.divIcon({
@@ -376,11 +378,14 @@ export function useLeafletMapLayers({
       const resolvedPathCat = path.category || getPathCategory(path);
       const isUnclassifiedPath = resolvedPathCat === 'Sin clasificar' || resolvedPathCat === 'Sin categoría';
       const pathSub = path.variety_type || path.subcategory || getPathSubcategory(path) || '';
+      const explicitSubColor = pathSub ? getExplicitSubcategoryColor(resolvedPathCat, pathSub) : null;
       const lineColor = isUnclassifiedPath
         ? '#00979d'
-        : (pathSub
-            ? getSubcategoryColor(resolvedPathCat, pathSub)
-            : (path.color || (path.category ? getCategoryColor(path.category) : PATH_TYPE_COLORS[path.path_type]) || '#f97316'));
+        : (explicitSubColor
+            || path.color
+            || (pathSub ? getSubcategoryColor(resolvedPathCat, pathSub) : null)
+            || (path.category ? getCategoryColor(path.category) : PATH_TYPE_COLORS[path.path_type])
+            || '#f97316');
       const poly = L.polyline(latlngs, {
         color: lineColor,
         weight: isLinde ? 1.5 : Number(path.stroke_width) || 4,
@@ -467,11 +472,14 @@ export function useLeafletMapLayers({
     const resolvedActiveCat = activePath.category || getPathCategory(activePath);
     const isUnclassifiedPath = resolvedActiveCat === 'Sin clasificar' || resolvedActiveCat === 'Sin categoría';
     const activePathSub = activePath.variety_type || activePath.subcategory || getPathSubcategory(activePath) || '';
+    const explicitActiveSubColor = activePathSub ? getExplicitSubcategoryColor(resolvedActiveCat, activePathSub) : null;
     const pathColor = isUnclassifiedPath
       ? '#00979d'
-      : (activePathSub
-          ? getSubcategoryColor(resolvedActiveCat, activePathSub)
-          : (activePath.color || (activePath.category ? getCategoryColor(activePath.category) : PATH_TYPE_COLORS[activePath.path_type]) || '#f97316'));
+      : (explicitActiveSubColor
+          || activePath.color
+          || (activePathSub ? getSubcategoryColor(resolvedActiveCat, activePathSub) : null)
+          || (activePath.category ? getCategoryColor(activePath.category) : PATH_TYPE_COLORS[activePath.path_type])
+          || '#f97316');
 
     coords.forEach((coord, idx) => {
       const isLindePath = activePath.path_type === 'linde';
