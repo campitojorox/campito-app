@@ -35,6 +35,13 @@ export default function MapSelectionCard({
   const [isSaved, setIsSaved] = useState(() => !selectedTarget?.isNew);
   const [isSaving, setIsSaving] = useState(false);
   const prevTargetIdRef = useRef(selectedTarget?.id);
+  const [categoriesVersion, setCategoriesVersion] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setCategoriesVersion((v) => v + 1);
+    window.addEventListener('farm-categories-updated', handleUpdate);
+    return () => window.removeEventListener('farm-categories-updated', handleUpdate);
+  }, []);
 
   // Cerrar menús desplegables al hacer clic fuera del contenedor
   useEffect(() => {
@@ -88,7 +95,7 @@ export default function MapSelectionCard({
     });
 
     return Array.from(merged).filter(Boolean);
-  }, [allCategories]);
+  }, [allCategories, categoriesVersion]);
 
   const isPoint = selectedTarget?.type === 'point';
   const isPath = selectedTarget?.type === 'path';
@@ -134,7 +141,7 @@ export default function MapSelectionCard({
     if (!selectedTarget || !currentCategory) return [];
     const rawInv = getLocalInventory();
     return getSubcategoriesForParent(rawInv, currentCategory);
-  }, [selectedTarget, currentCategory]);
+  }, [selectedTarget, currentCategory, categoriesVersion]);
 
   // Si no hay target seleccionado, retornar null de forma segura tras evaluar todos los hooks
   if (!selectedTarget) return null;
@@ -170,10 +177,15 @@ export default function MapSelectionCard({
   const currentSubcategory = sanitizeSubcategory(rawSubcategory, currentCategory);
 
   // 4. Colores oficiales: Categoría raíz + Subcategoría en la misma gama de color (tono pastel más claro)
-  const categoryDotColor = currentCategory ? getCategoryColor(currentCategory) : '#00979d';
-  const subcategoryDotColor = (currentCategory && currentSubcategory)
-    ? getSubcategoryColor(currentCategory, currentSubcategory)
-    : '#cbd5e1';
+  const categoryDotColor = useMemo(() => {
+    return currentCategory ? getCategoryColor(currentCategory) : '#00979d';
+  }, [currentCategory, categoriesVersion]);
+
+  const subcategoryDotColor = useMemo(() => {
+    return (currentCategory && currentSubcategory)
+      ? getSubcategoryColor(currentCategory, currentSubcategory)
+      : '#cbd5e1';
+  }, [currentCategory, currentSubcategory, categoriesVersion]);
 
   const showBotanicalStatus =
     isPoint && (currentCategory === 'Árboles' || currentCategory === 'Plantas');

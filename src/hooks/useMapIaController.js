@@ -13,11 +13,13 @@ import {
   updateFarmPath,
   deleteFarmPath,
   deleteFarmCategory,
+  deleteFarmSubcategory,
   createFarmCategory,
   renameFarmCategory,
   setCategoryColor,
   setSubcategoryColor,
   parseColorOrdersFromUserText,
+  parseCategoryDeletionOrdersFromUserText,
   getItemCategory,
 } from '../services/farmInventoryStorage';
 import {
@@ -197,19 +199,76 @@ export function useMapIaController({
     if (!textOrder && !audioOrder && attsOrder.length === 0) return;
     if (isProcessingIa) return;
 
-    if (selectedTarget && (isDeleteIntent(textOrder) || (audioOrder && isDeleteIntent(audioOrder.transcription)))) {
+    const fullOrderText = (textOrder || audioOrder?.transcription || '').trim();
+    const lowerOrder = fullOrderText.toLowerCase();
+
+    // ── 0A. DETECCIÓN DIRECTA DE BORRADO DE CATEGORÍAS O SUBCATEGORÍAS ──
+    const deletionOrders = parseCategoryDeletionOrdersFromUserText(fullOrderText);
+    if (deletionOrders.length > 0) {
       setMapIaInput('');
       syncTextareaHeight(mapIaTextareaRef.current, '');
       setPendingVoiceAudio(null);
       setPendingAttachments([]);
-      await handleDeleteTarget();
+      setIsProcessingIa(true);
+
+      const feedbackTexts = [];
+      try {
+        for (const del of deletionOrders) {
+          if (del.type === 'subcategory') {
+            const res = await deleteFarmSubcategory({
+              parentCategory: del.parentCategory,
+              name: del.name,
+            });
+            if (res.success) {
+              feedbackTexts.push(`subcategoría "${res.subcategory}"`);
+              setSelectedTarget((prev) => {
+                if (!prev) return prev;
+                const prevSub = String(prev.variety_type || prev.subcategory || prev.variety || '').trim().toLowerCase();
+                if (prevSub === res.subcategory.toLowerCase()) {
+                  return { ...prev, variety_type: null, subcategory: null, variety: null };
+                }
+                return prev;
+              });
+            }
+          } else if (del.type === 'category') {
+            const res = await deleteFarmCategory({ name: del.name });
+            if (res.success) {
+              feedbackTexts.push(`categoría "${res.category}"`);
+              setSelectedTarget((prev) => {
+                if (!prev) return prev;
+                const prevCat = String(prev.category || '').trim().toLowerCase();
+                if (prevCat === res.category.toLowerCase()) {
+                  return { ...prev, category: 'Sin clasificar' };
+                }
+                return prev;
+              });
+            }
+          }
+        }
+
+        if (feedbackTexts.length > 0) {
+          setIaFeedback({
+            type: 'success',
+            text: `✨ Eliminada ${feedbackTexts.join(' y ')} correctamente.`,
+          });
+          if (onReloadPaths) await onReloadPaths();
+          if (onReloadInventory) await onReloadInventory();
+        } else {
+          setIaFeedback({
+            type: 'info',
+            text: 'No se encontró la categoría o subcategoría indicada.',
+          });
+        }
+      } catch (delErr) {
+        setIaFeedback({ type: 'error', text: `Error eliminando: ${delErr.message}` });
+      } finally {
+        setIsProcessingIa(false);
+      }
       return;
     }
 
-    const lowerOrder = textOrder.toLowerCase();
-
-    // ── 0. DETECCIÓN DIRECTA DE CAMBIO DE COLOR EN CATEGORÍAS O SUBCATEGORÍAS ──
-    const colorOrders = parseColorOrdersFromUserText(textOrder);
+    // ── 0B. DETECCIÓN DIRECTA DE CAMBIO DE COLOR EN CATEGORÍAS O SUBCATEGORÍAS ──
+    const colorOrders = parseColorOrdersFromUserText(fullOrderText);
     if (colorOrders.length > 0) {
       setMapIaInput('');
       syncTextareaHeight(mapIaTextareaRef.current, '');
@@ -231,16 +290,32 @@ export function useMapIaController({
                 target: order.target,
                 prevColor: res.prevColor,
               });
+              setSelectedTarget((prev) => {
+                if (!prev) return prev;
+                const cat = String(prev.category || '').trim().toLowerCase();
+                if (cat === order.target.toLowerCase()) {
+                  return { ...prev, color: order.color };
+                }
+                return prev;
+              });
             }
           } else if (order.type === 'subcategory') {
             const res = await setSubcategoryColor(order.parentCategory, order.target, order.color);
             if (res.success) {
-              feedbackTexts.push(`subcategoría "${order.target}" (${order.parentCategory}) a ${order.color}`);
+              feedbackTexts.push(`subcategoría "${order.target}" (${res.parentCategory}) a ${order.color}`);
               revertActions.push({
                 type: 'RESTORE_SUBCATEGORY_COLOR',
-                parentCategory: order.parentCategory,
+                parentCategory: res.parentCategory,
                 target: order.target,
                 prevColor: res.prevColor,
+              });
+              setSelectedTarget((prev) => {
+                if (!prev) return prev;
+                const sub = String(prev.variety_type || prev.subcategory || prev.variety || '').trim().toLowerCase();
+                if (sub === order.target.toLowerCase()) {
+                  return { ...prev, color: order.color };
+                }
+                return prev;
               });
             }
           }
@@ -273,6 +348,24 @@ export function useMapIaController({
       } finally {
         setIsProcessingIa(false);
       }
+      return;
+    }
+
+    // ── 0C. BORRADO DE TARGET SELECCIONADO (SOLO SI NO ES CATEGORÍA O SUBCATEGORÍA) ──
+    const isCatOrSubDeleteIntent =
+      (lowerOrder.includes('categor') || lowerOrder.includes('subcategor')) &&
+      (lowerOrder.includes('borr') || lowerOrder.includes('elimin') || lowerOrder.includes('quit'));
+
+    if (
+      selectedTarget &&
+      !isCatOrSubDeleteIntent &&
+      (isDeleteIntent(textOrder) || (audioOrder && isDeleteIntent(audioOrder.transcription)))
+    ) {
+      setMapIaInput('');
+      syncTextareaHeight(mapIaTextareaRef.current, '');
+      setPendingVoiceAudio(null);
+      setPendingAttachments([]);
+      await handleDeleteTarget();
       return;
     }
 
@@ -948,7 +1041,9 @@ export function useMapIaController({
           (uCmds.categories && uCmds.categories.length > 0) ||
           (uCmds.subcategories && uCmds.subcategories.length > 0) ||
           (uCmds.categoryDeletions && uCmds.categoryDeletions.length > 0) ||
-          (uCmds.subcategoryDeletions && uCmds.subcategoryDeletions.length > 0)
+          (uCmds.subcategoryDeletions && uCmds.subcategoryDeletions.length > 0) ||
+          (uCmds.categoryColors && uCmds.categoryColors.length > 0) ||
+          (uCmds.subcategoryColors && uCmds.subcategoryColors.length > 0)
         ) {
           (uCmds.categories || []).forEach((cat) => {
             if (!result.actions.some((a) => (a.type === 'CREATE_CATEGORY' || a.type === 'CREAR_CATEGORIA') && (a.data?.name === cat.name || a.name === cat.name))) {
@@ -963,6 +1058,12 @@ export function useMapIaController({
           });
           (uCmds.subcategoryDeletions || []).forEach((del) => {
             result.actions.push({ type: 'DELETE_SUBCATEGORY', data: del });
+          });
+          (uCmds.categoryColors || []).forEach((col) => {
+            result.actions.push({ type: 'UPDATE_CATEGORY_COLOR', data: col });
+          });
+          (uCmds.subcategoryColors || []).forEach((col) => {
+            result.actions.push({ type: 'UPDATE_SUBCATEGORY_COLOR', data: col });
           });
         }
 
@@ -1274,6 +1375,20 @@ export function useMapIaController({
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('farm-categories-updated'));
         }
+      }
+
+      if (execResult.deletedSubcategories?.length > 0) {
+        const deletedSubNames = new Set(
+          execResult.deletedSubcategories.map((s) => String(s.subcategory || s.name || '').trim().toLowerCase())
+        );
+        setSelectedTarget((prev) => {
+          if (!prev) return prev;
+          const prevSub = String(prev.variety_type || prev.subcategory || prev.variety || '').trim().toLowerCase();
+          if (deletedSubNames.has(prevSub)) {
+            return { ...prev, variety_type: null, subcategory: null, variety: null };
+          }
+          return prev;
+        });
       }
 
       const allReverts = [...(execResult.reverts || [])];

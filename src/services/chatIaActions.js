@@ -178,7 +178,7 @@ export async function processChatResponseActions({
       if (match) {
         actionsToExecute.push({
           type: 'DELETE_SUBCATEGORY',
-          data: { parentCategory: 'Trazados', name: match[1].trim() },
+          data: { name: match[1].trim() },
         });
       }
     }

@@ -466,9 +466,12 @@ export function useLeafletMapLayers({
 
     const resolvedActiveCat = activePath.category || getPathCategory(activePath);
     const isUnclassifiedPath = resolvedActiveCat === 'Sin clasificar' || resolvedActiveCat === 'Sin categoría';
+    const activePathSub = activePath.variety_type || activePath.subcategory || getPathSubcategory(activePath) || '';
     const pathColor = isUnclassifiedPath
       ? '#00979d'
-      : (activePath.color || (activePath.category ? getCategoryColor(activePath.category) : PATH_TYPE_COLORS[activePath.path_type]) || '#f97316');
+      : (activePathSub
+          ? getSubcategoryColor(resolvedActiveCat, activePathSub)
+          : (activePath.color || (activePath.category ? getCategoryColor(activePath.category) : PATH_TYPE_COLORS[activePath.path_type]) || '#f97316'));
 
     coords.forEach((coord, idx) => {
       const isLindePath = activePath.path_type === 'linde';

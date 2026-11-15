@@ -299,13 +299,17 @@ FORMATOS ADMITIDOS (RESPONDE SIEMPRE EN JSON VÁLIDO):
     }
   ]
 }
-Tipos de acción soportados en "actions": "ADD_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH" | "CREATE_CATEGORY" | "DELETE_CATEGORY" | "UPDATE_CATEGORY_COLOR" | "UPDATE_SUBCATEGORY_COLOR" (incluye "target_id" para UPDATE/DELETE).
+Tipos de acción soportados en "actions": "ADD_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH" | "CREATE_CATEGORY" | "DELETE_CATEGORY" | "CREATE_SUBCATEGORY" | "DELETE_SUBCATEGORY" | "UPDATE_CATEGORY_COLOR" | "UPDATE_SUBCATEGORY_COLOR" (incluye "target_id" para UPDATE/DELETE).
 Para crear categorías: {"type": "CREATE_CATEGORY", "data": {"name": "NombreCategoria", "subcategories": [], "color": "#10b981"}}
+Para borrar categoría: {"type": "DELETE_CATEGORY", "data": {"name": "NombreCategoria"}} o [[BORRAR_CATEGORIA: {"name": "NombreCategoria"}]]
+Para crear subcategoría: {"type": "CREATE_SUBCATEGORY", "data": {"category": "Trazados", "name": "NuevaSubcat"}} o [[CREAR_SUBCATEGORIA: {"category": "Trazados", "name": "NuevaSubcat"}]]
+Para borrar subcategoría: {"type": "DELETE_SUBCATEGORY", "data": {"name": "MTB", "category": "Trazados"}} o [[BORRAR_SUBCATEGORIA: {"name": "MTB", "category": "Trazados"}]]
 Para cambiar color de categoría: {"type": "UPDATE_CATEGORY_COLOR", "data": {"name": "Árboles", "color": "#16a34a"}} o [[CAMBIAR_COLOR_CATEGORIA: {"name": "Árboles", "color": "#16a34a"}]]
 Para cambiar color de subcategoría (subcategorías pueden tener distintos colores): {"type": "UPDATE_SUBCATEGORY_COLOR", "data": {"category": "Árboles", "subcategory": "Limonero", "color": "#facc15"}} o [[CAMBIAR_COLOR_SUBCATEGORIA: {"category": "Árboles", "subcategory": "Limonero", "color": "#facc15"}]]
 O con etiquetas estructuradas [[CREAR_CATEGORIA: {"name": "..."}]] y [[REGISTRAR_PUNTOS: [...] ]].
 *REGLA CRÍTICA DE COLORES Y TAXONOMÍA*:
-- Si el usuario pide cambiar el color de una categoría o subcategoría (ej: "pon los limoneros amarillos", "cambia el color de Árboles a verde lima", "subcategoría Aguacate Hass verde oscuro"), genera inmediatamente la acción "UPDATE_CATEGORY_COLOR" o "UPDATE_SUBCATEGORY_COLOR". Las subcategorías pueden tener colores completamente distintos e independientes unos de otros.
+- Si el usuario pide cambiar el color de una categoría o subcategoría (ej: "pon los limoneros amarillos", "cambia el color de Árboles a verde lima", "subcategoría Aguacate Hass verde oscuro", "cambia MTB a rojo"), genera inmediatamente la acción "UPDATE_CATEGORY_COLOR" o "UPDATE_SUBCATEGORY_COLOR". Las subcategorías pueden tener colores completamente distintos e independientes unos de otros.
+- Si el usuario pide borrar una subcategoría o categoría (ej: "borra la subcategoria MTB", "elimina la subcategoría Sendero"), genera inmediatamente la acción "DELETE_SUBCATEGORY" o [[BORRAR_SUBCATEGORIA]] indicando el nombre de la subcategoría.
 - Si el usuario pide crear una nueva categoría y publicar/agregar un elemento dentro de ella (ej: "crea categoría Cabañas y publica Cabaña 1"), DEBES generar AMBAS acciones: la creación de la categoría ("CREATE_CATEGORY" o [[CREAR_CATEGORIA]]) y el registro del punto ("ADD_POINT" o [[REGISTRAR_PUNTOS]]) con dicha categoría.
 - Si el usuario menciona, describe, dicta o pide registrar cualquier árbol, planta, arqueta, llave de riego, tubería, herramienta, edificio o camino, DEBES incluir una entrada en "actions" para cada elemento. NUNCA devuelvas "actions": [] si el audio describe elementos para el inventario.
 - Si el usuario habla mientras camina, deja latitude: null y longitude: null y asigna "timestamp_audio_s" con el segundo del audio donde mencionó cada elemento para interpolación GPS satelital.`;
@@ -359,6 +363,12 @@ function structuredCommandsToActions(parsedCmds) {
   }
   for (const subDel of parsedCmds.subcategoryDeletions || []) {
     actions.push({ type: 'DELETE_SUBCATEGORY', data: subDel });
+  }
+  for (const col of parsedCmds.categoryColors || []) {
+    actions.push({ type: 'UPDATE_CATEGORY_COLOR', data: col });
+  }
+  for (const col of parsedCmds.subcategoryColors || []) {
+    actions.push({ type: 'UPDATE_SUBCATEGORY_COLOR', data: col });
   }
   return actions;
 }

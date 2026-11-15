@@ -882,7 +882,11 @@ export async function executeUnifiedActions({
     const catName = c.name || c.category || c.categoria;
     const newColor = c.color || c.color_hex;
     if (catName && newColor) {
-      await setCategoryColor(catName, newColor);
+      const res = await setCategoryColor(catName, newColor);
+      if (res?.success) {
+        result.updatedCategoryColors = result.updatedCategoryColors || [];
+        result.updatedCategoryColors.push(res);
+      }
     }
   }
 
@@ -891,7 +895,11 @@ export async function executeUnifiedActions({
     const subName = s.subcategory || s.subcategoria || s.name;
     const newColor = s.color || s.color_hex;
     if (subName && newColor) {
-      await setSubcategoryColor(parentCat, subName, newColor);
+      const res = await setSubcategoryColor(parentCat, subName, newColor);
+      if (res?.success) {
+        result.updatedSubcategoryColors = result.updatedSubcategoryColors || [];
+        result.updatedSubcategoryColors.push(res);
+      }
     }
   }
 

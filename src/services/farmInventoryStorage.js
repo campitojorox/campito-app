@@ -1206,8 +1206,35 @@ export const DYNAMIC_PALETTE = [
 
 const CUSTOM_CATEGORIES_KEY = 'campito_custom_categories_cache';
 const DELETED_CATEGORIES_KEY = 'campito_deleted_categories_cache';
+const DELETED_SUBCATEGORIES_KEY = 'campito_deleted_subcategories_cache';
 const SUBCATEGORY_COLORS_KEY = 'campito_subcategory_colors_cache';
 const CATEGORY_COLORS_KEY = 'campito_category_colors_cache';
+
+export function getDeletedSubcategories() {
+  try {
+    const raw = localStorage.getItem(DELETED_SUBCATEGORIES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    const set = new Set();
+    (arr || []).forEach((item) => {
+      if (item && typeof item === 'string') {
+        set.add(item.trim());
+        set.add(item.trim().toLowerCase());
+      }
+    });
+    return set;
+  } catch {
+    return new Set();
+  }
+}
+
+export function setDeletedSubcategories(setOrArray) {
+  try {
+    const arr = Array.from(setOrArray || []);
+    localStorage.setItem(DELETED_SUBCATEGORIES_KEY, JSON.stringify(arr));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error guardando subcategorías eliminadas:', e);
+  }
+}
 
 export function getSubcategoryColorsCache() {
   try {
@@ -1493,7 +1520,16 @@ export function setCustomCategories(cats) {
  */
 export function getFarmCategories() {
   const deleted = getDeletedCategories();
+  const deletedSubs = getDeletedSubcategories();
   const custom = getCustomCategories();
+
+  const filterActiveSubcategories = (parentName, subs) => {
+    const pLow = String(parentName || '').trim().toLowerCase();
+    return (subs || []).filter((s) => {
+      const sLow = String(s || '').trim().toLowerCase();
+      return !deletedSubs.has(sLow) && !deletedSubs.has(`${pLow}:${sLow}`);
+    });
+  };
 
   const defaultList = [
     {
@@ -1559,7 +1595,10 @@ export function getFarmCategories() {
 
   defaultList.forEach((c) => {
     if (!deleted.has(c.name) && !deleted.has(c.name.toLowerCase())) {
-      map.set(c.name.toLowerCase(), c);
+      map.set(c.name.toLowerCase(), {
+        ...c,
+        subcategories: filterActiveSubcategories(c.name, c.subcategories),
+      });
     }
   });
 
@@ -1569,7 +1608,7 @@ export function getFarmCategories() {
     if (map.has(key)) {
       const existing = map.get(key);
       const subs = Array.isArray(c.subcategories) && c.subcategories.length > 0
-        ? pruneSubcategoryPrefixes(c.subcategories)
+        ? filterActiveSubcategories(c.name, pruneSubcategoryPrefixes(c.subcategories))
         : existing.subcategories;
       map.set(key, {
         ...existing,
@@ -1581,7 +1620,7 @@ export function getFarmCategories() {
     } else {
       map.set(key, {
         name: c.name,
-        subcategories: pruneSubcategoryPrefixes(Array.isArray(c.subcategories) ? c.subcategories : []),
+        subcategories: filterActiveSubcategories(c.name, pruneSubcategoryPrefixes(Array.isArray(c.subcategories) ? c.subcategories : [])),
         color: c.color || getCategoryColor(c.name),
         subcategoryColors: c.subcategoryColors || c.subcategory_colors || {},
         isDefault: false,
@@ -2137,74 +2176,146 @@ export async function integrateCategoryIntoParent({
 
 /**
  * Elimina una subcategoría de una categoría padre y actualiza puntos y trazados asociados.
+ * Si no se pasa parentCategory, auto-descubre a qué categoría pertenece en la taxonomía viva.
  */
 export async function deleteFarmSubcategory({ parentCategory, name, deleteItems = false }) {
-  if (!parentCategory || !name) return { success: false };
-  const pName = parentCategory.trim().toLowerCase();
-  const sName = name.trim();
+  if (!name) return { success: false, reason: 'Nombre de subcategoría no proporcionado' };
+  const sName = String(name).trim();
+  const sLower = sName.toLowerCase();
 
-  const custom = getCustomCategories();
-  let modified = false;
-  custom.forEach((c) => {
-    if (c.name.toLowerCase() === pName && Array.isArray(c.subcategories)) {
-      c.subcategories = c.subcategories.filter((s) => s.toLowerCase() !== sName.toLowerCase());
-      modified = true;
+  // 1. Auto-descubrir la categoría padre si no vino informada
+  let cleanParent = String(parentCategory || '').trim();
+  const allCurrent = getFarmCategories();
+  if (!cleanParent) {
+    const matched = allCurrent.find((c) => (c.subcategories || []).some((s) => s.toLowerCase() === sLower));
+    if (matched) {
+      cleanParent = matched.name;
+    } else {
+      const pMatch = getLocalPaths().find((p) => {
+        const sub = (p.variety_type || p.subcategory || getPathSubcategory(p) || '').toLowerCase();
+        return sub === sLower || sub.includes(sLower);
+      });
+      if (pMatch) cleanParent = getPathCategory(pMatch);
+      if (!cleanParent) {
+        const iMatch = getLocalInventory().find((i) => {
+          const sub = (i.variety_type || i.tipo || '').toLowerCase();
+          return sub === sLower || sub.includes(sLower);
+        });
+        if (iMatch) cleanParent = getItemCategory(iMatch);
+      }
     }
-  });
-  if (modified) setCustomCategories(custom);
+  }
+  if (!cleanParent) {
+    cleanParent = 'Trazados';
+  }
+
+  const pLower = cleanParent.toLowerCase();
+
+  // 2. Registrar en deletedSubcategories permanente
+  const deletedSubs = getDeletedSubcategories();
+  deletedSubs.add(sName);
+  deletedSubs.add(sLower);
+  deletedSubs.add(`${pLower}:${sLower}`);
+  setDeletedSubcategories(deletedSubs);
+
+  // 3. Eliminar de customCategories o clonar categoría base sin la subcategoría
+  const custom = getCustomCategories();
+  const existingIdx = custom.findIndex((c) => c.name.toLowerCase() === pLower);
+  const activeParent = allCurrent.find((c) => c.name.toLowerCase() === pLower);
+
+  if (existingIdx >= 0) {
+    const existing = custom[existingIdx];
+    const filteredSubs = (existing.subcategories || []).filter((s) => s.toLowerCase() !== sLower);
+    custom[existingIdx] = {
+      ...existing,
+      subcategories: filteredSubs,
+      updated_at: new Date().toISOString(),
+    };
+  } else if (activeParent) {
+    const filteredSubs = (activeParent.subcategories || []).filter((s) => s.toLowerCase() !== sLower);
+    custom.push({
+      id: generateUUID(),
+      name: activeParent.name,
+      subcategories: filteredSubs,
+      color: activeParent.color || getCategoryColor(activeParent.name),
+      subcategoryColors: activeParent.subcategoryColors || {},
+      isDefault: Boolean(activeParent.isDefault),
+      updated_at: new Date().toISOString(),
+    });
+  }
+  setCustomCategories(custom);
+
+  // 4. Limpiar caché de colores de subcategoría
+  const subColorsCache = getSubcategoryColorsCache();
+  delete subColorsCache[sLower];
+  delete subColorsCache[`${pLower}:${sLower}`];
+  setSubcategoryColorsCache(subColorsCache);
 
   let affectedCount = 0;
+
+  // 5. Limpiar puntos de inventario asociados
   const localItems = getLocalInventory();
-  const matching = localItems.filter((i) => {
+  const matchingItems = localItems.filter((i) => {
     const parent = getItemCategory(i).toLowerCase();
     const sub = (i.variety_type || i.tipo || '').toLowerCase();
-    return parent === pName && sub.includes(sName.toLowerCase());
+    return (parent === pLower || !parentCategory) && (sub === sLower || sub.includes(sLower));
   });
 
   if (deleteItems) {
-    for (const item of matching) {
+    for (const item of matchingItems) {
       await deleteFarmInventoryItem(item.id);
       affectedCount++;
     }
-  } else if (matching.length > 0) {
-    for (const item of matching) {
-      await updateFarmInventoryItem(item.id, { variety_type: null });
+  } else if (matchingItems.length > 0) {
+    for (const item of matchingItems) {
+      await updateFarmInventoryItem(item.id, { variety_type: null, subcategory: null });
       affectedCount++;
     }
   }
 
+  // 6. Limpiar caminos y trazados asociados (desasignar subcategoría, NO asignar a parentCategory)
   const localPaths = getLocalPaths();
   const matchingPaths = localPaths.filter((p) => {
     const parent = getPathCategory(p).toLowerCase();
-    const sub = getPathSubcategory(p).toLowerCase();
-    return parent === pName && (sub === sName.toLowerCase() || sub.includes(sName.toLowerCase()));
+    const sub = (p.variety_type || p.subcategory || getPathSubcategory(p) || '').toLowerCase();
+    return (parent === pLower || !parentCategory) && (sub === sLower || sub.includes(sLower));
   });
 
   if (matchingPaths.length > 0) {
     const updatedPaths = localPaths.map((p) => {
       const parent = getPathCategory(p).toLowerCase();
-      const sub = getPathSubcategory(p).toLowerCase();
-      if (parent === pName && (sub === sName.toLowerCase() || sub.includes(sName.toLowerCase()))) {
+      const sub = (p.variety_type || p.subcategory || getPathSubcategory(p) || '').toLowerCase();
+      if ((parent === pLower || !parentCategory) && (sub === sLower || sub.includes(sLower))) {
         affectedCount++;
-        return { ...p, variety_type: parentCategory, subcategory: parentCategory, updated_at: new Date().toISOString() };
+        return {
+          ...p,
+          variety_type: null,
+          subcategory: null,
+          updated_at: new Date().toISOString(),
+        };
       }
       return p;
     });
     setLocalPaths(updatedPaths);
     for (const p of matchingPaths) {
-      updateFarmPath(p.id, { variety_type: parentCategory, subcategory: parentCategory }).catch(() => {});
+      updateFarmPath(p.id, { variety_type: null, subcategory: null }).catch(() => {});
     }
   }
 
   syncCategoriesToSupabase(getFarmCategories());
 
-  broadcastMapSync('CATEGORIES_CHANGED', parentCategory, { subcategoryDeleted: sName });
+  broadcastMapSync('CATEGORIES_CHANGED', cleanParent, { subcategoryDeleted: sName });
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('farm-categories-updated', { detail: { parentCategory, subcategory: sName, deleted: true } }));
+    window.dispatchEvent(
+      new CustomEvent('farm-categories-updated', {
+        detail: { parentCategory: cleanParent, subcategory: sName, deleted: true },
+      })
+    );
     window.dispatchEvent(new CustomEvent('farm-paths-updated'));
+    window.dispatchEvent(new CustomEvent('farm-inventory-updated'));
   }
 
-  return { success: true, parentCategory, subcategory: sName, affectedCount };
+  return { success: true, parentCategory: cleanParent, subcategory: sName, affectedCount };
 }
 
 /**
@@ -2702,8 +2813,15 @@ export function parseColorOrdersFromUserText(text) {
   if (!text || typeof text !== 'string') return [];
   const lower = text.toLowerCase().trim();
 
-  // Si no menciona nada relacionado con colores, retornar vacío
-  if (!lower.includes('color') && !lower.includes('colores') && !lower.includes('pint') && !lower.includes('pon')) {
+  // Comprobar si menciona intención de color o nombres conocidos de colores
+  const colorKeywords = ['color', 'colores', 'pint', 'pon', 'cambi', 'modific', 'dej', 'asign'];
+  const hasColorKeyword = colorKeywords.some((kw) => lower.includes(kw));
+  const hasColorName = Object.keys(COLOR_NAME_MAP).some((col) => {
+    const rx = new RegExp(`\\b${col}\\b`, 'i');
+    return rx.test(lower);
+  });
+
+  if (!hasColorKeyword && !hasColorName) {
     return [];
   }
 
@@ -2750,7 +2868,8 @@ export function parseColorOrdersFromUserText(text) {
   // 1. Frases explícitas de subcategoría
   // Ej: "cambia el color de la subcategoría Limonero a amarillo"
   // Ej: "pon la subcategoría Naranjo en color naranja"
-  const explicitSubRegex = /(?:subcategor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?|(?:pon|cambia|cambiar|pinta|pintar)\s+(?:la\s+)?subcategor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?)\s+(?:de\s+color\s+|en\s+color\s+|a\s+color\s+|a\s+|por\s+|en\s+|color\s+)\s*["'«“]?([^"'»”\n,.]+)/gi;
+  // Ej: "cambia la subcategoria MTB a rojo"
+  const explicitSubRegex = /(?:subcategor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?|(?:pon|cambia|cambiar|pinta|pintar|modifica|modificar)\s+(?:el\s+color\s+de\s+(?:la\s+)?)?(?:la\s+)?subcategor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?)\s+(?:de\s+color\s+|en\s+color\s+|a\s+color\s+|a\s+|por\s+|en\s+|color\s+)\s*["'«“]?([^"'»”\n,.]+)/gi;
   let match;
   while ((match = explicitSubRegex.exec(text)) !== null) {
     let rawSub = (match[1] || match[2] || '').trim();
@@ -2762,7 +2881,7 @@ export function parseColorOrdersFromUserText(text) {
       results.push({
         type: 'subcategory',
         target: known?.name || rawSub,
-        parentCategory: known?.parent || 'Árboles',
+        parentCategory: known?.parent || 'Trazados',
         color: hex,
         rawColor: rawCol,
       });
@@ -2772,7 +2891,7 @@ export function parseColorOrdersFromUserText(text) {
   // 2. Frases explícitas de categoría (evitar colisión con subcategoría usando lookbehind negativo)
   // Ej: "cambia el color de la categoría Árboles a verde lima"
   // Ej: "pon la categoría Casas de color amarillo"
-  const explicitCatRegex = /(?:(?<!sub)categor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?|(?:pon|cambia|cambiar|pinta|pintar)\s+(?:la\s+)?(?<!sub)categor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?)\s+(?:de\s+color\s+|en\s+color\s+|a\s+color\s+|a\s+|por\s+|en\s+|color\s+)\s*["'«“]?([^"'»”\n,.]+)/gi;
+  const explicitCatRegex = /(?:(?<!sub)categor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?|(?:pon|cambia|cambiar|pinta|pintar|modifica|modificar)\s+(?:el\s+color\s+de\s+(?:la\s+)?)?(?:la\s+)?(?<!sub)categor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?)\s+(?:de\s+color\s+|en\s+color\s+|a\s+color\s+|a\s+|por\s+|en\s+|color\s+)\s*["'«“]?([^"'»”\n,.]+)/gi;
   while ((match = explicitCatRegex.exec(text)) !== null) {
     let rawCat = (match[1] || match[2] || '').trim();
     rawCat = rawCat.replace(/\s+(?:de|en|a)$/i, '').trim();
@@ -2789,17 +2908,18 @@ export function parseColorOrdersFromUserText(text) {
     }
   }
 
-  // 3. Segmentos sueltos o listas (ej: "Limonero amarillo, Naranjo naranja, Olivo verde oliva")
+  // 3. Segmentos sueltos o listas (ej: "Limonero amarillo, Naranjo naranja", "cambia MTB a rojo", "pon sendero en verde")
   if (results.length === 0) {
-    const segments = text.split(/[\n,;]+/).map((l) => l.trim()).filter(Boolean);
+    const segments = text.split(/[\n,;]+|(?:\s+y\s+)|\.\s+/i).map((l) => l.trim()).filter(Boolean);
     for (const segment of segments) {
       const segLower = segment.toLowerCase();
 
       // Buscar si el segmento menciona alguna subcategoría conocida
       for (const [subKey, subInfo] of knownSubsMap.entries()) {
-        if (segLower.includes(subKey)) {
+        const wordRegex = new RegExp(`\\b${subKey}\\b`, 'i');
+        if (wordRegex.test(segLower)) {
           const idx = segLower.indexOf(subKey);
-          const after = segment.slice(idx + subKey.length).trim();
+          const after = segment.slice(idx + subKey.length).replace(/^(?:\s*\b(?:a|en|por|de|el|la|color)\b)+/i, '').trim();
           const hex = normalizeColorInput(after);
           if (hex && !results.some((r) => r.type === 'subcategory' && r.target.toLowerCase() === subInfo.name.toLowerCase())) {
             results.push({
@@ -2816,9 +2936,10 @@ export function parseColorOrdersFromUserText(text) {
 
       // Buscar si el segmento menciona alguna categoría conocida
       for (const [catKey, catName] of knownCatsMap.entries()) {
-        if (segLower.includes(catKey) && !results.some((r) => r.type === 'category' && r.target.toLowerCase() === catName.toLowerCase())) {
+        const wordRegex = new RegExp(`\\b${catKey}\\b`, 'i');
+        if (wordRegex.test(segLower) && !results.some((r) => r.type === 'category' && r.target.toLowerCase() === catName.toLowerCase())) {
           const idx = segLower.indexOf(catKey);
-          const after = segment.slice(idx + catKey.length).trim();
+          const after = segment.slice(idx + catKey.length).replace(/^(?:\s*\b(?:a|en|por|de|el|la|color)\b)+/i, '').trim();
           const hex = normalizeColorInput(after);
           if (hex) {
             results.push({
@@ -2831,6 +2952,56 @@ export function parseColorOrdersFromUserText(text) {
           }
         }
       }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Analizador resiliente para detectar órdenes explícitas de borrado de categorías
+ * o subcategorías desde texto libre o dictados de voz.
+ */
+export function parseCategoryDeletionOrdersFromUserText(text) {
+  if (!text || typeof text !== 'string') return [];
+  const lower = text.toLowerCase().trim();
+  const deleteKeywords = ['borr', 'elimin', 'quit', 'suprim', 'delete', 'remove'];
+  if (!deleteKeywords.some((kw) => lower.includes(kw))) {
+    return [];
+  }
+  if (!lower.includes('categor') && !lower.includes('subcategor')) {
+    return [];
+  }
+
+  const results = [];
+  const activeCats = getFarmCategories();
+
+  // 1. Detección explícita de subcategoría:
+  // Ej: "borra la subcategoría MTB", "eliminar subcategoria Sendero de Trazados", "quita subcategoria Limonero"
+  const subRegex = /(?:borra|borrar|elimina|eliminar|quita|quitar|suprime|suprimir|delete|remove)\s+(?:la\s+)?subcategor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?(?:\s+(?:de|en)\s+(?:la\s+)?(?:categor[ií]a\s+)?["'«“]?([^"'»”\n,.]+?)["'»]?)?(?:$|[.,;\n])/gi;
+  let match;
+  while ((match = subRegex.exec(text)) !== null) {
+    const rawSub = (match[1] || '').trim();
+    const rawParent = (match[2] || '').trim();
+    if (rawSub) {
+      results.push({
+        type: 'subcategory',
+        name: rawSub,
+        parentCategory: rawParent || undefined,
+      });
+    }
+  }
+
+  // 2. Detección explícita de categoría (sin sub):
+  // Ej: "borra la categoría Trazados", "eliminar categoria Herramientas"
+  const catRegex = /(?:borra|borrar|elimina|eliminar|quita|quitar|suprime|suprimir|delete|remove)\s+(?:la\s+)?(?<!sub)categor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?(?:$|[.,;\n])/gi;
+  while ((match = catRegex.exec(text)) !== null) {
+    const rawCat = (match[1] || '').trim();
+    if (rawCat && !results.some((r) => r.type === 'category' && r.name.toLowerCase() === rawCat.toLowerCase())) {
+      results.push({
+        type: 'category',
+        name: rawCat,
+      });
     }
   }
 
@@ -2920,11 +3091,20 @@ export function getSubcategoriesForParent(inventory, parent) {
   const cleanParent = String(parent).trim().toLowerCase();
   const subs = new Set();
   const activeCats = getFarmCategories();
+  const deletedSubs = getDeletedSubcategories();
+
+  const isSubDeleted = (subName) => {
+    const sLow = String(subName || '').trim().toLowerCase();
+    return deletedSubs.has(sLow) || deletedSubs.has(`${cleanParent}:${sLow}`);
+  };
+
   const match = activeCats.find((c) => c.name.toLowerCase() === cleanParent);
   if (match && Array.isArray(match.subcategories)) {
     match.subcategories.forEach((s) => {
       const cleanSub = sanitizeSubcategory(s, cleanParent);
-      if (cleanSub && cleanSub.toLowerCase() !== cleanParent) subs.add(cleanSub);
+      if (cleanSub && cleanSub.toLowerCase() !== cleanParent && !isSubDeleted(cleanSub)) {
+        subs.add(cleanSub);
+      }
     });
   }
 
@@ -2935,7 +3115,7 @@ export function getSubcategoriesForParent(inventory, parent) {
     if (itemParent === cleanParent || assignedCat === cleanParent) {
       const rawSub = item.variety_type || item.variety || '';
       const subLabel = sanitizeSubcategory(rawSub, cleanParent);
-      if (subLabel && subLabel.toLowerCase() !== cleanParent) {
+      if (subLabel && subLabel.toLowerCase() !== cleanParent && !isSubDeleted(subLabel)) {
         subs.add(subLabel);
       }
     }
@@ -2950,7 +3130,7 @@ export function getSubcategoriesForParent(inventory, parent) {
       if (pathParent === cleanParent || assignedCat === cleanParent) {
         const rawSub = getPathSubcategory(path);
         const subLabel = sanitizeSubcategory(rawSub, cleanParent);
-        if (subLabel && subLabel.toLowerCase() !== cleanParent) {
+        if (subLabel && subLabel.toLowerCase() !== cleanParent && !isSubDeleted(subLabel)) {
           subs.add(subLabel);
         }
       }

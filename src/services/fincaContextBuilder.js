@@ -108,6 +108,10 @@ Hoy es: ${new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numer
   [[CREAR_SUBCATEGORIA: {"category": "Riego / Agua", "name": "Goteros Autocompensantes"}]]
 - **Borrado de subcategorías por chat**:
   [[BORRAR_SUBCATEGORIA: {"category": "Trazados", "name": "Río", "delete_items": false}]]
+- **Cambio de color de categorías y subcategorías por chat (colores independientes)**:
+  Si el usuario pide cambiar el color de una categoría o subcategoría (cada subcategoría puede tener su propio color independiente):
+  [[CAMBIAR_COLOR_CATEGORIA: {"name": "Árboles", "color": "#16a34a"}]]
+  [[CAMBIAR_COLOR_SUBCATEGORIA: {"category": "Trazados", "subcategory": "MTB", "color": "#ef4444"}]]
 - **Actualización, reemplazo o edición completa de la lista de categorías y subcategorías por chat**:
   Si el usuario te envía o dicta una lista editada de categorías con sus subcategorías (o te pide que actualices la lista completa de la finca):
   NUNCA afirmes que las has actualizado sin incluir el comando estructurado. DEBES OBLIGATORIAMENTE incluir al final el bloque con el array completo:
