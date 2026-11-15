@@ -29,6 +29,7 @@ export default function MapOverlays({
   gpsStatus,
   liveUserGps,
   fitAllElements,
+  categoriesVersion = 0,
 }) {
   // 1. Grupos de categorías y subcategorías activas para Puntos
   const activePointGroups = useMemo(() => {
@@ -51,7 +52,7 @@ export default function MapOverlays({
       }
     });
     return Array.from(groups.values());
-  }, [localInventory]);
+  }, [localInventory, categoriesVersion]);
 
   // 2. Grupos de categorías y subcategorías activas para Polilíneas / Trazados (incluye Ríos / Arroyos, etc.)
   const activePathGroups = useMemo(() => {
@@ -76,7 +77,7 @@ export default function MapOverlays({
       }
     });
     return Array.from(groups.values());
-  }, [localPaths, showPaths]);
+  }, [localPaths, showPaths, categoriesVersion]);
 
   const hasAlertStatus = (localInventory || []).some((i) =>
     ['enfermo', 'seco', 'muerto', 'poda_requerida', 'poda', 'plaga'].includes(

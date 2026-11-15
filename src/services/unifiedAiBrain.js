@@ -20,6 +20,8 @@ import {
   deleteFarmSubcategory,
   ensureCategoryExistsForElement,
   updateAllFarmCategories,
+  setCategoryColor,
+  setSubcategoryColor,
 } from './farmInventoryStorage';
 import {
   interpolateGpsAtAudioTime,
@@ -257,10 +259,13 @@ ${transactionsSummary.join('\n') || 'Sin transacciones'}
      [[REGISTRAR_HERRAMIENTA: {"name": "calculo_abono_ce", "display_name": "Calculadora de Abono por CE", "description": "Calcula abono según conductividad", "category": "agronomia", "parameters": [{"name": "ce_actual", "type": "number"}], "execution_recipe": "Fórmula matemática...", "output_format": "markdown|table|card"}]]
 7. Categorías y Subcategorías del Inventario:
    - Crear Categoría: [[CREAR_CATEGORIA: {"name": "NombreCategoria", "subcategories": ["sub1", "sub2"], "color": "#10b981"}]]
+   - Cambiar Color de Categoría: [[CAMBIAR_COLOR_CATEGORIA: {"name": "Árboles", "color": "#16a34a"}]]
    - Borrar Categoría: [[BORRAR_CATEGORIA: {"name": "NombreCategoria", "reassign_to": "Sin clasificar"}]]
    - Crear Subcategoría: [[CREAR_SUBCATEGORIA: {"category": "CategoriaPadre", "name": "NuevaSubcat"}]]
+   - Cambiar Color de Subcategoría (subcategorías pueden tener distintos colores): [[CAMBIAR_COLOR_SUBCATEGORIA: {"category": "CategoriaPadre", "subcategory": "NombreSubcat", "color": "#facc15"}]]
    - Borrar Subcategoría: [[BORRAR_SUBCATEGORIA: {"category": "CategoriaPadre", "name": "SubcatABorrar"}]]
    - *REGLA CRÍTICA DE TAXONOMÍA*: Si el usuario pide crear una categoría y agregar/publicar un elemento dentro de ella (ej: "crea categoría Cabañas y publica Cabaña 1"), DEBES emitir [[CREAR_CATEGORIA: {"name": "..."}]] Y SIMULTÁNEAMENTE [[REGISTRAR_PUNTOS: [ {"name": "...", "category": "..."} ] ]]. Si el elemento pertenece a una categoría no existente, créala de forma automática.
+   - *REGLA DE COLORES*: Si el usuario solicita cambiar colores a categorías o subcategorías (ej: "pon los limoneros amarillos", "cambia Árboles a verde lima", "subcategoría Aguacate Hass verde oscuro"), emite [[CAMBIAR_COLOR_CATEGORIA]] o [[CAMBIAR_COLOR_SUBCATEGORIA]]. Cada subcategoría puede tener su propio color único e independiente.
 8. Salidas Visuales Especiales:
    - Diagramas Mermaid: Inserta bloques \`\`\`mermaid ... \`\`\`
    - Dibujos Técnicos y Croquis Acotados: Inserta bloques \`\`\`svg ... \`\`\` con medidas acotadas en metros (|← 4.0m →|), escalas y leyendas claras.
@@ -390,6 +395,8 @@ export function parseAllStructuredCommands(rawText) {
   const categoryDeletions = extractPayloads(rawText, ['BORRAR_CATEGORIA', 'ELIMINAR_CATEGORIA']);
   const subcategories = extractPayloads(rawText, ['CREAR_SUBCATEGORIA', 'REGISTRAR_SUBCATEGORIA']);
   const subcategoryDeletions = extractPayloads(rawText, ['BORRAR_SUBCATEGORIA', 'ELIMINAR_SUBCATEGORIA']);
+  const categoryColors = extractPayloads(rawText, ['CAMBIAR_COLOR_CATEGORIA', 'UPDATE_CATEGORY_COLOR']);
+  const subcategoryColors = extractPayloads(rawText, ['CAMBIAR_COLOR_SUBCATEGORIA', 'UPDATE_SUBCATEGORY_COLOR']);
 
   return {
     points,
@@ -408,6 +415,8 @@ export function parseAllStructuredCommands(rawText) {
     categoryDeletions,
     subcategories,
     subcategoryDeletions,
+    categoryColors,
+    subcategoryColors,
   };
 }
 
@@ -865,6 +874,24 @@ export async function executeUnifiedActions({
     if (res?.success) {
       result.deletedSubcategories = result.deletedSubcategories || [];
       result.deletedSubcategories.push(res);
+    }
+  }
+
+  // 13. COLORES DE CATEGORÍAS Y SUBCATEGORÍAS
+  for (const c of parsedCommands.categoryColors || []) {
+    const catName = c.name || c.category || c.categoria;
+    const newColor = c.color || c.color_hex;
+    if (catName && newColor) {
+      await setCategoryColor(catName, newColor);
+    }
+  }
+
+  for (const s of parsedCommands.subcategoryColors || []) {
+    const parentCat = s.category || s.parent || s.parentCategory || s.categoria;
+    const subName = s.subcategory || s.subcategoria || s.name;
+    const newColor = s.color || s.color_hex;
+    if (subName && newColor) {
+      await setSubcategoryColor(parentCat, subName, newColor);
     }
   }
 

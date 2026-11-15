@@ -15,6 +15,9 @@ import {
   deleteFarmCategory,
   createFarmCategory,
   renameFarmCategory,
+  setCategoryColor,
+  setSubcategoryColor,
+  parseColorOrdersFromUserText,
   getItemCategory,
 } from '../services/farmInventoryStorage';
 import {
@@ -204,6 +207,74 @@ export function useMapIaController({
     }
 
     const lowerOrder = textOrder.toLowerCase();
+
+    // ── 0. DETECCIÓN DIRECTA DE CAMBIO DE COLOR EN CATEGORÍAS O SUBCATEGORÍAS ──
+    const colorOrders = parseColorOrdersFromUserText(textOrder);
+    if (colorOrders.length > 0) {
+      setMapIaInput('');
+      syncTextareaHeight(mapIaTextareaRef.current, '');
+      setPendingVoiceAudio(null);
+      setPendingAttachments([]);
+      setIsProcessingIa(true);
+
+      const feedbackTexts = [];
+      const revertActions = [];
+
+      try {
+        for (const order of colorOrders) {
+          if (order.type === 'category') {
+            const res = await setCategoryColor(order.target, order.color);
+            if (res.success) {
+              feedbackTexts.push(`categoría "${order.target}" a ${order.color}`);
+              revertActions.push({
+                type: 'RESTORE_CATEGORY_COLOR',
+                target: order.target,
+                prevColor: res.prevColor,
+              });
+            }
+          } else if (order.type === 'subcategory') {
+            const res = await setSubcategoryColor(order.parentCategory, order.target, order.color);
+            if (res.success) {
+              feedbackTexts.push(`subcategoría "${order.target}" (${order.parentCategory}) a ${order.color}`);
+              revertActions.push({
+                type: 'RESTORE_SUBCATEGORY_COLOR',
+                parentCategory: order.parentCategory,
+                target: order.target,
+                prevColor: res.prevColor,
+              });
+            }
+          }
+        }
+
+        if (feedbackTexts.length > 0) {
+          setUndoStack((prev) => [
+            ...prev,
+            {
+              description: `Cambio de color: ${feedbackTexts.join(', ')}`,
+              reverts: revertActions,
+              timestamp: Date.now(),
+            },
+          ]);
+
+          setIaFeedback({
+            type: 'success',
+            text: `🎨 Color(es) actualizado(s) en el mapa: ${feedbackTexts.join('; ')}.`,
+          });
+          if (onReloadInventory) await onReloadInventory();
+          if (onReloadPaths) await onReloadPaths();
+        } else {
+          setIaFeedback({
+            type: 'error',
+            text: 'No se pudo interpretar el color solicitado.',
+          });
+        }
+      } catch (colorErr) {
+        setIaFeedback({ type: 'error', text: `Error cambiando color: ${colorErr.message}` });
+      } finally {
+        setIsProcessingIa(false);
+      }
+      return;
+    }
 
     // ── 1. DETECCIÓN DIRECTA DE RENOMBRADO DE CATEGORÍAS ──
     const isCategoryRename =
@@ -1345,6 +1416,10 @@ export function useMapIaController({
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('farm-categories-updated'));
           }
+        } else if (rev.type === 'RESTORE_CATEGORY_COLOR') {
+          await setCategoryColor(rev.target, rev.prevColor);
+        } else if (rev.type === 'RESTORE_SUBCATEGORY_COLOR') {
+          await setSubcategoryColor(rev.parentCategory, rev.target, rev.prevColor);
         }
       }
 

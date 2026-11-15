@@ -2,7 +2,7 @@
 // Constantes y utilidades cartográficas y de pines para FarmSatelliteMap
 
 import L from 'leaflet';
-import { getCategoryColor, getItemCategory } from '../../services/farmInventoryStorage';
+import { getCategoryColor, getSubcategoryColor, getItemCategory } from '../../services/farmInventoryStorage';
 
 // Coordenadas por defecto: Centroide exacto de las parcelas 195 y 196 de Campito Jorox
 export const DEFAULT_CENTER = [36.72595, -4.89462];
@@ -177,7 +177,10 @@ export function getPinStatusSlug(item) {
 export function createFamilyPinIcon({ item, isSelected = false, hasWarning = false }) {
   const parentCat = getItemCategory(item);
   const isUnclassified = parentCat === 'Sin clasificar' || parentCat === 'Sin categoría' || !parentCat;
-  const catColor = isUnclassified ? '#00979d' : getCategoryColor(parentCat);
+  const subName = item.variety_type || item.subcategory || item.variety;
+  const pinColor = isUnclassified
+    ? '#00979d'
+    : (subName ? getSubcategoryColor(parentCat, subName) : getCategoryColor(parentCat));
   const familySlug = isUnclassified ? 'otros' : getPinFamilySlug(item);
   const statusSlug = getPinStatusSlug(item);
   const selectedClass = isSelected ? 'is-selected' : '';
@@ -189,8 +192,8 @@ export function createFamilyPinIcon({ item, isSelected = false, hasWarning = fal
     html: `
       <div class="farm-pin-container ${selectedClass} ${warningClass} ${unclassifiedClass}">
         <div class="farm-pin farm-pin--family-${familySlug} farm-pin--status-${statusSlug}">
-          <div class="farm-pin__halo" style="background-color: ${catColor};"></div>
-          <div class="farm-pin__body" style="background-color: ${catColor};"></div>
+          <div class="farm-pin__halo" style="background-color: ${pinColor};"></div>
+          <div class="farm-pin__body" style="background-color: ${pinColor};"></div>
         </div>
       </div>
     `,

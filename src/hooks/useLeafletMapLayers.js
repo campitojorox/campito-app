@@ -9,6 +9,7 @@ import {
   getPathCategory,
   getPathSubcategory,
   getCategoryColor,
+  getSubcategoryColor,
   updateFarmPath,
 } from '../services/farmInventoryStorage';
 import catastroJorox from '../data/catastroJorox.json';
@@ -57,6 +58,7 @@ export function useLeafletMapLayers({
   showElevationContours = true,
   inventory,
   paths,
+  categoriesVersion = 0,
 }) {
   // 1. Inicialización de Leaflet y capas base
   useEffect(() => {
@@ -192,7 +194,10 @@ export function useLeafletMapLayers({
     );
 
     if (isNewPoint && selectedTarget.lat && selectedTarget.lng) {
-      const pinColor = selectedTarget.category ? getCategoryColor(selectedTarget.category) : '#00979d';
+      const targetSub = selectedTarget.variety || selectedTarget.subcategory || (selectedTarget.raw && (selectedTarget.raw.variety_type || selectedTarget.raw.subcategory));
+      const pinColor = selectedTarget.category
+        ? (targetSub ? getSubcategoryColor(selectedTarget.category, targetSub) : getCategoryColor(selectedTarget.category))
+        : '#00979d';
       const marker = L.marker([selectedTarget.lat, selectedTarget.lng], {
         icon: L.divIcon({
           className: 'farm-pin-div-wrapper',
@@ -249,7 +254,7 @@ export function useLeafletMapLayers({
         }).addTo(layer);
       }
     }
-  }, [selectedTarget, highlightLayerRef, setSelectedTarget]);
+  }, [selectedTarget, highlightLayerRef, setSelectedTarget, categoriesVersion]);
 
   // 2. Cursor en modo dibujo
   useEffect(() => {
@@ -354,6 +359,7 @@ export function useLeafletMapLayers({
     lastLayerClickedTimeRef,
     markersLayerRef,
     setSelectedTarget,
+    categoriesVersion,
   ]);
 
   // 5. Renderizado de caminos y senderos
@@ -369,9 +375,12 @@ export function useLeafletMapLayers({
       const isLinde = path.path_type === 'linde';
       const resolvedPathCat = path.category || getPathCategory(path);
       const isUnclassifiedPath = resolvedPathCat === 'Sin clasificar' || resolvedPathCat === 'Sin categoría';
+      const pathSub = path.variety_type || path.subcategory || getPathSubcategory(path) || '';
       const lineColor = isUnclassifiedPath
         ? '#00979d'
-        : (path.color || (path.category ? getCategoryColor(path.category) : PATH_TYPE_COLORS[path.path_type]) || '#f97316');
+        : (pathSub
+            ? getSubcategoryColor(resolvedPathCat, pathSub)
+            : (path.color || (path.category ? getCategoryColor(path.category) : PATH_TYPE_COLORS[path.path_type]) || '#f97316'));
       const poly = L.polyline(latlngs, {
         color: lineColor,
         weight: isLinde ? 1.5 : Number(path.stroke_width) || 4,
@@ -424,6 +433,7 @@ export function useLeafletMapLayers({
     lastLayerClickedTimeRef,
     pathsLayerRef,
     setSelectedTarget,
+    categoriesVersion,
   ]);
 
   // 5a. Nodos interactivos del recorrido seleccionado

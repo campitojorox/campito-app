@@ -10,7 +10,12 @@ import {
   parseAllStructuredCommands,
   saveNewCustomTool,
 } from './unifiedAiBrain';
-import { extractCategoriesFromText, updateAllFarmCategories, isValidUUID } from './farmInventoryStorage';
+import {
+  extractCategoriesFromText,
+  updateAllFarmCategories,
+  isValidUUID,
+  parseColorOrdersFromUserText,
+} from './farmInventoryStorage';
 import { callFarmSyncProxy } from './ragDocumentService';
 
 function base64DataUrlToBlob(dataUrl) {
@@ -116,6 +121,10 @@ export async function processChatResponseActions({
     .replace(/\[\[REGISTRAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[BORRAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .replace(/\[\[ELIMINAR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[CAMBIAR_COLOR_CATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[UPDATE_CATEGORY_COLOR:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[CAMBIAR_COLOR_SUBCATEGORIA:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
+    .replace(/\[\[UPDATE_SUBCATEGORY_COLOR:\s*(\{[\s\S]*?\})\s*\]\]/gi, '')
     .trim();
 
   const actionsToExecute = [
@@ -129,6 +138,8 @@ export async function processChatResponseActions({
     ...(structured.categoryDeletions || uCmds.categoryDeletions || []).map((c) => ({ type: 'DELETE_CATEGORY', data: c })),
     ...(structured.subcategories || uCmds.subcategories || []).map((s) => ({ type: 'CREATE_SUBCATEGORY', data: s })),
     ...(structured.subcategoryDeletions || uCmds.subcategoryDeletions || []).map((s) => ({ type: 'DELETE_SUBCATEGORY', data: s })),
+    ...(structured.categoryColors || uCmds.categoryColors || []).map((c) => ({ type: 'UPDATE_CATEGORY_COLOR', data: c })),
+    ...(structured.subcategoryColors || uCmds.subcategoryColors || []).map((s) => ({ type: 'UPDATE_SUBCATEGORY_COLOR', data: s })),
   ];
 
   // Detección tolerante de órdenes de renombrar / integrar categorías en lenguaje natural
@@ -199,6 +210,24 @@ export async function processChatResponseActions({
       const toApply = extractedFromUser.length > 0 ? extractedFromUser : (extractedFromAi.length > 0 ? extractedFromAi : []);
       if (toApply.length > 0) {
         actionsToExecute.push({ type: 'CREATE_CATEGORY', data: toApply });
+      }
+    }
+  }
+
+  // Detección tolerante de cambios de color en lenguaje natural si Gemini no emitió la etiqueta estructurada
+  if (actionsToExecute.filter((a) => a.type === 'UPDATE_CATEGORY_COLOR' || a.type === 'UPDATE_SUBCATEGORY_COLOR').length === 0 && userText) {
+    const directColorOrders = parseColorOrdersFromUserText(userText);
+    for (const co of directColorOrders) {
+      if (co.type === 'category') {
+        actionsToExecute.push({
+          type: 'UPDATE_CATEGORY_COLOR',
+          data: { name: co.target, color: co.color },
+        });
+      } else if (co.type === 'subcategory') {
+        actionsToExecute.push({
+          type: 'UPDATE_SUBCATEGORY_COLOR',
+          data: { category: co.parentCategory, subcategory: co.target, color: co.color },
+        });
       }
     }
   }

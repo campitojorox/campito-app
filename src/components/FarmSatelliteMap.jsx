@@ -610,6 +610,7 @@ export default function FarmSatelliteMap({
     showElevationContours: effectiveShowElevationContours,
     inventory,
     paths,
+    categoriesVersion,
   });
 
   const { handleCenterOnUserLocation } = useMapGpsTracker({
@@ -1275,6 +1276,7 @@ export default function FarmSatelliteMap({
           showLegend={effectiveShowLegend}
           selectedTarget={selectedTarget}
           allCategories={allCategories}
+          categoriesVersion={categoriesVersion}
           localInventory={localInventory}
           localPaths={localPaths}
           showPaths={showPaths}
@@ -1294,6 +1296,7 @@ export default function FarmSatelliteMap({
         <MapFilterDrawer
           isOpen={isFilterOpen}
           onClose={() => setIsFilterOpen(false)}
+          categoriesVersion={categoriesVersion}
           selectAllFilters={selectAllFilters}
           clearAllFilters={clearAllFilters}
           allCategories={allCategories}

@@ -25,6 +25,8 @@ import {
   ensureCategoryExistsForElement,
   updateAllFarmCategories,
   extractCategoriesFromText,
+  setCategoryColor,
+  setSubcategoryColor,
 } from './farmInventoryStorage';
 import {
   interpolateGpsAtAudioTime,
@@ -135,7 +137,7 @@ function extractTagPayloads(rawText, tagNames) {
  * - [[EDITAR_PUNTO: { ... } ]]
  */
 export function parseStructuredCommands(rawText) {
-  if (!rawText || typeof rawText !== 'string') return { points: [], deletions: [], paths: [], updates: [], categories: [], categoryDeletions: [], subcategories: [], subcategoryDeletions: [] };
+  if (!rawText || typeof rawText !== 'string') return { points: [], deletions: [], paths: [], updates: [], categories: [], categoryDeletions: [], subcategories: [], subcategoryDeletions: [], categoryColors: [], subcategoryColors: [] };
   const points = [];
   const deletions = [];
   const paths = [];
@@ -144,6 +146,8 @@ export function parseStructuredCommands(rawText) {
   const categoryDeletions = [];
   const subcategories = [];
   const subcategoryDeletions = [];
+  const categoryColors = [];
+  const subcategoryColors = [];
 
   for (const payload of extractTagPayloads(rawText, ['REGISTRAR_PUNTOS', 'REGISTRAR_PUNTO'])) {
     if (Array.isArray(payload)) points.push(...payload.filter((p) => p && typeof p === 'object'));
@@ -198,7 +202,17 @@ export function parseStructuredCommands(rawText) {
     else if (payload && typeof payload === 'object') subcategoryDeletions.push(payload);
   }
 
-  return { points, deletions, paths, updates, categories, categoryDeletions, subcategories, subcategoryDeletions };
+  for (const payload of extractTagPayloads(rawText, ['CAMBIAR_COLOR_CATEGORIA', 'UPDATE_CATEGORY_COLOR'])) {
+    if (Array.isArray(payload)) categoryColors.push(...payload.filter((c) => c && typeof c === 'object'));
+    else if (payload && typeof payload === 'object') categoryColors.push(payload);
+  }
+
+  for (const payload of extractTagPayloads(rawText, ['CAMBIAR_COLOR_SUBCATEGORIA', 'UPDATE_SUBCATEGORY_COLOR'])) {
+    if (Array.isArray(payload)) subcategoryColors.push(...payload.filter((s) => s && typeof s === 'object'));
+    else if (payload && typeof payload === 'object') subcategoryColors.push(payload);
+  }
+
+  return { points, deletions, paths, updates, categories, categoryDeletions, subcategories, subcategoryDeletions, categoryColors, subcategoryColors };
 }
 
 /**
@@ -285,10 +299,13 @@ FORMATOS ADMITIDOS (RESPONDE SIEMPRE EN JSON VÁLIDO):
     }
   ]
 }
-Tipos de acción soportados en "actions": "ADD_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH" | "CREATE_CATEGORY" | "DELETE_CATEGORY" (incluye "target_id" para UPDATE/DELETE).
+Tipos de acción soportados en "actions": "ADD_POINT" | "UPDATE_POINT" | "DELETE_POINT" | "ADD_PATH" | "UPDATE_PATH" | "DELETE_PATH" | "CREATE_CATEGORY" | "DELETE_CATEGORY" | "UPDATE_CATEGORY_COLOR" | "UPDATE_SUBCATEGORY_COLOR" (incluye "target_id" para UPDATE/DELETE).
 Para crear categorías: {"type": "CREATE_CATEGORY", "data": {"name": "NombreCategoria", "subcategories": [], "color": "#10b981"}}
+Para cambiar color de categoría: {"type": "UPDATE_CATEGORY_COLOR", "data": {"name": "Árboles", "color": "#16a34a"}} o [[CAMBIAR_COLOR_CATEGORIA: {"name": "Árboles", "color": "#16a34a"}]]
+Para cambiar color de subcategoría (subcategorías pueden tener distintos colores): {"type": "UPDATE_SUBCATEGORY_COLOR", "data": {"category": "Árboles", "subcategory": "Limonero", "color": "#facc15"}} o [[CAMBIAR_COLOR_SUBCATEGORIA: {"category": "Árboles", "subcategory": "Limonero", "color": "#facc15"}]]
 O con etiquetas estructuradas [[CREAR_CATEGORIA: {"name": "..."}]] y [[REGISTRAR_PUNTOS: [...] ]].
-*REGLA CRÍTICA DE CATEGORÍAS Y REGISTRO*:
+*REGLA CRÍTICA DE COLORES Y TAXONOMÍA*:
+- Si el usuario pide cambiar el color de una categoría o subcategoría (ej: "pon los limoneros amarillos", "cambia el color de Árboles a verde lima", "subcategoría Aguacate Hass verde oscuro"), genera inmediatamente la acción "UPDATE_CATEGORY_COLOR" o "UPDATE_SUBCATEGORY_COLOR". Las subcategorías pueden tener colores completamente distintos e independientes unos de otros.
 - Si el usuario pide crear una nueva categoría y publicar/agregar un elemento dentro de ella (ej: "crea categoría Cabañas y publica Cabaña 1"), DEBES generar AMBAS acciones: la creación de la categoría ("CREATE_CATEGORY" o [[CREAR_CATEGORIA]]) y el registro del punto ("ADD_POINT" o [[REGISTRAR_PUNTOS]]) con dicha categoría.
 - Si el usuario menciona, describe, dicta o pide registrar cualquier árbol, planta, arqueta, llave de riego, tubería, herramienta, edificio o camino, DEBES incluir una entrada en "actions" para cada elemento. NUNCA devuelvas "actions": [] si el audio describe elementos para el inventario.
 - Si el usuario habla mientras camina, deja latitude: null y longitude: null y asigna "timestamp_audio_s" con el segundo del audio donde mencionó cada elemento para interpolación GPS satelital.`;
@@ -296,6 +313,12 @@ O con etiquetas estructuradas [[CREAR_CATEGORIA: {"name": "..."}]] y [[REGISTRAR
 
 function structuredCommandsToActions(parsedCmds) {
   const actions = [];
+  for (const c of parsedCmds.categoryColors || []) {
+    actions.push({ type: 'UPDATE_CATEGORY_COLOR', data: c });
+  }
+  for (const s of parsedCmds.subcategoryColors || []) {
+    actions.push({ type: 'UPDATE_SUBCATEGORY_COLOR', data: s });
+  }
   for (const p of parsedCmds.points || []) {
     actions.push({
       type: 'ADD_POINT',
@@ -673,6 +696,8 @@ export async function executeInventoryActions({
   const MERGE_CATEGORY_TYPES = new Set(['MERGE_CATEGORY', 'INTEGRAR_CATEGORIA', 'FUSIONAR_CATEGORIA']);
   const CREATE_SUBCATEGORY_TYPES = new Set(['CREATE_SUBCATEGORY', 'CREAR_SUBCATEGORIA', 'REGISTRAR_SUBCATEGORIA']);
   const DELETE_SUBCATEGORY_TYPES = new Set(['DELETE_SUBCATEGORY', 'BORRAR_SUBCATEGORIA', 'ELIMINAR_SUBCATEGORIA']);
+  const UPDATE_CATEGORY_COLOR_TYPES = new Set(['UPDATE_CATEGORY_COLOR', 'CAMBIAR_COLOR_CATEGORIA', 'SET_CATEGORY_COLOR']);
+  const UPDATE_SUBCATEGORY_COLOR_TYPES = new Set(['UPDATE_SUBCATEGORY_COLOR', 'CAMBIAR_COLOR_SUBCATEGORIA', 'SET_SUBCATEGORY_COLOR']);
 
   const normalizedActions = [];
   for (const act of actions) {
@@ -1043,6 +1068,40 @@ export async function executeInventoryActions({
         deleteItems: Boolean(actData.delete_items),
       });
       if (res?.success) result.deletedSubcategories.push(res);
+    }
+
+    // ── CAMBIAR COLOR DE CATEGORÍA ────────────────────────────────────────────
+    else if (UPDATE_CATEGORY_COLOR_TYPES.has(actType)) {
+      const catName = actData.name || actData.category || actData.categoria;
+      const newColor = actData.color || actData.color_hex;
+      if (catName && newColor) {
+        const res = await setCategoryColor(catName, newColor);
+        if (res?.success) {
+          result.reverts.push({
+            type: 'RESTORE_CATEGORY_COLOR',
+            target: res.category,
+            prevColor: res.prevColor,
+          });
+        }
+      }
+    }
+
+    // ── CAMBIAR COLOR DE SUBCATEGORÍA (COLORES INDEPENDIENTES) ────────────────
+    else if (UPDATE_SUBCATEGORY_COLOR_TYPES.has(actType)) {
+      const parentCat = actData.category || actData.parent || actData.parentCategory || actData.categoria;
+      const subName = actData.subcategory || actData.subcategoria || actData.name;
+      const newColor = actData.color || actData.color_hex;
+      if (subName && newColor) {
+        const res = await setSubcategoryColor(parentCat, subName, newColor);
+        if (res?.success) {
+          result.reverts.push({
+            type: 'RESTORE_SUBCATEGORY_COLOR',
+            parentCategory: res.parentCategory,
+            target: res.subcategory,
+            prevColor: res.prevColor,
+          });
+        }
+      }
     }
   }
 

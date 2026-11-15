@@ -37,6 +37,7 @@ export default function MapFilterDrawer({
   visiblePathSubcats = null,
   setVisiblePathSubcats,
   togglePathSubcat,
+  categoriesVersion = 0,
 }) {
   // 1. Categorías no vacías de Puntos de Inventario
   const nonEmptyCategories = useMemo(() => {
@@ -57,7 +58,7 @@ export default function MapFilterDrawer({
         return { parent, count, subcats };
       })
       .filter(Boolean);
-  }, [allCategories, localInventory]);
+  }, [allCategories, localInventory, categoriesVersion]);
 
   // 2. Trazados que no son lindes catastrales
   const nonLindePaths = useMemo(

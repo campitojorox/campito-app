@@ -1206,6 +1206,175 @@ export const DYNAMIC_PALETTE = [
 
 const CUSTOM_CATEGORIES_KEY = 'campito_custom_categories_cache';
 const DELETED_CATEGORIES_KEY = 'campito_deleted_categories_cache';
+const SUBCATEGORY_COLORS_KEY = 'campito_subcategory_colors_cache';
+const CATEGORY_COLORS_KEY = 'campito_category_colors_cache';
+
+export function getSubcategoryColorsCache() {
+  try {
+    const raw = localStorage.getItem(SUBCATEGORY_COLORS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setSubcategoryColorsCache(cache) {
+  try {
+    localStorage.setItem(SUBCATEGORY_COLORS_KEY, JSON.stringify(cache || {}));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error guardando caché de colores de subcategorías:', e);
+  }
+}
+
+export function getCategoryColorsCache() {
+  try {
+    const raw = localStorage.getItem(CATEGORY_COLORS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setCategoryColorsCache(cache) {
+  try {
+    localStorage.setItem(CATEGORY_COLORS_KEY, JSON.stringify(cache || {}));
+  } catch (e) {
+    console.warn('[InventoryStorage] Error guardando caché de colores de categorías:', e);
+  }
+}
+
+/**
+ * Mapeo completo de nombres de colores en español y variantes CSS a códigos hexadecimales (#rrggbb).
+ */
+export const COLOR_NAME_MAP = {
+  // Básicos
+  'rojo': '#ef4444',
+  'roja': '#ef4444',
+  'verde': '#22c55e',
+  'azul': '#3b82f6',
+  'amarillo': '#eab308',
+  'amarilla': '#eab308',
+  'naranja': '#f97316',
+  'morado': '#8b5cf6',
+  'morada': '#8b5cf6',
+  'violeta': '#8b5cf6',
+  'purpura': '#a855f7',
+  'púrpura': '#a855f7',
+  'rosa': '#ec4899',
+  'rosado': '#ec4899',
+  'rosada': '#ec4899',
+  'magenta': '#d946ef',
+  'fucsia': '#d946ef',
+  'cian': '#06b6d4',
+  'cyan': '#06b6d4',
+  'turquesa': '#14b8a6',
+  'marron': '#78350f',
+  'marrón': '#78350f',
+  'cafe': '#78350f',
+  'café': '#78350f',
+  'negro': '#0f172a',
+  'negra': '#0f172a',
+  'blanco': '#f8fafc',
+  'blanca': '#f8fafc',
+  'gris': '#64748b',
+  'pizarra': '#475569',
+  
+  // Variantes de Verde
+  'verde claro': '#86efac',
+  'verdeclaro': '#86efac',
+  'verde oscuro': '#15803d',
+  'verdeoscuro': '#15803d',
+  'verde lima': '#84cc16',
+  'verdelima': '#84cc16',
+  'lima': '#84cc16',
+  'verde oliva': '#65a30d',
+  'verdeoliva': '#65a30d',
+  'oliva': '#65a30d',
+  'verde bosque': '#166534',
+  'verdebosque': '#166534',
+  'esmeralda': '#10b981',
+  'menta': '#6ee7b7',
+
+  // Variantes de Azul
+  'azul claro': '#38bdf8',
+  'azulclaro': '#38bdf8',
+  'celeste': '#38bdf8',
+  'azul cielo': '#38bdf8',
+  'azulcielo': '#38bdf8',
+  'azul oscuro': '#1e3a8a',
+  'azuloscuro': '#1e3a8a',
+  'azul marino': '#1d4ed8',
+  'azulmarino': '#1d4ed8',
+  'marino': '#1d4ed8',
+  'indigo': '#6366f1',
+  'índigo': '#6366f1',
+  'añil': '#4338ca',
+  'cobalto': '#1d4ed8',
+
+  // Variantes de Amarillo / Naranja / Tierra
+  'amarillo claro': '#fef08a',
+  'amarilloclaro': '#fef08a',
+  'amarillo pastel': '#fef08a',
+  'dorado': '#eab308',
+  'oro': '#eab308',
+  'ocre': '#d97706',
+  'ambar': '#f59e0b',
+  'ámbar': '#f59e0b',
+  'tierra': '#92400e',
+  'teja': '#c2410c',
+  'coral': '#fb7185',
+  'salmon': '#fb923c',
+  'salmón': '#fb923c',
+
+  // Variantes de Rojo / Rosa / Púrpura
+  'rojo oscuro': '#991b1b',
+  'rojo claro': '#f87171',
+  'granate': '#881337',
+  'carmesi': '#e11d48',
+  'carmesí': '#e11d48',
+  'burdeos': '#881337',
+  'vino': '#881337',
+  'lila': '#c084fc',
+  'lavanda': '#c4b5fd',
+};
+
+/**
+ * Normaliza cualquier entrada de color (nombre en español o código hex) a formato '#rrggbb'.
+ */
+export function normalizeColorInput(rawColor) {
+  if (!rawColor || typeof rawColor !== 'string') return null;
+  let str = rawColor.trim().toLowerCase();
+
+  // Limpiar prefijos comunes ("de color ", "color ", "en ", "a ", "por ")
+  str = str.replace(/^(?:de\s+color\s+|color\s+|en\s+|a\s+|por\s+)/i, '').trim();
+
+  // 1. Si es formato hexadecimal (#fff o #ffffff)
+  if (str.startsWith('#')) {
+    const hex = str.slice(1);
+    if (/^[0-9a-f]{6}$/i.test(hex)) return `#${hex.toLowerCase()}`;
+    if (/^[0-9a-f]{3}$/i.test(hex)) {
+      return `#${hex.split('').map((x) => x + x).join('').toLowerCase()}`;
+    }
+  }
+
+  // 2. Si viene un código hexadecimal sin '#' (ej: "ff0000" o "16a34a")
+  if (/^[0-9a-f]{6}$/i.test(str)) {
+    return `#${str.toLowerCase()}`;
+  }
+
+  // 3. Buscar en el diccionario de nombres en español
+  if (COLOR_NAME_MAP[str]) {
+    return COLOR_NAME_MAP[str];
+  }
+
+  // Limpiar artículos ("el ", "la ", "un ", "una ")
+  const cleanKey = str.replace(/^(?:el\s+|la\s+|un\s+|una\s+)/i, '').trim();
+  if (COLOR_NAME_MAP[cleanKey]) {
+    return COLOR_NAME_MAP[cleanKey];
+  }
+
+  return null;
+}
 
 export function getDeletedCategories() {
   try {
@@ -1402,12 +1571,19 @@ export function getFarmCategories() {
       const subs = Array.isArray(c.subcategories) && c.subcategories.length > 0
         ? pruneSubcategoryPrefixes(c.subcategories)
         : existing.subcategories;
-      map.set(key, { ...existing, ...c, subcategories: subs });
+      map.set(key, {
+        ...existing,
+        ...c,
+        color: c.color || existing.color,
+        subcategoryColors: { ...(existing.subcategoryColors || {}), ...(c.subcategoryColors || c.subcategory_colors || {}) },
+        subcategories: subs,
+      });
     } else {
       map.set(key, {
         name: c.name,
         subcategories: pruneSubcategoryPrefixes(Array.isArray(c.subcategories) ? c.subcategories : []),
         color: c.color || getCategoryColor(c.name),
+        subcategoryColors: c.subcategoryColors || c.subcategory_colors || {},
         isDefault: false,
       });
     }
@@ -1436,11 +1612,31 @@ export async function loadFarmCategories() {
           name: d.name,
           subcategories: pruneSubcategoryPrefixes(Array.isArray(d.subcategories) ? d.subcategories : []),
           color: d.color || getCategoryColor(d.name),
+          subcategoryColors: d.subcategory_colors || d.subcategoryColors || {},
           icon: d.icon || null,
           isDefault: Boolean(d.is_default),
         }));
 
-      setCustomCategories(activeFromDb.filter((c) => !c.isDefault));
+      // Rellenar caché de colores
+      const subColorsCache = getSubcategoryColorsCache();
+      const catColorsCache = getCategoryColorsCache();
+      activeFromDb.forEach((c) => {
+        if (c.color) catColorsCache[c.name.toLowerCase()] = c.color;
+        if (c.subcategoryColors && typeof c.subcategoryColors === 'object') {
+          Object.entries(c.subcategoryColors).forEach(([sub, col]) => {
+            if (col) {
+              subColorsCache[`${c.name.toLowerCase()}:${sub.toLowerCase()}`] = col;
+              subColorsCache[sub.toLowerCase()] = col;
+            }
+          });
+        }
+      });
+      setCategoryColorsCache(catColorsCache);
+      setSubcategoryColorsCache(subColorsCache);
+
+      // Conservar categorías personalizadas y sobreescrituras de las por defecto
+      const customToKeep = activeFromDb.filter((c) => !c.isDefault || c.color || Object.keys(c.subcategoryColors || {}).length > 0);
+      setCustomCategories(customToKeep);
       return getFarmCategories();
     }
   } catch (err) {
@@ -1454,7 +1650,22 @@ export async function loadFarmCategories() {
       if (knowData?.content) {
         const parsed = JSON.parse(knowData.content);
         if (Array.isArray(parsed)) {
-          setCustomCategories(parsed.filter((c) => !c.isDefault && !deleted.has(c.name) && !deleted.has((c.name || '').toLowerCase())));
+          const subColorsCache = getSubcategoryColorsCache();
+          const catColorsCache = getCategoryColorsCache();
+          parsed.forEach((c) => {
+            if (c.color) catColorsCache[c.name.toLowerCase()] = c.color;
+            if ((c.subcategoryColors || c.subcategory_colors) && typeof (c.subcategoryColors || c.subcategory_colors) === 'object') {
+              Object.entries(c.subcategoryColors || c.subcategory_colors).forEach(([sub, col]) => {
+                if (col) {
+                  subColorsCache[`${c.name.toLowerCase()}:${sub.toLowerCase()}`] = col;
+                  subColorsCache[sub.toLowerCase()] = col;
+                }
+              });
+            }
+          });
+          setCategoryColorsCache(catColorsCache);
+          setSubcategoryColorsCache(subColorsCache);
+          setCustomCategories(parsed.filter((c) => !deleted.has(c.name) && !deleted.has((c.name || '').toLowerCase())));
         }
       }
     } catch {}
@@ -2078,15 +2289,30 @@ async function syncCategoriesToSupabase(categoriesList) {
         name: c.name,
         subcategories: Array.isArray(c.subcategories) ? c.subcategories : [],
         color: c.color || getCategoryColor(c.name),
+        subcategory_colors: c.subcategoryColors || c.subcategory_colors || {},
         icon: c.icon || null,
         is_default: Boolean(c.isDefault),
         is_active: true,
         updated_at: new Date().toISOString(),
       }));
       await supabase.from('farm_categories').upsert(rows, { onConflict: 'name' });
-    } catch {}
+    } catch {
+      // Fallback si la columna subcategory_colors aún no existe en Supabase
+      try {
+        const fallbackRows = categoriesList.map((c) => ({
+          name: c.name,
+          subcategories: Array.isArray(c.subcategories) ? c.subcategories : [],
+          color: c.color || getCategoryColor(c.name),
+          icon: c.icon || null,
+          is_default: Boolean(c.isDefault),
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        }));
+        await supabase.from('farm_categories').upsert(fallbackRows, { onConflict: 'name' });
+      } catch {}
+    }
 
-    // 2. Respaldo en farm_knowledge
+    // 2. Respaldo en farm_knowledge con estructura completa JSON
     const payload = {
       category: 'general',
       title: 'TAXONOMIA_CATEGORIAS_CAMPITO',
@@ -2106,11 +2332,22 @@ export function getCategoryColor(categoryName) {
   if (norm === 'sin clasificar' || norm === 'sin categoría' || norm === 'sin categoria') {
     return '#00979d';
   }
+
+  // 1. Caché persistente de colores de categoría
+  const catColorsCache = getCategoryColorsCache();
+  if (catColorsCache[norm]) return catColorsCache[norm];
+
+  // 2. Categorías activas
   const activeCats = getFarmCategories();
   const match = activeCats.find((c) => c.name.toLowerCase() === norm);
   if (match?.color) return match.color;
-  if (BASE_CATEGORY_COLORS[categoryName]) return BASE_CATEGORY_COLORS[categoryName];
 
+  // 3. Paleta base
+  if (BASE_CATEGORY_COLORS[categoryName]) return BASE_CATEGORY_COLORS[categoryName];
+  const baseKey = Object.keys(BASE_CATEGORY_COLORS).find((k) => k.toLowerCase() === norm);
+  if (baseKey && BASE_CATEGORY_COLORS[baseKey]) return BASE_CATEGORY_COLORS[baseKey];
+
+  // 4. Hash determinista
   let hash = 0;
   for (let i = 0; i < categoryName.length; i++) {
     hash = categoryName.charCodeAt(i) + ((hash << 5) - hash);
@@ -2176,34 +2413,428 @@ export function hslToHex(h, s, l) {
 }
 
 /**
- * Genera el color para una subcategoría perteneciente a la gama de su categoría raíz,
- * pero en un tono más claro/pastel armónico (ej: Casas amarillo -> Pérgolas amarillo claro).
+ * Obtiene el color para una subcategoría.
+ * Si tiene un color personalizado asignado, devuelve dicho color directamente (las subcategorías
+ * pueden tener colores totalmente independientes de la categoría padre).
+ * Si no tiene color asignado, genera un tono armónico más claro/pastel en la gama de su categoría raíz.
  */
 export function getSubcategoryColor(parentCategory, subcategoryName) {
-  const rootColor = getCategoryColor(parentCategory);
+  if (!subcategoryName) {
+    return getCategoryColor(parentCategory);
+  }
+
+  const cleanSub = String(subcategoryName).trim();
+  const subLower = cleanSub.toLowerCase();
+  const parentLower = String(parentCategory || '').trim().toLowerCase();
+
+  // 1. Comprobar en caché persistente de subcategorías
+  const cachedSubColors = getSubcategoryColorsCache();
+  if (parentLower && cachedSubColors[`${parentLower}:${subLower}`]) {
+    return cachedSubColors[`${parentLower}:${subLower}`];
+  }
+  if (cachedSubColors[subLower]) {
+    return cachedSubColors[subLower];
+  }
+
+  // 2. Comprobar en el catálogo activo de categorías
+  const activeCats = getFarmCategories();
+  const matchCat = parentLower
+    ? activeCats.find((c) => c.name.toLowerCase() === parentLower)
+    : activeCats.find((c) => (c.subcategories || []).some((s) => s.toLowerCase() === subLower));
+
+  if (matchCat?.subcategoryColors) {
+    const directMatch = matchCat.subcategoryColors[cleanSub] || matchCat.subcategoryColors[subLower];
+    if (directMatch) return directMatch;
+    for (const [k, v] of Object.entries(matchCat.subcategoryColors)) {
+      if (k.toLowerCase() === subLower) return v;
+    }
+  }
+
+  // 3. Fallback: Calcular color determinista armónico derivado de la categoría raíz
+  const rootColor = getCategoryColor(parentCategory || matchCat?.name);
   const [h, s] = hexToHsl(rootColor);
 
-  if (!subcategoryName) {
-    return hslToHex(h, Math.max(40, Math.round(s * 0.8)), 75);
-  }
-
-  // Hash determinista del nombre de la subcategoría
   let hash = 0;
-  const str = String(subcategoryName).trim().toLowerCase();
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < subLower.length; i++) {
+    hash = subLower.charCodeAt(i) + ((hash << 5) - hash);
   }
 
-  // Mantener el matiz (Hue) en la gama exacta de la categoría raíz con variación armoniosa (±5°)
   const hueShift = (Math.abs(hash) % 11) - 5;
   const finalHue = (h + hueShift + 360) % 360;
-
-  // Subcategoría notablemente más clara (gama pastel luminosa: 72% a 80% de luminosidad)
   const lightnessOffset = Math.abs(hash >> 3) % 9;
   const finalLightness = Math.min(84, Math.max(72, 73 + lightnessOffset));
   const finalSaturation = Math.min(95, Math.max(50, Math.round(s * 0.88)));
 
   return hslToHex(finalHue, finalSaturation, finalLightness);
+}
+
+/**
+ * Cambia el color de una categoría y actualiza la taxonomía, caminos y cachés.
+ */
+export async function setCategoryColor(categoryName, newColor) {
+  if (!categoryName || !newColor) return { success: false, reason: 'Parámetros insuficientes' };
+  const hexColor = normalizeColorInput(newColor);
+  if (!hexColor) return { success: false, reason: `Color "${newColor}" no reconocido` };
+
+  const cleanCat = String(categoryName).trim();
+  const catLower = cleanCat.toLowerCase();
+  const prevColor = getCategoryColor(cleanCat);
+
+  // 1. Actualizar caché de colores de categoría
+  const catColorsCache = getCategoryColorsCache();
+  catColorsCache[catLower] = hexColor;
+  setCategoryColorsCache(catColorsCache);
+
+  // 2. Actualizar lista custom de categorías
+  const custom = getCustomCategories();
+  const existingIdx = custom.findIndex((c) => c.name.toLowerCase() === catLower);
+  const activeAll = getFarmCategories();
+  const existingActive = activeAll.find((c) => c.name.toLowerCase() === catLower);
+
+  if (existingIdx >= 0) {
+    custom[existingIdx] = {
+      ...custom[existingIdx],
+      color: hexColor,
+      updated_at: new Date().toISOString(),
+    };
+  } else {
+    // Si era categoría por defecto no copiada aún en custom, copiarla con nuevo color
+    custom.push({
+      id: generateUUID(),
+      name: existingActive?.name || cleanCat,
+      subcategories: existingActive?.subcategories || [],
+      subcategoryColors: existingActive?.subcategoryColors || {},
+      color: hexColor,
+      icon: existingActive?.icon || null,
+      isDefault: Boolean(existingActive?.isDefault),
+      updated_at: new Date().toISOString(),
+    });
+  }
+  setCustomCategories(custom);
+
+  // 3. Sincronizar en Supabase
+  syncCategoriesToSupabase(getFarmCategories());
+
+  // 4. Actualizar caminos en memoria y Supabase si su color dependía de la categoría
+  try {
+    const localPaths = getLocalPaths();
+    let pathsUpdated = false;
+    const updatedPaths = localPaths.map((p) => {
+      const pCat = getPathCategory(p);
+      const pSub = getPathSubcategory(p);
+      if (pCat.toLowerCase() === catLower && !pSub) {
+        pathsUpdated = true;
+        return { ...p, color: hexColor, updated_at: new Date().toISOString() };
+      }
+      return p;
+    });
+    if (pathsUpdated) {
+      setLocalPaths(updatedPaths);
+      for (const p of updatedPaths) {
+        if (getPathCategory(p).toLowerCase() === catLower && !getPathSubcategory(p)) {
+          updateFarmPath(p.id, { color: hexColor }).catch(() => {});
+        }
+      }
+    }
+  } catch {}
+
+  // 5. Notificar a toda la aplicación
+  broadcastMapSync('CATEGORIES_CHANGED', cleanCat, { colorUpdated: true, category: cleanCat, color: hexColor });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('farm-categories-updated', { detail: { category: cleanCat, color: hexColor } }));
+    window.dispatchEvent(new CustomEvent('farm-paths-updated'));
+    window.dispatchEvent(new CustomEvent('farm-inventory-updated'));
+  }
+
+  return { success: true, category: cleanCat, color: hexColor, prevColor };
+}
+
+/**
+ * Cambia el color de una subcategoría individual (pueden tener colores totalmente distintos).
+ */
+export async function setSubcategoryColor(parentCategory, subcategoryName, newColor) {
+  if (!subcategoryName || !newColor) return { success: false, reason: 'Parámetros insuficientes' };
+  const hexColor = normalizeColorInput(newColor);
+  if (!hexColor) return { success: false, reason: `Color "${newColor}" no reconocido` };
+
+  const cleanSub = String(subcategoryName).trim();
+  const subLower = cleanSub.toLowerCase();
+
+  // Encontrar la categoría padre correcta
+  const allCurrent = getFarmCategories();
+  let cleanParent = String(parentCategory || '').trim();
+  let matchedCat = null;
+
+  if (cleanParent) {
+    matchedCat = allCurrent.find((c) => c.name.toLowerCase() === cleanParent.toLowerCase());
+  }
+  if (!matchedCat) {
+    // Buscar qué categoría contiene esta subcategoría
+    matchedCat = allCurrent.find((c) => (c.subcategories || []).some((s) => s.toLowerCase() === subLower));
+  }
+  if (matchedCat) {
+    cleanParent = matchedCat.name;
+  }
+  if (!cleanParent) {
+    cleanParent = 'Árboles';
+  }
+
+  const prevColor = getSubcategoryColor(cleanParent, cleanSub);
+  const parentLower = cleanParent.toLowerCase();
+
+  // 1. Actualizar caché de colores de subcategorías
+  const subColorsCache = getSubcategoryColorsCache();
+  subColorsCache[`${parentLower}:${subLower}`] = hexColor;
+  subColorsCache[subLower] = hexColor;
+  setSubcategoryColorsCache(subColorsCache);
+
+  // 2. Actualizar en customCategories
+  const custom = getCustomCategories();
+  const existingIdx = custom.findIndex((c) => c.name.toLowerCase() === parentLower);
+  const existingActive = allCurrent.find((c) => c.name.toLowerCase() === parentLower);
+
+  if (existingIdx >= 0) {
+    const existing = custom[existingIdx];
+    const subColors = { ...(existing.subcategoryColors || {}), [cleanSub]: hexColor };
+    const subs = existing.subcategories || [];
+    if (!subs.some((s) => s.toLowerCase() === subLower)) {
+      subs.push(cleanSub);
+    }
+    custom[existingIdx] = {
+      ...existing,
+      subcategories: subs,
+      subcategoryColors: subColors,
+      updated_at: new Date().toISOString(),
+    };
+  } else {
+    const baseSubs = existingActive?.subcategories || [cleanSub];
+    if (!baseSubs.some((s) => s.toLowerCase() === subLower)) {
+      baseSubs.push(cleanSub);
+    }
+    custom.push({
+      id: generateUUID(),
+      name: existingActive?.name || cleanParent,
+      subcategories: baseSubs,
+      subcategoryColors: { ...(existingActive?.subcategoryColors || {}), [cleanSub]: hexColor },
+      color: existingActive?.color || getCategoryColor(cleanParent),
+      icon: existingActive?.icon || null,
+      isDefault: Boolean(existingActive?.isDefault),
+      updated_at: new Date().toISOString(),
+    });
+  }
+  setCustomCategories(custom);
+
+  // 3. Sincronizar en Supabase
+  syncCategoriesToSupabase(getFarmCategories());
+
+  // 4. Actualizar trazados asociados en local y Supabase
+  try {
+    const localPaths = getLocalPaths();
+    let pathsUpdated = false;
+    const updatedPaths = localPaths.map((p) => {
+      const pSub = getPathSubcategory(p) || p.variety_type || p.subcategory || '';
+      if (pSub && pSub.toLowerCase() === subLower) {
+        pathsUpdated = true;
+        return { ...p, color: hexColor, updated_at: new Date().toISOString() };
+      }
+      return p;
+    });
+    if (pathsUpdated) {
+      setLocalPaths(updatedPaths);
+      for (const p of updatedPaths) {
+        const pSub = getPathSubcategory(p) || p.variety_type || p.subcategory || '';
+        if (pSub && pSub.toLowerCase() === subLower) {
+          updateFarmPath(p.id, { color: hexColor }).catch(() => {});
+        }
+      }
+    }
+  } catch {}
+
+  // 5. Notificar a toda la aplicación
+  broadcastMapSync('CATEGORIES_CHANGED', cleanParent, {
+    subcategoryColorUpdated: true,
+    parentCategory: cleanParent,
+    subcategory: cleanSub,
+    color: hexColor,
+  });
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('farm-categories-updated', {
+        detail: { parentCategory: cleanParent, subcategory: cleanSub, color: hexColor },
+      })
+    );
+    window.dispatchEvent(new CustomEvent('farm-paths-updated'));
+    window.dispatchEvent(new CustomEvent('farm-inventory-updated'));
+  }
+
+  return { success: true, parentCategory: cleanParent, subcategory: cleanSub, color: hexColor, prevColor };
+}
+
+/**
+ * Actualiza múltiples colores de categorías y subcategorías en lote.
+ */
+export async function setMultipleTaxonomyColors({ categories = [], subcategories = [] }) {
+  const catResults = [];
+  const subResults = [];
+
+  for (const cat of categories) {
+    if (cat?.name && cat?.color) {
+      const res = await setCategoryColor(cat.name, cat.color);
+      catResults.push(res);
+    }
+  }
+
+  for (const sub of subcategories) {
+    if (sub?.name && sub?.color) {
+      const res = await setSubcategoryColor(sub.category || sub.parentCategory, sub.name, sub.color);
+      subResults.push(res);
+    }
+  }
+
+  return { categories: catResults, subcategories: subResults };
+}
+
+/**
+ * Analizador resiliente para extraer órdenes de cambio de color en categorías y subcategorías
+ * desde texto libre en lenguaje natural o dictados de voz.
+ */
+export function parseColorOrdersFromUserText(text) {
+  if (!text || typeof text !== 'string') return [];
+  const lower = text.toLowerCase().trim();
+
+  // Si no menciona nada relacionado con colores, retornar vacío
+  if (!lower.includes('color') && !lower.includes('colores') && !lower.includes('pint') && !lower.includes('pon')) {
+    return [];
+  }
+
+  const results = [];
+  const activeCats = getFarmCategories();
+
+  // Mapa de todas las subcategorías y categorías conocidas para búsqueda rápida (con plurales y singulares)
+  const knownSubsMap = new Map(); // lowerSub -> { name, parent }
+  const knownCatsMap = new Map(); // lowerCat -> name
+
+  const addSubEntry = (key, info) => {
+    const k = key.toLowerCase().trim();
+    knownSubsMap.set(k, info);
+    if (k.endsWith('o') || k.endsWith('a') || k.endsWith('e') || k.endsWith('i') || k.endsWith('u')) {
+      knownSubsMap.set(`${k}s`, info);
+    } else if (!k.endsWith('s')) {
+      knownSubsMap.set(`${k}es`, info);
+    }
+    if (k.endsWith('s')) {
+      knownSubsMap.set(k.slice(0, -1), info);
+    }
+  };
+
+  const addCatEntry = (key, name) => {
+    const k = key.toLowerCase().trim();
+    knownCatsMap.set(k, name);
+    if (k.endsWith('o') || k.endsWith('a') || k.endsWith('e') || k.endsWith('i') || k.endsWith('u')) {
+      knownCatsMap.set(`${k}s`, name);
+    } else if (!k.endsWith('s')) {
+      knownCatsMap.set(`${k}es`, name);
+    }
+    if (k.endsWith('s')) {
+      knownCatsMap.set(k.slice(0, -1), name);
+    }
+  };
+
+  activeCats.forEach((cat) => {
+    addCatEntry(cat.name, cat.name);
+    (cat.subcategories || []).forEach((sub) => {
+      addSubEntry(sub, { name: sub, parent: cat.name });
+    });
+  });
+
+  // 1. Frases explícitas de subcategoría
+  // Ej: "cambia el color de la subcategoría Limonero a amarillo"
+  // Ej: "pon la subcategoría Naranjo en color naranja"
+  const explicitSubRegex = /(?:subcategor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?|(?:pon|cambia|cambiar|pinta|pintar)\s+(?:la\s+)?subcategor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?)\s+(?:de\s+color\s+|en\s+color\s+|a\s+color\s+|a\s+|por\s+|en\s+|color\s+)\s*["'«“]?([^"'»”\n,.]+)/gi;
+  let match;
+  while ((match = explicitSubRegex.exec(text)) !== null) {
+    let rawSub = (match[1] || match[2] || '').trim();
+    rawSub = rawSub.replace(/\s+(?:de|en|a)$/i, '').trim();
+    const rawCol = (match[3] || '').trim();
+    const hex = normalizeColorInput(rawCol);
+    if (rawSub && hex) {
+      const known = knownSubsMap.get(rawSub.toLowerCase());
+      results.push({
+        type: 'subcategory',
+        target: known?.name || rawSub,
+        parentCategory: known?.parent || 'Árboles',
+        color: hex,
+        rawColor: rawCol,
+      });
+    }
+  }
+
+  // 2. Frases explícitas de categoría (evitar colisión con subcategoría usando lookbehind negativo)
+  // Ej: "cambia el color de la categoría Árboles a verde lima"
+  // Ej: "pon la categoría Casas de color amarillo"
+  const explicitCatRegex = /(?:(?<!sub)categor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?|(?:pon|cambia|cambiar|pinta|pintar)\s+(?:la\s+)?(?<!sub)categor[ií]a\s+["'«“]?([^"'»”\n,:]+?)["'»]?)\s+(?:de\s+color\s+|en\s+color\s+|a\s+color\s+|a\s+|por\s+|en\s+|color\s+)\s*["'«“]?([^"'»”\n,.]+)/gi;
+  while ((match = explicitCatRegex.exec(text)) !== null) {
+    let rawCat = (match[1] || match[2] || '').trim();
+    rawCat = rawCat.replace(/\s+(?:de|en|a)$/i, '').trim();
+    const rawCol = (match[3] || '').trim();
+    const hex = normalizeColorInput(rawCol);
+    if (rawCat && hex) {
+      const known = knownCatsMap.get(rawCat.toLowerCase());
+      results.push({
+        type: 'category',
+        target: known || rawCat,
+        color: hex,
+        rawColor: rawCol,
+      });
+    }
+  }
+
+  // 3. Segmentos sueltos o listas (ej: "Limonero amarillo, Naranjo naranja, Olivo verde oliva")
+  if (results.length === 0) {
+    const segments = text.split(/[\n,;]+/).map((l) => l.trim()).filter(Boolean);
+    for (const segment of segments) {
+      const segLower = segment.toLowerCase();
+
+      // Buscar si el segmento menciona alguna subcategoría conocida
+      for (const [subKey, subInfo] of knownSubsMap.entries()) {
+        if (segLower.includes(subKey)) {
+          const idx = segLower.indexOf(subKey);
+          const after = segment.slice(idx + subKey.length).trim();
+          const hex = normalizeColorInput(after);
+          if (hex && !results.some((r) => r.type === 'subcategory' && r.target.toLowerCase() === subInfo.name.toLowerCase())) {
+            results.push({
+              type: 'subcategory',
+              target: subInfo.name,
+              parentCategory: subInfo.parent,
+              color: hex,
+              rawColor: after,
+            });
+            break;
+          }
+        }
+      }
+
+      // Buscar si el segmento menciona alguna categoría conocida
+      for (const [catKey, catName] of knownCatsMap.entries()) {
+        if (segLower.includes(catKey) && !results.some((r) => r.type === 'category' && r.target.toLowerCase() === catName.toLowerCase())) {
+          const idx = segLower.indexOf(catKey);
+          const after = segment.slice(idx + catKey.length).trim();
+          const hex = normalizeColorInput(after);
+          if (hex) {
+            results.push({
+              type: 'category',
+              target: catName,
+              color: hex,
+              rawColor: after,
+            });
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 export const PATH_TYPE_COLORS = {
