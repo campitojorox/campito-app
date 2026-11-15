@@ -143,32 +143,29 @@ export default function MapSelectionCard({
     return getSubcategoriesForParent(rawInv, currentCategory);
   }, [selectedTarget, currentCategory, categoriesVersion]);
 
-  // Si no hay target seleccionado, retornar null de forma segura tras evaluar todos los hooks
-  if (!selectedTarget) return null;
-
   // 3. Subcategoría actual (si no tiene o no pertenece a la categoría raíz, dejar en blanco "")
   const rawSubcategory = isPoint
     ? String(
-        selectedTarget.variety_type ??
-          selectedTarget.subcategory ??
-          selectedTarget.variety ??
-          selectedTarget.raw?.variety_type ??
-          selectedTarget.raw?.subcategory ??
+        selectedTarget?.variety_type ??
+          selectedTarget?.subcategory ??
+          selectedTarget?.variety ??
+          selectedTarget?.raw?.variety_type ??
+          selectedTarget?.raw?.subcategory ??
           ''
       )
     : isPath
       ? String(
-          selectedTarget.variety_type ??
-            selectedTarget.subcategory ??
-            (selectedTarget.path_type && !['otro', 'otro_trazado'].includes(selectedTarget.path_type)
+          selectedTarget?.variety_type ??
+            selectedTarget?.subcategory ??
+            (selectedTarget?.path_type && !['otro', 'otro_trazado'].includes(selectedTarget.path_type)
               ? PATH_TYPE_LABELS[selectedTarget.path_type] || selectedTarget.path_type
               : '')
         )
       : isNode
         ? String(
-            selectedTarget.raw?.variety_type ??
-              selectedTarget.raw?.subcategory ??
-              (selectedTarget.pathType && !['otro', 'otro_trazado'].includes(selectedTarget.pathType)
+            selectedTarget?.raw?.variety_type ??
+              selectedTarget?.raw?.subcategory ??
+              (selectedTarget?.pathType && !['otro', 'otro_trazado'].includes(selectedTarget.pathType)
                 ? PATH_TYPE_LABELS[selectedTarget.pathType] || selectedTarget.pathType
                 : '')
           )
@@ -186,6 +183,9 @@ export default function MapSelectionCard({
       ? getSubcategoryColor(currentCategory, currentSubcategory)
       : '#cbd5e1';
   }, [currentCategory, currentSubcategory, categoriesVersion]);
+
+  // Si no hay target seleccionado, retornar null de forma segura tras evaluar todos los hooks
+  if (!selectedTarget) return null;
 
   const showBotanicalStatus =
     isPoint && (currentCategory === 'Árboles' || currentCategory === 'Plantas');

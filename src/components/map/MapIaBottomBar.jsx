@@ -95,7 +95,7 @@ export default function MapIaBottomBar({
           activeDrawCategory={activeDrawCategory}
           localInventory={localInventory}
         />
-      ) : (
+      ) : selectedTarget ? (
         <MapSelectionCard
           selectedTarget={selectedTarget}
           setSelectedTarget={setSelectedTarget}
@@ -108,7 +108,7 @@ export default function MapIaBottomBar({
           undoStack={undoStack}
           handleUndoMapAction={handleUndoMapAction}
         />
-      )}
+      ) : null}
 
       <PendingAttachmentsList
         attachments={pendingAttachments}
@@ -122,41 +122,45 @@ export default function MapIaBottomBar({
         imageLabel="Fotografía lista para vincular"
       />
 
-      {iaFeedback && (
+      {(iaFeedback || isProcessingIa) && (
         <div
           style={{
             ...styles.mapIaFeedbackBanner,
             backgroundColor:
-              iaFeedback.type === 'error'
+              iaFeedback?.type === 'error'
                 ? '#fef2f2'
-                : iaFeedback.type === 'info'
+                : (iaFeedback?.type === 'info' || isProcessingIa)
                   ? '#eff6ff'
                   : '#f0fdf4',
             borderColor:
-              iaFeedback.type === 'error'
+              iaFeedback?.type === 'error'
                 ? '#fca5a5'
-                : iaFeedback.type === 'info'
+                : (iaFeedback?.type === 'info' || isProcessingIa)
                   ? '#93c5fd'
                   : '#86efac',
             color:
-              iaFeedback.type === 'error'
+              iaFeedback?.type === 'error'
                 ? '#991b1b'
-                : iaFeedback.type === 'info'
+                : (iaFeedback?.type === 'info' || isProcessingIa)
                   ? '#1e40af'
                   : '#166534',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
             {isProcessingIa && <div style={styles.miniSpinner} />}
-            <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{iaFeedback.text}</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>
+              {iaFeedback?.text || (isProcessingIa ? '🤖 Analizando orden en segundo plano...' : '')}
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setIaFeedback(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'inherit' }}
-          >
-            <X size={13} />
-          </button>
+          {!isProcessingIa && (
+            <button
+              type="button"
+              onClick={() => setIaFeedback(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', color: 'inherit' }}
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
       )}
 

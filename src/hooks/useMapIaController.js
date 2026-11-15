@@ -184,12 +184,12 @@ export function useMapIaController({
   };
 
   useEffect(() => {
-    if (!iaFeedback) return;
+    if (!iaFeedback || isProcessingIa) return;
     const timer = setTimeout(() => {
       setIaFeedback(null);
     }, 8000);
     return () => clearTimeout(timer);
-  }, [iaFeedback, setIaFeedback]);
+  }, [iaFeedback, isProcessingIa, setIaFeedback]);
 
   const handleSendMapIaOrder = async () => {
     const textOrder = mapIaInput.trim();
@@ -835,6 +835,8 @@ export function useMapIaController({
     syncTextareaHeight(mapIaTextareaRef.current, '');
     setPendingVoiceAudio(null);
     setPendingAttachments([]);
+    setIsProcessingIa(true);
+    setIaFeedback({ type: 'info', text: '🤖 Analizando orden en segundo plano...' });
 
     const center = mapInstanceRef.current
       ? [mapInstanceRef.current.getCenter().lat, mapInstanceRef.current.getCenter().lng]
@@ -1441,8 +1443,9 @@ export function useMapIaController({
   });
 
   useEffect(() => {
-    const unsubscribe = subscribeSectionJobs('mapas', (snap) => {
-      setIsProcessingIa(snap.isProcessing);
+    const unsubscribe = subscribeSectionJobs('mapas', async (snap) => {
+      const hasPendingCompleted = Array.isArray(snap.completedUnacked) && snap.completedUnacked.length > 0;
+      setIsProcessingIa(snap.isProcessing || hasPendingCompleted);
       if (snap.isProcessing) {
         setIaFeedback({ type: 'info', text: '🤖 Analizando orden en segundo plano...' });
       }
@@ -1452,10 +1455,15 @@ export function useMapIaController({
           consumedMapJobsRef.current.add(errJob.jobId);
           acknowledgeAiJob(errJob.jobId);
           setIaFeedback({ type: 'error', text: `Error al ejecutar: ${errJob.error || 'Error desconocido'}` });
+          setIsProcessingIa(false);
         }
       }
       for (const finishedJob of snap.completedUnacked) {
-        applyCompletedMapJobRef.current?.(finishedJob);
+        try {
+          await applyCompletedMapJobRef.current?.(finishedJob);
+        } finally {
+          setIsProcessingIa(false);
+        }
       }
     });
     return unsubscribe;
