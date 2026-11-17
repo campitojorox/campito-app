@@ -50,6 +50,10 @@ export default function ChatIA() {
     setFallbackNotice,
     sendMessage,
     clearChat,
+    loadPreviousChat,
+    hasMorePreviousChats,
+    isLoadingPreviousChat,
+    loadedHistorySessions,
     currentUserId,
     farmKnowledge,
     farmInventory,
@@ -116,6 +120,8 @@ export default function ChatIA() {
   }, [currentGps]);
 
   const messagesEndRef = useRef(null);
+  const messagesAreaRef = useRef(null);
+  const isPrependingRef = useRef(false);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
@@ -134,9 +140,48 @@ export default function ChatIA() {
     setPendingAudio(null);
   };
 
+  const handleLoadPreviousChat = () => {
+    if (!messagesAreaRef.current) {
+      loadPreviousChat();
+      return;
+    }
+    const container = messagesAreaRef.current;
+    const prevScrollHeight = container.scrollHeight;
+    const prevScrollTop = container.scrollTop;
+    isPrependingRef.current = true;
+
+    loadPreviousChat();
+
+    requestAnimationFrame(() => {
+      if (container) {
+        const newScrollHeight = container.scrollHeight;
+        container.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+      }
+      setTimeout(() => {
+        isPrependingRef.current = false;
+      }, 100);
+    });
+  };
+
+  // Scroll inteligente: si solo está el mensaje de bienvenida o es un chat limpio, posicionar arriba para que se lea completo
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+    if (isPrependingRef.current) return;
+
+    if (messages.length <= 1 && (!loadedHistorySessions || loadedHistorySessions.length === 0)) {
+      if (messagesAreaRef.current) {
+        messagesAreaRef.current.scrollTop = 0;
+      }
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isLoading, loadedHistorySessions?.length]);
+
+  const handleClearChat = () => {
+    clearChat();
+    if (messagesAreaRef.current) {
+      messagesAreaRef.current.scrollTop = 0;
+    }
+  };
 
   const displayedMessages = useMemo(() => {
     if (!isSearchOpen || !outletSearchQuery.trim()) return messages;
@@ -303,7 +348,7 @@ export default function ChatIA() {
               )}
             </button>
             <button
-              onClick={clearChat}
+              onClick={handleClearChat}
               style={{
                 background: 'none',
                 border: 'none',
@@ -428,6 +473,11 @@ export default function ChatIA() {
         isLoading={isLoading}
         currentBadgeServer={currentBadgeServer}
         messagesEndRef={messagesEndRef}
+        messagesAreaRef={messagesAreaRef}
+        onLoadPreviousChat={handleLoadPreviousChat}
+        hasMorePreviousChats={hasMorePreviousChats}
+        isLoadingPreviousChat={isLoadingPreviousChat}
+        loadedHistorySessionsCount={loadedHistorySessions?.length || 0}
         setInventoryModalTab={setInventoryModalTab}
         setIsInventoryMapOpen={setIsInventoryMapOpen}
         style={{ display: isRagExplorerOpen || isInfoModalOpen ? 'none' : 'flex' }}

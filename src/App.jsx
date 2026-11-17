@@ -72,7 +72,7 @@ function App() {
           <ChatProvider session={session}>
             <Routes>
               <Route path="/" element={<Layout session={session} />}>
-                <Route index element={<Navigate to="/chat-ia" replace />} />
+                <Route index element={<Navigate to="/gasto-ingreso" replace />} />
                 <Route path="chat-ia" element={<ChatIA />} />
                 <Route path="gasto-ingreso" element={<GastoIngreso />} />
                 <Route path="gasto-venta" element={<Navigate to="/gasto-ingreso" replace />} />

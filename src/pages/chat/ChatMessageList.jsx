@@ -14,7 +14,9 @@ import {
   Map,
   Compass,
   FileCode,
+  History,
 } from 'lucide-react';
+import { formatSessionDate } from '../../context/chatConstants';
 import {
   exportInventoryToExcel,
   exportInventoryToPDF,
@@ -88,18 +90,102 @@ export default function ChatMessageList({
   isLoading,
   currentBadgeServer,
   messagesEndRef,
+  messagesAreaRef,
+  onLoadPreviousChat,
+  hasMorePreviousChats,
+  isLoadingPreviousChat,
+  loadedHistorySessionsCount,
   setInventoryModalTab,
   setIsInventoryMapOpen,
   style,
 }) {
   return (
-    <div style={{ ...styles.messagesArea, ...style }}>
+    <div ref={messagesAreaRef} style={{ ...styles.messagesArea, ...style }}>
+      {/* Botón superior centrado para cargar el chat anterior del historial */}
+      {hasMorePreviousChats && !isSearchOpen && (
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px 0', width: '100%' }}>
+          <button
+            onClick={onLoadPreviousChat}
+            disabled={isLoadingPreviousChat}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              backgroundColor: '#f1f5f9',
+              color: '#475569',
+              border: '1px solid #cbd5e1',
+              borderRadius: 20,
+              padding: '6px 18px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: isLoadingPreviousChat ? 'wait' : 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              transition: 'background-color 0.15s, transform 0.15s',
+              userSelect: 'none',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#e2e8f0';
+              e.currentTarget.style.color = '#1e293b';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#f1f5f9';
+              e.currentTarget.style.color = '#475569';
+            }}
+            title="Cargar la conversación anterior guardada en el historial"
+          >
+            <History size={14} color="#64748b" />
+            <span>{isLoadingPreviousChat ? 'Cargando chat anterior...' : 'Cargar chat anterior'}</span>
+          </button>
+        </div>
+      )}
+
+      {!hasMorePreviousChats && loadedHistorySessionsCount > 0 && !isSearchOpen && (
+        <div style={{ textAlign: 'center', margin: '8px 0 14px 0', fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>
+          Inicio del historial de conversaciones
+        </div>
+      )}
+
       {isSearchOpen && outletSearchQuery.trim() && displayedMessages.length === 0 && (
         <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#94a3b8', fontSize: '0.9rem' }}>
           🔍 No se encontraron mensajes con "{outletSearchQuery.trim()}".
         </div>
       )}
       {displayedMessages.map((msg) => {
+        if (msg.type === 'session_separator') {
+          return (
+            <div
+              key={msg.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '18px 0 12px 0',
+                gap: 10,
+                width: '100%',
+              }}
+            >
+              <div style={{ flex: 1, height: 1, backgroundColor: '#e2e8f0' }} />
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  color: '#64748b',
+                  fontWeight: 600,
+                  backgroundColor: '#f8fafc',
+                  padding: '3px 12px',
+                  borderRadius: 14,
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                }}
+              >
+                💬 {msg.isCurrentChat ? 'Conversación actual' : `Chat anterior · ${formatSessionDate(msg.sessionDate)}`}
+              </span>
+              <div style={{ flex: 1, height: 1, backgroundColor: '#e2e8f0' }} />
+            </div>
+          );
+        }
+
         const isUser = msg.role === 'user';
 
         return (

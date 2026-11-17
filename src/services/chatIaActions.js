@@ -567,6 +567,7 @@ export async function persistChatTurnToHistory({
   aud,
   displayedContent,
   serverThatAnswered,
+  sessionId = null,
 }) {
   try {
     const attList = normalizeAttachments(atts, att);
@@ -656,6 +657,7 @@ export async function persistChatTurnToHistory({
       user_id: validUserId,
       user_name: currentUserName,
       model_used: null,
+      session_id: sessionId || null,
     };
 
     try {
@@ -676,6 +678,7 @@ export async function persistChatTurnToHistory({
       user_id: validUserId,
       user_name: 'Asistente IA',
       model_used: serverThatAnswered?.name ? `${serverThatAnswered.name} (${serverThatAnswered.level || 'AI'})` : 'Gemini AI',
+      session_id: sessionId || null,
     };
 
     try {

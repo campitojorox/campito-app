@@ -10,7 +10,7 @@ import { normalizeAttachments } from '../utils/attachmentUtils';
 import { indexDocumentForRag, searchRagKnowledge, formatRagContextForPrompt, callFarmSyncProxy } from '../services/ragDocumentService';
 import { getLocalInventory, getLocalPaths, getFarmCategories } from '../services/farmInventoryStorage';
 import { getGlobalLastKnownGps } from '../hooks/useVoiceGeoTracker';
-import { WELCOME_MESSAGE, stripLegacyGpsTag } from './chatConstants';
+import { WELCOME_MESSAGE, stripLegacyGpsTag, groupRemoteRowsIntoSessions } from './chatConstants';
 import { ChatContext } from './chatInstance';
 
 function formatRemoteChatRowToMessage(row) {
@@ -61,6 +61,7 @@ function formatRemoteChatRowToMessage(row) {
     attachments: attachments && attachments.length > 0 ? attachments : null,
     serverUsed: row.model_used ? { name: row.model_used } : null,
     created_at: row.created_at,
+    sessionId: row.session_id || null,
   };
 }
 
@@ -84,8 +85,18 @@ export function ChatProvider({ children, session }) {
     }
   }, [session]);
 
-  // Estado de mensajes en memoria global (nunca se destruye al navegar en la app)
-  const [messages, setMessages] = useState(() => {
+  // ID de la sesión de chat activa actual
+  const [currentSessionId, setCurrentSessionId] = useState(() => {
+    try {
+      const uid = session?.user?.id || localStorage.getItem('campito_last_user_id') || 'default';
+      const saved = localStorage.getItem(`campito_active_session_id_${uid}`);
+      if (saved) return saved;
+    } catch {}
+    return `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  });
+
+  // Mensajes de la conversación activa actual
+  const [activeMessages, setActiveMessages] = useState(() => {
     try {
       const uid = session?.user?.id || localStorage.getItem('campito_last_user_id') || 'default';
       const cached = localStorage.getItem(`campito_chat_messages_${uid}`);
@@ -104,6 +115,68 @@ export function ChatProvider({ children, session }) {
     }
     return [WELCOME_MESSAGE];
   });
+
+  // Lista de sesiones completas archivadas en el historial (ordenadas de más reciente a más antigua)
+  const [historySessions, setHistorySessions] = useState(() => {
+    try {
+      const uid = session?.user?.id || localStorage.getItem('campito_last_user_id') || 'default';
+      const cached = localStorage.getItem(`campito_chat_history_sessions_${uid}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  // Sesiones históricas que el usuario ha solicitado cargar hacia atrás en la vista activa
+  const [loadedHistorySessions, setLoadedHistorySessions] = useState([]);
+
+  // Cargar el chat inmediatamente anterior en el scroll
+  const loadPreviousChat = useCallback(() => {
+    setLoadedHistorySessions((prevLoaded) => {
+      const loadedIds = new Set(prevLoaded.map((s) => s.sessionId));
+      const nextSession = historySessions.find((s) => !loadedIds.has(s.sessionId));
+      if (!nextSession) return prevLoaded;
+      return [nextSession, ...prevLoaded];
+    });
+  }, [historySessions]);
+
+  const hasMorePreviousChats = useMemo(() => {
+    const loadedIds = new Set(loadedHistorySessions.map((s) => s.sessionId));
+    return historySessions.some((s) => !loadedIds.has(s.sessionId));
+  }, [loadedHistorySessions, historySessions]);
+
+  // Mensajes consolidados y visibles en la pantalla (historiales cargados + sesión activa)
+  const messages = useMemo(() => {
+    const list = [];
+    loadedHistorySessions.forEach((session) => {
+      list.push({
+        id: `sep_${session.sessionId}`,
+        type: 'session_separator',
+        sessionDate: session.createdAt,
+        title: session.title,
+      });
+      (session.messages || []).forEach((m) => {
+        list.push({ ...m, isHistorical: true, sessionId: session.sessionId });
+      });
+    });
+
+    if (loadedHistorySessions.length > 0) {
+      list.push({
+        id: `sep_current_${currentSessionId}`,
+        type: 'session_separator',
+        isCurrentChat: true,
+        sessionDate: activeMessages.find((m) => m.created_at)?.created_at || new Date().toISOString(),
+      });
+    }
+
+    activeMessages.forEach((m) => {
+      list.push(m);
+    });
+
+    return list;
+  }, [loadedHistorySessions, activeMessages, currentSessionId]);
 
   const [input, setInput] = useState(() => {
     try {
@@ -269,49 +342,71 @@ export function ChatProvider({ children, session }) {
         .from('chat_history')
         .select('*')
         .order('created_at', { ascending: true })
-        .limit(60);
+        .limit(120);
 
       if (!error && Array.isArray(data) && data.length > 0) {
         remoteRows = data;
       } else {
-        const proxyRes = await callFarmSyncProxy('FETCH_CHAT_HISTORY', { limit: 60 });
+        const proxyRes = await callFarmSyncProxy('FETCH_CHAT_HISTORY', { limit: 120 });
         if (proxyRes?.data && Array.isArray(proxyRes.data)) {
           remoteRows = proxyRes.data;
         }
       }
 
       if (remoteRows.length > 0) {
-        const convertedMessages = remoteRows.map(formatRemoteChatRowToMessage);
+        // Agrupar filas remotas en sesiones de chat discretas
+        const remoteSessions = groupRemoteRowsIntoSessions(remoteRows, formatRemoteChatRowToMessage);
+        const uid = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
 
-        setMessages((prev) => {
-          // Si el chat local solo tiene el welcome message, inicializar con el historial remoto
-          if (prev.length <= 1 && prev[0]?.id === 'welcome') {
-            return convertedMessages;
-          }
-
-          // Combinar y deduplicar por id o por huella de contenido
-          const existingIds = new Set(prev.map((m) => m.id));
-          const toAdd = convertedMessages.filter((m) => !existingIds.has(m.id));
-
-          if (toAdd.length === 0) return prev;
-
-          const merged = [...prev, ...toAdd];
-          merged.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
-
-          const uid = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
+        setHistorySessions((prevLocalSessions) => {
+          const map = new Map();
+          remoteSessions.forEach((s) => map.set(s.sessionId, s));
+          prevLocalSessions.forEach((s) => {
+            if (!map.has(s.sessionId)) {
+              map.set(s.sessionId, s);
+            }
+          });
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+          );
           try {
-            localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify(merged.slice(-60)));
+            localStorage.setItem(`campito_chat_history_sessions_${uid}`, JSON.stringify(merged));
           } catch {
             // ignore
           }
+          return merged;
+        });
 
-          return merged.slice(-60);
+        // Sincronizar la sesión activa actual SOLO si coincide o si tiene mensajes en curso.
+        // Si el usuario tiene una bienvenida limpia abierta explícitamente, NUNCA se sobreescribe.
+        setActiveMessages((prevActive) => {
+          if (prevActive.length <= 1 && prevActive[0]?.id === 'welcome') {
+            return prevActive;
+          }
+
+          const matchingRemote = remoteSessions.find((s) => s.sessionId === currentSessionId);
+          if (matchingRemote && matchingRemote.messages.length > 0) {
+            const existingIds = new Set(prevActive.map((m) => m.id));
+            const toAdd = matchingRemote.messages.filter((m) => !existingIds.has(m.id));
+            if (toAdd.length > 0) {
+              const combined = [...prevActive, ...toAdd].sort(
+                (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)
+              );
+              try {
+                localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify(combined.slice(-60)));
+              } catch {
+                // ignore
+              }
+              return combined;
+            }
+          }
+          return prevActive;
         });
       }
     } catch (err) {
       console.warn('[ChatContext] Aviso sincronizando historial remoto:', err.message);
     }
-  }, [currentUserId]);
+  }, [currentUserId, currentSessionId]);
 
   useEffect(() => {
     // Sincronización inicial
@@ -323,24 +418,30 @@ export function ChatProvider({ children, session }) {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_history' }, (payload) => {
         if (payload?.new) {
           const newMsg = formatRemoteChatRowToMessage(payload.new);
-          setMessages((prev) => {
-            const alreadyExists = prev.some(
-              (m) =>
-                m.id === newMsg.id ||
-                (m.role === newMsg.role &&
-                  m.content === newMsg.content &&
-                  Math.abs(new Date(m.created_at || Date.now()) - new Date(newMsg.created_at || Date.now())) < 4000)
-            );
-            if (alreadyExists) return prev;
-            const nextList = [...prev, newMsg];
-            const uid = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
-            try {
-              localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify(nextList.slice(-60)));
-            } catch {
-              // ignore
-            }
-            return nextList;
-          });
+          // Si el mensaje entrante pertenece a la sesión activa actual:
+          if (payload.new.session_id === currentSessionId || (!payload.new.session_id && activeMessages.some((m) => m.id !== 'welcome'))) {
+            setActiveMessages((prev) => {
+              const alreadyExists = prev.some(
+                (m) =>
+                  m.id === newMsg.id ||
+                  (m.role === newMsg.role &&
+                    m.content === newMsg.content &&
+                    Math.abs(new Date(m.created_at || Date.now()) - new Date(newMsg.created_at || Date.now())) < 4000)
+              );
+              if (alreadyExists) return prev;
+              const nextList = [...prev, newMsg];
+              const uid = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
+              try {
+                localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify(nextList.slice(-60)));
+              } catch {
+                // ignore
+              }
+              return nextList;
+            });
+          } else {
+            // El mensaje pertenece a otra sesión o histórico: refrescar catálogo de sesiones
+            syncChatHistoryFromRemote();
+          }
         }
       })
       .subscribe();
@@ -406,8 +507,8 @@ export function ChatProvider({ children, session }) {
       };
 
       // Registrar inmediatamente el mensaje del usuario en memoria y en localStorage
-      const updatedMessages = [...messages, userMsg];
-      setMessages(updatedMessages);
+      const updatedMessages = [...activeMessages, userMsg];
+      setActiveMessages(updatedMessages);
 
       const uidForCache = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
       try {
@@ -681,7 +782,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             exportFiles: exportFiles.length > 0 ? exportFiles : null,
           };
 
-          setMessages((prev) => {
+          setActiveMessages((prev) => {
             const nextList = [...prev, assistantMsg];
             try {
               localStorage.setItem(`campito_chat_messages_${uidForCache}`, JSON.stringify(nextList.slice(-60)));
@@ -698,6 +799,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
             aud,
             displayedContent,
             serverThatAnswered,
+            sessionId: currentSessionId,
           }).catch((e) => {
             console.warn('[ChatContext] Aviso persistiendo en chat_history:', e);
             return null;
@@ -705,7 +807,7 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
 
           // Actualizar las URLs públicas remotas en el mensaje local para que persistan en cualquier dispositivo
           if (persistResult?.uploadedUrls && persistResult.uploadedUrls.length > 0) {
-            setMessages((prev) => {
+            setActiveMessages((prev) => {
               const nextList = prev.map((m) => {
                 if (m.id === tempUserMsgId && Array.isArray(m.attachments)) {
                   return {
@@ -746,8 +848,9 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
       pendingAttachments,
       pendingAudio,
       isLoading,
-      messages,
+      activeMessages,
       currentUserId,
+      currentSessionId,
       selectedServerIndex,
       autoFallback,
       farmKnowledge,
@@ -755,19 +858,53 @@ Si te pide registrar un árbol o arqueta, usa [[REGISTRAR_PUNTOS: [...] ]]. Si t
   );
 
   const clearChat = useCallback(() => {
-    setMessages([WELCOME_MESSAGE]);
     const uid = currentUserId || localStorage.getItem('campito_last_user_id') || 'default';
+
+    // Si la sesión actual contiene interacción real del usuario, archivarla en el historial antes de limpiar
+    const hasUserMessages = activeMessages.some((m) => m.role === 'user');
+    if (hasUserMessages) {
+      const firstUser = activeMessages.find((m) => m.role === 'user');
+      const sessionToArchive = {
+        sessionId: currentSessionId,
+        createdAt: activeMessages.find((m) => m.created_at)?.created_at || new Date().toISOString(),
+        title: firstUser?.content ? firstUser.content.slice(0, 45).trim() : 'Conversación anterior',
+        messages: activeMessages.filter((m) => m.id !== 'welcome' && m.type !== 'session_separator'),
+      };
+      setHistorySessions((prev) => {
+        const next = [sessionToArchive, ...prev.filter((s) => s.sessionId !== currentSessionId)];
+        try {
+          localStorage.setItem(`campito_chat_history_sessions_${uid}`, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+    }
+
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    setCurrentSessionId(newSessionId);
+    setActiveMessages([WELCOME_MESSAGE]);
+    setLoadedHistorySessions([]);
+
     try {
+      localStorage.setItem(`campito_active_session_id_${uid}`, newSessionId);
       localStorage.setItem(`campito_chat_messages_${uid}`, JSON.stringify([WELCOME_MESSAGE]));
     } catch {
       // ignore
     }
-  }, [currentUserId]);
+  }, [currentUserId, activeMessages, currentSessionId]);
 
   const value = useMemo(
     () => ({
       messages,
-      setMessages,
+      setMessages: setActiveMessages,
+      activeMessages,
+      setActiveMessages,
+      historySessions,
+      loadedHistorySessions,
+      loadPreviousChat,
+      hasMorePreviousChats,
+      currentSessionId,
       input,
       setInput,
       isLoading,
