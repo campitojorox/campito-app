@@ -500,7 +500,7 @@ export default function TransactionDetailModal({
             Guardar / Cerrar
           </button>
 
-          {selectedRecord.status === 'DELETED' ? (
+          {selectedRecord.status === 'DELETED' || Boolean(selectedRecord.deleted_at) ? (
             <button
               type="button"
               onClick={async () => {

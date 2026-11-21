@@ -27,6 +27,7 @@ export default function GastoIngreso() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filterCategory, setFilterCategory] = useState('ALL');
   const [filterUser, setFilterUser] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ACTIVE');
 
   const [formErrors, setFormErrors] = useState({});
   const [editErrors, setEditErrors] = useState({});
@@ -75,10 +76,14 @@ export default function GastoIngreso() {
     }));
   }, [users, records]);
 
-  const hasActiveFilters = filterCategory !== 'ALL' || filterUser !== 'ALL';
+  const hasActiveFilters = filterCategory !== 'ALL' || filterUser !== 'ALL' || filterStatus === 'DELETED';
 
   const displayRecords = useMemo(() => {
-    let list = records.filter((r) => r.status === 'ACTIVE');
+    let list = records.filter((r) =>
+      filterStatus === 'DELETED'
+        ? r.status === 'DELETED' || Boolean(r.deleted_at)
+        : r.status !== 'DELETED' && !r.deleted_at
+    );
 
     list = [...list].sort((a, b) => {
       const dayDiff = new Date(b.Date) - new Date(a.Date);
@@ -104,7 +109,7 @@ export default function GastoIngreso() {
     if (filterUser !== 'ALL') list = list.filter((r) => r.User === filterUser);
 
     return list;
-  }, [records, isSearchOpen, searchQuery, filterCategory, filterUser]);
+  }, [records, isSearchOpen, searchQuery, filterCategory, filterUser, filterStatus]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -193,7 +198,7 @@ export default function GastoIngreso() {
 
   const renderItem = (r, i, totalLen = 1) => {
     const key = r.TransactionID || i;
-    const isDeleted = r.status === 'DELETED';
+    const isDeleted = r.status === 'DELETED' || Boolean(r.deleted_at);
     const isRetiro = r.Category === 'Retiro';
     const activeSearchHighlight = isSearchOpen && searchQuery.trim() ? searchQuery : '';
     const itemColor = isDeleted ? '#b91c1c' : isRetiro ? '#166534' : '#5c4436';
@@ -397,6 +402,11 @@ export default function GastoIngreso() {
             }}
           >
             <span style={{ fontSize: '0.78rem', color: '#00979d', fontWeight: 600 }}>Filtros activos:</span>
+            {filterStatus === 'DELETED' && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#dc2626', fontWeight: 600, border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                Estado: Borrados <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterStatus('ACTIVE')} />
+              </span>
+            )}
             {filterCategory === 'Gasto' && (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#dc2626', fontWeight: 600, border: '1px solid rgba(239, 68, 68, 0.3)' }}>
                 Categoría: Gasto <X size={13} style={{ cursor: 'pointer' }} onClick={() => setFilterCategory('ALL')} />
@@ -417,6 +427,7 @@ export default function GastoIngreso() {
               onClick={() => {
                 setFilterCategory('ALL');
                 setFilterUser('ALL');
+                setFilterStatus('ACTIVE');
               }}
               style={{ background: 'none', border: 'none', color: '#5c4436', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto' }}
             >
@@ -430,7 +441,7 @@ export default function GastoIngreso() {
             <div style={{ textAlign: 'center', padding: '1.6rem 1rem 1.8rem 1rem', color: '#5c4436' }}>
               <div style={{ fontSize: '2.1rem', marginBottom: '0.45rem' }}>🍃</div>
               <div style={{ fontWeight: 700, fontSize: '1rem', color: '#2b1d14' }}>
-                No hay transacciones
+                {filterStatus === 'DELETED' ? 'No hay transacciones borradas' : 'No hay transacciones'}
               </div>
               <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', color: '#5c4436' }}>
                 {hasActiveFilters
@@ -443,6 +454,7 @@ export default function GastoIngreso() {
                   onClick={() => {
                     setFilterCategory('ALL');
                     setFilterUser('ALL');
+                    setFilterStatus('ACTIVE');
                   }}
                   style={{ marginTop: '1rem', padding: '0.5rem 1.2rem', borderRadius: '8px', backgroundColor: 'var(--primary)', color: 'white', border: 'none', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}
                 >
@@ -486,6 +498,8 @@ export default function GastoIngreso() {
         setFilterCategory={setFilterCategory}
         filterUser={filterUser}
         setFilterUser={setFilterUser}
+        filterStatus={filterStatus}
+        setFilterStatus={setFilterStatus}
         records={records}
         users={users}
         displayRecordsCount={displayRecords.length}
